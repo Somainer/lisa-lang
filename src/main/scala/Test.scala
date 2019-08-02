@@ -5,13 +5,14 @@ object Test {
       import SExpressionParser._
       val s = scala.io.StdIn.readLine(">")
       var newEnv: Environments.Environment = env
-      println(s"Input: $s")
+//      println(s"Input: $s")
       val exp = parse(root(sExpression), s)
       if(exp.successful) {
         val expression = exp.get
-        println(expression.repr)
-        println(expression)
+//        println(expression.repr)
+//        println(expression)
         val compiled = Evaluator.compile(expression)
+//        println(compiled)
         val evr = Evaluator.eval(compiled, env)
         evr match {
           case Evaluator.EvalSuccess(exp, nenv) => {
@@ -30,6 +31,6 @@ object Test {
         case _ => prompt(newEnv)
       }
     }
-    prompt(Environments.EmptyEnv)
+    prompt(Preludes.preludeEnvironment)
   }
 }

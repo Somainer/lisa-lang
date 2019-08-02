@@ -1,15 +1,31 @@
+import scala.util.Try
+
 object Evaluator {
   import LispExp._
   import SimpleLispTree._
   import Environments._
-  trait EvalResult
-  case class EvalSuccess(expression: Expression, env: Environment) extends EvalResult
-  case class EvalFailure(message: String) extends EvalResult
+  trait EvalResult {
+    def flatMap(fn: Expression => EvalResult): EvalResult
+    def isSuccess: Boolean
+  }
+  case class EvalSuccess(expression: Expression, env: Environment) extends EvalResult {
+    override def flatMap(fn: Expression => EvalResult): EvalResult = fn(expression)
+
+    override def isSuccess: Boolean = true
+  }
+  case class EvalFailure(message: String) extends EvalResult {
+    override def flatMap(fn: Expression => EvalResult): EvalResult = this
+
+    override def isSuccess: Boolean = false
+  }
 
   def compile(tree: SimpleLispTree): Expression = tree match {
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
-    case Value(value) => Symbol(value)
+    case Value(value) => {
+      if(value.matches("\\d+")) SInteger(value.toInt)
+      else Symbol(value)
+    }
     case StringLiteral(value) => SString(value)
     case SList(ls) => ls match {
       case Value("quote" | "'")::xs => xs match {
@@ -20,7 +36,7 @@ object Evaluator {
         case Value(sym)::expr::Nil => Define(Symbol(sym), compile(expr))
         case _ => Failure("Syntax Error", "Cannot define a variable like that.")
       }
-      case Value("lambda")::xs => xs match {
+      case Value("lambda" | "λ")::xs => xs match {
         case SList(params)::sExpr::Nil => params match {
           case list: List[Value] => Closure(compile(sExpr), list.map(compile(_).asInstanceOf[Symbol]))
           case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
@@ -49,7 +65,7 @@ object Evaluator {
       case f => f
     }
 
-    println(s"Evaluating: $exp with Env: $env")
+//    println(s"Evaluating: $exp")
 
     exp match {
       case f: Failure => pureValue(f)
@@ -63,17 +79,10 @@ object Evaluator {
       case c: Closure => pureValue(c)
       case fn: PrimitiveFunction => pureValue(fn)
       case s: SString => pureValue(s)
+      case i: SInteger => pureValue(i)
+      case q: Quote => pureValue(q)
 
-      case Apply(func, args) => func match {
-        case Closure(body, boundVars) => {
-          if (boundVars.length != args.length)
-            EvalFailure(s"Function expected ${boundVars.length} args but ${args.length} found.")
-          else {
-            env.newFrame.withValues(boundVars.map(_.value).zip(args))
-            ???
-          }
-        }
-      }
+      case Apply(func, args) => apply(func, args, env)
       case SIfElse(predicate, consequence, alternative) =>
         eval(predicate, env) match {
           case EvalSuccess(SBool(b), _) => eval(if(b) consequence else alternative, env)
@@ -85,7 +94,31 @@ object Evaluator {
     }
   }
 
-  def apply(procedure: Expression, arguments: List[Expression], env: Environment): Expression = {
-    ???
+  def apply(procedure: Expression, arguments: List[Expression], env: Environment): EvalResult = {
+//    println(s"Apply $procedure($arguments) with env $env")
+//    println(s"EVAL: $procedure => ${eval(procedure, env)}")
+    eval(procedure, env) flatMap {
+      case Closure(body, boundVars) => {
+        if (boundVars.length != arguments.length)
+          EvalFailure(s"Function expected ${boundVars.length} args but ${arguments.length} found.")
+        else {
+          val evaluatedArgs = arguments.map(eval(_, env))
+          if(evaluatedArgs.forall(_.isSuccess))
+            eval(body, env.newFrame
+              .withValues(boundVars.map(_.value).zip(evaluatedArgs.map(_.asInstanceOf[EvalSuccess].expression))))
+          else {
+            evaluatedArgs.find(!_.isSuccess).get
+          }
+        }
+      }
+      case PrimitiveFunction(fn) => Try {
+        val evaluatedArgs = arguments.map(eval(_, env))
+        if(evaluatedArgs.forall(_.isSuccess))
+          fn(evaluatedArgs.map(_.asInstanceOf[EvalSuccess].expression))
+        else {
+          throw new RuntimeException(evaluatedArgs.find(!_.isSuccess).get.asInstanceOf[EvalFailure].message)
+        }
+      }.fold(th => EvalFailure(th.getLocalizedMessage), eval(_, env))
+    }
   }
 }

@@ -7,3 +7,4 @@ target/*
 out/*
 **/.js/*
 **/.jvm/*
+**/.DS_Store
