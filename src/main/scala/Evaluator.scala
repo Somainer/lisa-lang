@@ -32,6 +32,10 @@ object Evaluator {
         case expr::Nil => Quote(compile(expr))
         case _ => Failure("Syntax Error", "quote expect only one argument.")
       }
+      case Value("unquote")::xs => xs match {
+        case expr::Nil => UnQuote(compile(expr))
+        case _ => Failure("Syntax Error", "unquote expect only one argument.")
+      }
       case Value("define")::xs => xs match {
         case Value(sym)::expr::Nil => Define(Symbol(sym), compile(expr))
         case _ => Failure("Syntax Error", "Cannot define a variable like that.")
@@ -81,6 +85,10 @@ object Evaluator {
       case s: SString => pureValue(s)
       case i: SInteger => pureValue(i)
       case q: Quote => pureValue(q)
+      case UnQuote(q) => eval(q, env) flatMap {
+        case Quote(qt) => eval(qt, env)
+        case _ => EvalFailure(s"Cannot unquote $q.")
+      }
 
       case Apply(func, args) => apply(func, args, env)
       case SIfElse(predicate, consequence, alternative) =>

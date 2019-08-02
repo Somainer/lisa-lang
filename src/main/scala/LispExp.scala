@@ -36,10 +36,16 @@ object LispExp {
   case class Define(symbol: Symbol, value: Expression) extends Expression {
     override def valid: Boolean = value.valid
   }
+
   case class Quote(exp: Expression) extends Expression {
     override def valid: Boolean = exp.valid
 
     override def toString: String = s"'${exp.toString}"
+  }
+  case class UnQuote(quote: Expression) extends Expression {
+    override def valid: Boolean = quote.valid
+
+    override def toString: String = s"~$quote"
   }
 
   case class Failure(tp: String, message: String) extends Expression {
