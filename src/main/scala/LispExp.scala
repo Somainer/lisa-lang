@@ -21,9 +21,11 @@ object LispExp {
 
   trait Procedure extends Expression
   case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure
-  case class Closure(body: Expression, boundVariable: List[Symbol]) extends Procedure {
+  case class LambdaExpression(body: Expression, boundVariable: List[Symbol]) extends Expression {
     override def valid: Boolean = body.valid
-
+  }
+  case class Closure(boundVariable: List[Symbol], body: Expression, capturedEnv: Environments.Environment) extends Procedure {
+    override def valid: Boolean = body.valid
     override def toString: String = s"#Closure(${boundVariable.mkString(" ")})"
   }
   case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {

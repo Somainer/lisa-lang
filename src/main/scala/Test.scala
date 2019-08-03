@@ -19,16 +19,16 @@ object Test {
                 .recover{
                   case NonFatal(ex) => Evaluator.EvalFailure(ex.getLocalizedMessage)
                 }.get match {
-                case Evaluator.EvalSuccess(result, newEnv) =>
-                  result match {
-                    case LispExp.Failure(typ, msg) =>
-                      println(s"$typ: $msg")
-                    case s => println(s)
-                  }
-                  prompt(newEnv)
-                case f =>
-                  println(s"Runtime Error: $f")
-                  prompt(env)
+                  case Evaluator.EvalSuccess(result, newEnv) =>
+                    result match {
+                      case LispExp.Failure(typ, msg) =>
+                        println(s"$typ: $msg")
+                      case s => println(s)
+                    }
+                    prompt(newEnv)
+                  case f =>
+                    println(s"Runtime Error: $f")
+                    prompt(env)
               }
           }
           case f =>

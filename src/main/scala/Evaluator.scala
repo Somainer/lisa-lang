@@ -38,11 +38,18 @@ object Evaluator {
       }
       case Value("define")::xs => xs match {
         case Value(sym)::expr::Nil => Define(Symbol(sym), compile(expr))
+        case SList(Value(sym)::params)::sExpr::Nil =>
+          params match {
+            case list: List[Value] =>
+              Define(Symbol(sym), LambdaExpression(compile(sExpr), list.map(compile(_).asInstanceOf[Symbol])))
+            case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
+          }
         case _ => Failure("Syntax Error", "Cannot define a variable like that.")
       }
       case Value("lambda" | "λ")::xs => xs match {
         case SList(params)::sExpr::Nil => params match {
-          case list: List[Value] => Closure(compile(sExpr), list.map(compile(_).asInstanceOf[Symbol]))
+          case list: List[Value] =>
+            LambdaExpression(compile(sExpr), list.map(compile(_).asInstanceOf[Symbol]))
           case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
         }
         case _ => Failure("Syntax Error", "Error creating a closure.")
@@ -80,6 +87,8 @@ object Evaluator {
         case EvalSuccess(result, _) => unit(env.withValue(sym, result))
         case f => f
       }
+      case LambdaExpression(body, boundVariable) =>
+        pureValue(Closure(boundVariable, body, env))
       case c: Closure => pureValue(c)
       case fn: PrimitiveFunction => pureValue(fn)
       case s: SString => pureValue(s)
@@ -90,7 +99,10 @@ object Evaluator {
         case _ => EvalFailure(s"Cannot unquote $q.")
       }
 
-      case Apply(func, args) => apply(func, args, env)
+      case Apply(func, args) => eval(func, env) flatMap {
+        proc => evalList(args, env).fold(EvalFailure,
+          evaledArguments => apply(proc, evaledArguments.toList).fold(EvalFailure, EvalSuccess(_, env)))
+      }
       case SIfElse(predicate, consequence, alternative) =>
         eval(predicate, env) match {
           case EvalSuccess(SBool(b), _) => eval(if(b) consequence else alternative, env)
@@ -102,31 +114,29 @@ object Evaluator {
     }
   }
 
-  def apply(procedure: Expression, arguments: List[Expression], env: Environment): EvalResult = {
+  def evalList(exps: Seq[Expression], env: Environment): Either[String, Seq[Expression]] = {
+    val evaledExpr = exps.map(eval(_, env))
+    if(evaledExpr.forall(_.isSuccess))
+      Right(evaledExpr.map(_.asInstanceOf[EvalSuccess].expression))
+    else Left(evaledExpr.find(!_.isSuccess).get.asInstanceOf[EvalFailure].message)
+  }
+
+  def apply(procedure: Expression, arguments: List[Expression]): Either[String, Expression] = {
 //    println(s"Apply $procedure($arguments) with env $env")
 //    println(s"EVAL: $procedure => ${eval(procedure, env)}")
-    eval(procedure, env) flatMap {
-      case Closure(body, boundVars) => {
-        if (boundVars.length != arguments.length)
-          EvalFailure(s"Function expected ${boundVars.length} args but ${arguments.length} found.")
-        else {
-          val evaluatedArgs = arguments.map(eval(_, env))
-          if(evaluatedArgs.forall(_.isSuccess))
-            eval(body, env.newFrame
-              .withValues(boundVars.map(_.value).zip(evaluatedArgs.map(_.asInstanceOf[EvalSuccess].expression))))
-          else {
-            evaluatedArgs.find(!_.isSuccess).get
+    procedure match {
+      case Closure(boundVariable, body, capturedEnv) => {
+        if (boundVariable.length != arguments.length)
+          Left(s"Function expected ${boundVariable.length} args but ${arguments.length} found.")
+        else
+          eval(body, capturedEnv.newFrame.withValues(boundVariable.map(_.value).zip(arguments))) match {
+            case EvalSuccess(result, _) => Right(result)
+            case EvalFailure(msg) => Left(msg)
           }
-        }
       }
-      case PrimitiveFunction(fn) => Try {
-        val evaluatedArgs = arguments.map(eval(_, env))
-        if(evaluatedArgs.forall(_.isSuccess))
-          fn(evaluatedArgs.map(_.asInstanceOf[EvalSuccess].expression))
-        else {
-          throw new RuntimeException(evaluatedArgs.find(!_.isSuccess).get.asInstanceOf[EvalFailure].message)
-        }
-      }.fold(th => EvalFailure(th.getLocalizedMessage), eval(_, env))
+      case PrimitiveFunction(fn) =>
+        Try(fn(arguments)).fold(ex => Left(ex.getLocalizedMessage), Right(_))
+      case _ => Left(s"Cannot apply $procedure to $arguments.")
     }
   }
 }
