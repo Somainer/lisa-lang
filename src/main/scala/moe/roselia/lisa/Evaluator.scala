@@ -8,20 +8,27 @@ object Evaluator {
   import SimpleLispTree._
   trait EvalResult {
     def flatMap(fn: Expression => EvalResult): EvalResult
+    def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult
     def isSuccess: Boolean
   }
   case class EvalSuccess(expression: Expression, env: Environment) extends EvalResult {
     override def flatMap(fn: Expression => EvalResult): EvalResult = fn(expression)
+
+    override def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult =
+      fn(expression, env)
 
     override def isSuccess: Boolean = true
   }
   case class EvalFailure(message: String) extends EvalResult {
     override def flatMap(fn: Expression => EvalResult): EvalResult = this
 
+    override def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult = this
+
     override def isSuccess: Boolean = false
   }
 
   def compile(tree: SimpleLispTree): Expression = tree match {
+    case SQuote(exp) => Quote(compile(exp))
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
     case Value(value) => {
@@ -40,18 +47,20 @@ object Evaluator {
       }
       case Value("define")::xs => xs match {
         case Value(sym)::expr::Nil => Define(Symbol(sym), compile(expr))
-        case SList(Value(sym)::params)::sExpr::Nil =>
+        case SList(Value(sym)::params)::sExpr =>
           params match {
             case list: List[Value] =>
-              Define(Symbol(sym), LambdaExpression(compile(sExpr), list.map(compile(_).asInstanceOf[Symbol])))
+              Define(Symbol(sym), LambdaExpression(compile(sExpr.last),
+                list.map(compile(_).asInstanceOf[Symbol]), sExpr.init.map(compile)))
             case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
           }
         case _ => Failure("Syntax Error", "Cannot define a variable like that.")
       }
       case Value("lambda" | "λ")::xs => xs match {
-        case SList(params)::sExpr::Nil => params match {
+        case SList(params)::sExpr => params match {
           case list: List[Value] =>
-            LambdaExpression(compile(sExpr), list.map(compile(_).asInstanceOf[Symbol]))
+            LambdaExpression(compile(sExpr.last),
+              list.map(compile(_).asInstanceOf[Symbol]), sExpr.init.map(compile))
           case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
         }
         case _ => Failure("Syntax Error", "Error creating a closure.")
@@ -83,15 +92,15 @@ object Evaluator {
       case bool: SBool => pureValue(bool)
       case NilObj => pureValue(NilObj)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
-        case c@Closure(_, _, capturedEnv) =>
+        case c@Closure(_, _, capturedEnv, _) =>
           val recursiveFrame = capturedEnv.newMutableFrame
           val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
           recursiveFrame.addValue(sym, recursiveClosure)
           unit(env.withValue(sym, recursiveClosure))
         case result => unit(env.withValue(sym, result))
       }
-      case LambdaExpression(body, boundVariable) =>
-        pureValue(Closure(boundVariable, body, env))
+      case LambdaExpression(body, boundVariable, nestedExpressions) =>
+        pureValue(Closure(boundVariable, body, env, nestedExpressions))
       case c: Closure => pureValue(c)
       case fn: PrimitiveFunction => pureValue(fn)
       case s: SString => pureValue(s)
@@ -128,14 +137,22 @@ object Evaluator {
 //    println(s"Apply $procedure($arguments) with env $env")
 //    println(s"EVAL: $procedure => ${eval(procedure, env)}")
     procedure match {
-      case Closure(boundVariable, body, capturedEnv) => {
+      case Closure(boundVariable, body, capturedEnv, sideEffects) => {
         if (boundVariable.length != arguments.length)
           Left(s"Function expected ${boundVariable.length} args but ${arguments.length} found.")
-        else
-          eval(body, capturedEnv.newFrame.withValues(boundVariable.map(_.value).zip(arguments))) match {
+        else {
+          val boundEnv = capturedEnv.newFrame.withValues(boundVariable.map(_.value).zip(arguments))
+          sideEffects.foldRight[EvalResult](EvalSuccess(NilObj, boundEnv)) {
+            (sideEffect, accumulator) => accumulator flatMapWithEnv {
+              (_, env) => eval(sideEffect, env)
+            }
+          }.flatMapWithEnv {
+            (_, env) => eval(body, env)
+          } match {
             case EvalSuccess(result, _) => Right(result)
             case EvalFailure(msg) => Left(msg)
           }
+        }
       }
       case PrimitiveFunction(fn) =>
         Try(fn(arguments)).fold(ex => Left(ex.getLocalizedMessage), Right(_))

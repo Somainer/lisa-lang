@@ -17,7 +17,7 @@ object ScalaBridge {
     case SFloat(fl) => fl
     case NilObj => ()
     case PrimitiveFunction(fn) => (xs: List[Any]) => fn(xs.map(fromScalaNative))
-    case c@Closure(_, _, _) =>
+    case c@Closure(_, _, _, _) =>
       evalClosure(c)(_)
   }
 

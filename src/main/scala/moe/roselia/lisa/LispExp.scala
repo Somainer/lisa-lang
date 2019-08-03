@@ -16,7 +16,9 @@ object LispExp {
   case class SBool(value: Boolean) extends Expression {
     override def toString: String = value.toString
   }
-  case class SString(value: String) extends Expression
+  case class SString(value: String) extends Expression {
+    override def toString: String = value.toString
+  }
   case object NilObj extends Expression {
     override def toString: String = "( )"
   }
@@ -29,10 +31,14 @@ object LispExp {
   case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure {
     override def toString: String = "#[Native Code]"
   }
-  case class LambdaExpression(body: Expression, boundVariable: List[Symbol]) extends Expression {
+  case class LambdaExpression(body: Expression, boundVariable: List[Symbol],
+                              nestedExpressions: List[Expression] = List.empty) extends Expression {
     override def valid: Boolean = body.valid
   }
-  case class Closure(boundVariable: List[Symbol], body: Expression, capturedEnv: Environments.Environment) extends Procedure {
+  case class Closure(boundVariable: List[Symbol],
+                     body: Expression,
+                     capturedEnv: Environments.Environment,
+                     sideEffects: List[Expression] = List.empty) extends Procedure {
     override def valid: Boolean = body.valid
     override def toString: String = s"#Closure(${boundVariable.mkString(" ")})"
   }

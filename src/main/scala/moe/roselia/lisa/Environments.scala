@@ -4,7 +4,7 @@ object Environments {
   private val mutableMap = collection.mutable.Map
   private type mutableMap[K, V] = collection.mutable.Map[K, V]
   sealed trait Environment {
-    def has(key: String): Boolean
+    def has(key: String): Boolean = getValueOption(key).isDefined
     def getValueOption(key: String): Option[LispExp.Expression]
     def newFrame = Env(Map.empty, this)
     def withValue(key: String, value: LispExp.Expression): Env = newFrame withValue (key, value)
