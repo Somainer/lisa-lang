@@ -1,3 +1,5 @@
+package moe.roselia.lisa
+
 object SimpleLispTree {
   sealed trait SimpleLispTree {
     def repr: String = this match {

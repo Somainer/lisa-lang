@@ -1,9 +1,11 @@
+package moe.roselia.lisa
+
 import scala.util.Try
 
 object Evaluator {
+  import Environments._
   import LispExp._
   import SimpleLispTree._
-  import Environments._
   trait EvalResult {
     def flatMap(fn: Expression => EvalResult): EvalResult
     def isSuccess: Boolean
@@ -66,10 +68,7 @@ object Evaluator {
   }
   def eval(exp: Expression, env: Environment): EvalResult = {
     def pureValue(expression: Expression) = EvalSuccess(expression, env)
-    def pure(evalResult: EvalResult) = evalResult match {
-      case EvalSuccess(expression, _) => pureValue(expression)
-      case f => f
-    }
+    def pure(evalResult: EvalResult) = evalResult flatMap pureValue
     def unit(newEnv: Environment) = EvalSuccess(NilObj, newEnv)
     def sideEffect(evalResult: EvalResult): EvalResult = evalResult match {
       case EvalSuccess(_, newEnvironment) => unit(newEnvironment)
@@ -83,9 +82,13 @@ object Evaluator {
       case Symbol(sym) => env.getValueOption(sym).map(pureValue).getOrElse(EvalFailure(s"Symbol $sym not found."))
       case bool: SBool => pureValue(bool)
       case NilObj => pureValue(NilObj)
-      case Define(Symbol(sym), expr) => eval(expr, env) match {
-        case EvalSuccess(result, _) => unit(env.withValue(sym, result))
-        case f => f
+      case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
+        case c@Closure(_, _, capturedEnv) =>
+          val recursiveFrame = capturedEnv.newMutableFrame
+          val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
+          recursiveFrame.addValue(sym, recursiveClosure)
+          unit(env.withValue(sym, recursiveClosure))
+        case result => unit(env.withValue(sym, result))
       }
       case LambdaExpression(body, boundVariable) =>
         pureValue(Closure(boundVariable, body, env))

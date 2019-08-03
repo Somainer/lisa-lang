@@ -1,6 +1,7 @@
-import Environments._
-import LispExp.PrimitiveFunction
-import LispExp._
+package moe.roselia.lisa
+
+import moe.roselia.lisa.Environments.{EmptyEnv, Environment}
+import moe.roselia.lisa.LispExp._
 
 object Preludes {
   lazy val preludeEnvironment: Environment = EmptyEnv.withValues(Seq(
@@ -19,8 +20,19 @@ object Preludes {
       case lhs::rhs::Nil => SBool(lhs == rhs)
     },
     "print!" -> PrimitiveFunction {
-      x =>
+      case x::Nil =>
         print(x)
+        NilObj
+      case x =>
+        print(s"( ${x.mkString(" ")} )")
+        NilObj
+    },
+    "println!" -> PrimitiveFunction {
+      case x::Nil =>
+        println(x)
+        NilObj
+      case x =>
+        println(s"( ${x.mkString(" ")} )")
         NilObj
     },
     "eval" -> PrimitiveFunction {

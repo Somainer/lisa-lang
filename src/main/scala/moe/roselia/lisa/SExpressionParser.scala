@@ -1,5 +1,8 @@
+package moe.roselia.lisa
+
+import moe.roselia.lisa.SimpleLispTree._
+
 import scala.util.parsing.combinator.{ImplicitConversions, RegexParsers}
-import SimpleLispTree._
 
 object SExpressionParser extends ImplicitConversions with RegexParsers {
   def sValue = "[^() \\s]+".r map Value named "Values"

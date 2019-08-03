@@ -1,3 +1,5 @@
+package moe.roselia.lisa
+
 object LispExp {
   sealed trait Expression {
     def valid = true
@@ -19,8 +21,14 @@ object LispExp {
     override def toString: String = "( )"
   }
 
+  case class WrappedScalaObject[T](obj: T) extends Expression {
+    def get:T = obj
+  }
+
   trait Procedure extends Expression
-  case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure
+  case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure {
+    override def toString: String = "#[Native Code]"
+  }
   case class LambdaExpression(body: Expression, boundVariable: List[Symbol]) extends Expression {
     override def valid: Boolean = body.valid
   }

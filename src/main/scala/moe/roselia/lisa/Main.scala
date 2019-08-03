@@ -1,11 +1,15 @@
+package moe.roselia.lisa
+
+import moe.roselia.lisa.Environments.CombineEnv
+
 import scala.util.Try
 import scala.util.control.NonFatal
 
-object Test {
+object Main {
   import SimpleLispTree._
   def main(args: Array[String]): Unit = {
+    import SExpressionParser._
     @annotation.tailrec def prompt(env: Environments.Environment): Unit = {
-      import SExpressionParser._
       val s = scala.io.StdIn.readLine("Prelude>")
       if (s.nonEmpty) {
         //      println(s"Input: $s")
@@ -37,8 +41,7 @@ object Test {
             prompt(env)
         }
       } else prompt(env)
-
     }
-    prompt(Preludes.preludeEnvironment)
+    prompt(CombineEnv(Seq(Reflect.DotAccessor.accessEnv, Preludes.preludeEnvironment)))
   }
 }
