@@ -1,0 +1,30 @@
+(define cons 
+    (lambda (x y) 
+        (lambda (m) (m x y))))
+(define car (lambda (m) (m (lambda (a b) a))))
+(define cdr (lambda (m) (m (lambda (a b) b))))
+
+(define (or a b)
+    (if (truthy? a) a b))
+(define (and a b)
+    (if (not (truthy? a)) a b))
+(define (not x)
+    (if (truthy? x) false true))
+
+;This implemention is stupid.
+
+(define (< a b)
+    (if (= a b) 
+        false
+        ;otherwise => (a - 1) < (b - 1)
+        (if (= a 0) true 
+            (if (= b 0) false
+                (< (- a 1) (- b 1))))))
+(define (<= a b)
+    (or (= a b) (< a b)))
+(define (> a b)
+    (not (<= a b)))
+(define (>= a b)
+    (or (= a b) (> a b)))
+
+(define eq? =)

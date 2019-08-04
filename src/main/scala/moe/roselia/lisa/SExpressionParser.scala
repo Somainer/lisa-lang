@@ -5,6 +5,8 @@ import moe.roselia.lisa.SimpleLispTree._
 import scala.util.parsing.combinator.{ImplicitConversions, RegexParsers}
 
 object SExpressionParser extends ImplicitConversions with RegexParsers {
+  override protected val whiteSpace = """(\s|;.*)+""".r
+
   def sValue = "[^() \\s]+".r map Value named "Values"
 
   def string = "\"(((\\\\\")|[^\"])*)\"".r

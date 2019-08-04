@@ -112,7 +112,15 @@ object Evaluator {
       }
 
       case Apply(func, args) => eval(func, env) flatMap {
-        proc => evalList(args, env).fold(EvalFailure,
+        case SideEffectFunction(fn) =>
+          Try {
+            evalList(args, env).fold(EvalFailure,
+              evaledArgs => {
+                val applied = fn(evaledArgs.toList, env)
+                EvalSuccess(applied._1, applied._2)
+              })
+          }.fold(ex => EvalFailure(ex.getLocalizedMessage), x => x)
+        case proc => evalList(args, env).fold(EvalFailure,
           evaledArguments => apply(proc, evaledArguments.toList).fold(EvalFailure, EvalSuccess(_, env)))
       }
       case SIfElse(predicate, consequence, alternative) =>
@@ -141,7 +149,8 @@ object Evaluator {
         if (boundVariable.length != arguments.length)
           Left(s"Function expected ${boundVariable.length} args but ${arguments.length} found.")
         else {
-          val boundEnv = capturedEnv.newFrame.withValues(boundVariable.map(_.value).zip(arguments))
+          val boundEnv = capturedEnv.newFrame
+            .withValues(boundVariable.map(_.value).zip(arguments))
           sideEffects.foldRight[EvalResult](EvalSuccess(NilObj, boundEnv)) {
             (sideEffect, accumulator) => accumulator flatMapWithEnv {
               (_, env) => eval(sideEffect, env)

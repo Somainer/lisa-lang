@@ -7,8 +7,12 @@ import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
 import scala.util.Try
 
 object Preludes {
-  import javax.script.ScriptEngine
-  private val globalJSEngine = new javax.script.ScriptEngineManager().getEngineByName("ecmascript")
+  private lazy val globalJSEngine = new javax.script.ScriptEngineManager().getEngineByName("ecmascript")
+
+  private lazy val selectablePreludes = Map(
+    "javascript" -> javaScriptPlugin,
+    "javascript-cross" -> javaScriptEnv
+  )
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
     "+" -> PrimitiveFunction {
@@ -30,7 +34,7 @@ object Preludes {
         print(x)
         NilObj
       case x =>
-        print(s"( ${x.mkString(" ")} )")
+        print(s"${x.mkString(" ")}")
         NilObj
     },
     "println!" -> PrimitiveFunction {
@@ -38,12 +42,43 @@ object Preludes {
         println(x)
         NilObj
       case x =>
-        println(s"( ${x.mkString(" ")} )")
+        println(s"${x.mkString(" ")}")
         NilObj
     },
     "eval" -> PrimitiveFunction {
       case x::Nil => Evaluator.eval(x, primitiveEnvironment).asInstanceOf[Evaluator.EvalSuccess].expression
     },
+    "truthy?" -> PrimitiveFunction {
+      case ex::Nil => LispExp.SBool {
+        ex match {
+          case LispExp.NilObj => false
+          case LispExp.SInteger(n) => n != 0
+          case LispExp.SFloat(n) => n != 0.0
+          case LispExp.SBool(b) => b
+          case LispExp.SString(s) => s.nonEmpty
+          case _ => true
+        }
+      }
+      case _ => LispExp.Failure("Runtime Error", "truthy? can only apply to one value")
+    },
+    "import-env!" -> SideEffectFunction {
+      case (Quote(Symbol(sym))::Nil, env) =>
+        if (selectablePreludes.contains(sym))
+          (NilObj, CombineEnv(Seq(env, selectablePreludes(sym))))
+        else (Failure("Import Error", s"Environment $sym not found"), env)
+      case s => (Failure("Import Error", s"Cannot import ${s._1}"), s._2)
+    }
+  ))
+
+  private lazy val javaScriptEnv = new SpecialEnv {
+    override def has(key: String): Boolean = getValueOption(key).isDefined
+
+    override def getValueOption(key: String): Option[Expression] =
+      Try(globalJSEngine.get(key)).filter(x => x != null).map(Reflect.ScalaBridge.fromScalaNative).toOption
+
+  }
+
+  private lazy val javaScriptPlugin = EmptyEnv.withValues(Seq(
     "js" -> PrimitiveFunction {
       case SString(s)::Nil => Reflect.ScalaBridge.fromScalaNative(
         globalJSEngine.eval(s)
@@ -58,16 +93,15 @@ object Preludes {
         globalJSEngine.put(sym, toScalaNative(exp))
         NilObj
       }
+    },
+    "get-js" -> PrimitiveFunction {
+      case Quote(Symbol(sym))::Nil =>
+        javaScriptEnv.getValueOption(sym).getOrElse(Failure("Lookup Error", s"Value $sym not found in JS env."))
+      case Quote(Symbol(sym))::alt::Nil =>
+        javaScriptEnv.getValueOption(sym).getOrElse(alt)
+      case _ => Failure("Argument Error", "")
     }
   ))
 
-  private lazy val javaScriptEnv = new SpecialEnv {
-    override def has(key: String): Boolean = getValueOption(key).isDefined
-
-    override def getValueOption(key: String): Option[Expression] =
-      Try(globalJSEngine.get(key)).filter(x => x != null).map(Reflect.ScalaBridge.fromScalaNative).toOption
-
-  }
-
-  lazy val preludeEnvironment = CombineEnv(Seq(primitiveEnvironment, javaScriptEnv))
+  lazy val preludeEnvironment = CombineEnv(Seq(primitiveEnvironment))
 }
