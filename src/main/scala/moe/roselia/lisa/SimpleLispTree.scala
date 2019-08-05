@@ -1,3 +1,5 @@
+package moe.roselia.lisa
+
 object SimpleLispTree {
   sealed trait SimpleLispTree {
     def repr: String = this match {
@@ -6,6 +8,7 @@ object SimpleLispTree {
         if(children.nonEmpty) s"SList(${children.map(_.repr).mkString(", ")})"
         else s"SList( )"
       case StringLiteral(value) => s"String($value)"
+      case SQuote(value) => s"Quote(${value.repr})"
     }
   }
 
@@ -19,5 +22,8 @@ object SimpleLispTree {
     override def toString: String =
       if(list.isEmpty) "( )"
       else s"( ${list.map(_.toString).mkString(" ")} )"
+  }
+  case class SQuote(quote: SimpleLispTree) extends SimpleLispTree {
+    override def toString: String = s"'$quote"
   }
 }

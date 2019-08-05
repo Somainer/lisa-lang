@@ -1,0 +1,36 @@
+(println! "In path:" __PATH__)
+(define sum 
+    (lambda (n) (if (= n 0) 0 (+ (sum (- n 1)) n))))
+(define fib (lambda (n) (if (= n 0) 0 (if (= n 1) 1 (+ (fib (- n 1)) (fib (- n 2)))))))
+
+(println! "Hello!")
+
+(define (fact n) 
+    (define (go n x) 
+        (println! "Computing:" n) 
+        (if (= n 0) x (go (- n 1) (* n x)))) 
+    (define (id x) x)
+    (id (go n 1)))
+
+(define result (fact 5))
+
+(println! "The result is " result)
+
+(println! "Invoking javascript...")
+
+(import-env! 'javascript)
+
+(js "
+    var a = 2, b = '3'
+")
+
+(import-env! 'javascript-cross)
+
+(define pair (cons a b))
+(println! (car pair) (cdr pair))
+
+(println! 
+    (((lambda (x)
+         (lambda (y)
+             (* x y))) 4) 5))
+()

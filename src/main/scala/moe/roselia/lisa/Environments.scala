@@ -1,10 +1,15 @@
+package moe.roselia.lisa
+
 object Environments {
+  private val mutableMap = collection.mutable.Map
+  private type mutableMap[K, V] = collection.mutable.Map[K, V]
   sealed trait Environment {
-    def has(key: String): Boolean
+    def has(key: String): Boolean = getValueOption(key).isDefined
     def getValueOption(key: String): Option[LispExp.Expression]
     def newFrame = Env(Map.empty, this)
     def withValue(key: String, value: LispExp.Expression): Env = newFrame withValue (key, value)
     def withValues(context: Seq[(String, LispExp.Expression)]): Env = newFrame withValues context
+    def newMutableFrame = MutableEnv(mutableMap.empty, this)
   }
   case class Env(env: Map[String, LispExp.Expression], parent: Environment) extends Environment {
     override def has(key: String): Boolean = env.contains(key) || parent.has(key)
@@ -34,4 +39,29 @@ object Environments {
   }
 
   abstract class SpecialEnv extends Environment
+
+  case class MutableEnv(private val env: mutableMap[String, LispExp.Expression],
+                        parent: Environment) extends Environment {
+    override def has(key: String): Boolean = env.contains(key) || parent.has(key)
+
+    override def getValueOption(key: String): Option[LispExp.Expression] =
+      env.get(key).orElse(parent getValueOption key)
+
+    def addValue(key: String, value: LispExp.Expression): MutableEnv = {
+      env.update(key, value)
+      this
+    }
+
+  }
+
+  case class NameSpacedEnv(nameSpace: String, env: Environment, separator: String = ".") extends Environment {
+    private val prefixLength = nameSpace.length + separator.length
+    override def has(key: String): Boolean = if (key.startsWith(s"$nameSpace$separator")) {
+      env.has(key.substring(prefixLength))
+    } else false
+
+    override def getValueOption(key: String): Option[LispExp.Expression] =
+      if (has(key)) env.getValueOption(key.substring(prefixLength))
+      else None
+  }
 }

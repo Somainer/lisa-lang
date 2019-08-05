@@ -1,0 +1,37 @@
+(define cons 
+    (lambda (x y) 
+        (lambda (m) (m x y))))
+(define car (lambda (m) (m (lambda (a b) a))))
+(define cdr (lambda (m) (m (lambda (a b) b))))
+
+(define (or a b)
+    (if (truthy? a) a b))
+(define (and a b)
+    (if (not (truthy? a)) a b))
+(define (not x)
+    (if (truthy? x) false true))
+
+;This implementation is stupid.
+
+(define (< a b)
+    (= (.compareTo a b) -1))
+    
+(define (< a b)
+    (cond ((= a b) false)
+          ((= a 0) true)
+          ((= b 0) false)
+          (else (< (- a 1) (- b 1)))))
+
+(define (<= a b)
+    (or (= a b) (< a b)))
+(define (> a b)
+    (not (<= a b)))
+(define (>= a b)
+    (or (= a b) (> a b)))
+
+(define (max a b)
+    (if (< a b) b a))
+
+(define eq? =)
+
+(define (Y fn) ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s))))))

@@ -1,7 +1,12 @@
+package moe.roselia.lisa
+
+import moe.roselia.lisa.SimpleLispTree._
+
 import scala.util.parsing.combinator.{ImplicitConversions, RegexParsers}
-import SimpleLispTree._
 
 object SExpressionParser extends ImplicitConversions with RegexParsers {
+  override protected val whiteSpace = """(\s|;.*)+""".r
+
   def sValue = "[^() \\s]+".r map Value named "Values"
 
   def string = "\"(((\\\\\")|[^\"])*)\"".r
@@ -10,8 +15,10 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
 
   def stringValue = string.map(StringLiteral) named "String Values"
 
+  def sQuote = "'" ~> sExpression map SQuote
+
   def sExpression: Parser[SimpleLispTree] =
-    ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | sValue
+    ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | sQuote | sValue
 
   def eof = "\\z".r named "End of line"
 

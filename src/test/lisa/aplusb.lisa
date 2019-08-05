@@ -1,0 +1,7 @@
+(println! "This program is to solve a hard ACM problem: a + b problem")
+
+(define a (int (input "Please input a number:")))
+(println! "Yes! a is" a)
+(define b (int (input "Please input another number:")))
+(println! "Yes! b is" b)
+(println! "The answer is" (+ a b))
