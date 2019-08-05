@@ -2,6 +2,7 @@ package moe.roselia.lisa
 
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, SpecialEnv}
 import moe.roselia.lisa.LispExp._
+import moe.roselia.lisa.Reflect.PackageAccessor
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
 
 import scala.util.Try
@@ -20,7 +21,8 @@ object Preludes {
     "javascript" -> javaScriptPlugin,
     "javascript-cross" -> javaScriptEnv,
     "scala" -> scalaPlugin,
-    "scala-cross" -> scalaEnv
+    "scala-cross" -> scalaEnv,
+    "scala-root" -> PackageAccessor.rootScalaEnv
   )
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
