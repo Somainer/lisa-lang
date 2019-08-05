@@ -1,9 +1,12 @@
 package moe.roselia.lisa.Reflect
 import language.experimental.macros
 import scala.reflect.ClassTag
+import scala.tools.reflect.ToolBox
 import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
 import ScalaBridge._
+
+import scala.collection.StringOps
 
 object DotAccessor {
   import reflect.runtime.universe._
@@ -29,17 +32,29 @@ object DotAccessor {
       val cls = t.getClass
       val mirror = runtimeMirror(cls.getClassLoader)
       val clsObj = mirror.reflect(t)
-      println(s"$t T: ${mirror.runtimeClass(clsObj.symbol.toType)}")
-      clsObj.symbol.toType weak_<:< typ
+//      println(s"$t T: ${mirror.runtimeClass(clsObj.symbol.toType)}")
+//      println(s"${clsObj.symbol.toType} <:< $typ: ${clsObj.symbol.toType <:< typ}")
+      clsObj.symbol.toType <:< typ
     }
     sym.zip(args).forall {
       case (x, y) => checkType(y)(x.typeSignature)
     }
   }
 
+  def sugaredObject(obj: Any): Any = obj match {
+    case i: java.lang.Integer => i.intValue()
+    case d: java.lang.Double => d.doubleValue()
+    case f: java.lang.Float => f.floatValue()
+    case b: java.lang.Boolean => b.booleanValue()
+    case s: java.lang.String => new StringOps(s)
+    case els => els
+  }
+
   def applyDot[A: TypeTag : ClassTag](acc: String)(obj: A)(args: Any*) = {
+//    val obj = sugaredObject(rawObj)
     val cls = obj.getClass
     val mirror = runtimeMirror(cls.getClassLoader)
+    val box = scala.reflect.runtime.currentMirror.mkToolBox()
     val classObj = mirror.reflect(obj)
     val decl = classObj.symbol.toType.decl(TermName(acc))
     val overloads = decl.asTerm.alternatives
@@ -47,14 +62,20 @@ object DotAccessor {
       .map(_.asMethod)
       .filter(_.paramLists.head.length == args.length)
       .filter(sig => checkTypeFits(sig.paramLists.head)(args.toSeq))
-    println(decl.asTerm.alternatives.filter(_.isMethod).map(_.asMethod)
-      .filter(_.paramLists.head.length == args.length).map(pam => {
-        val pm = pam.paramLists.head.map(_.typeSignature).map(_.toString).mkString(", ")
-        s"($pm) => ${pam.returnType.toString}"
-      }))
-    println(s"$acc has ${overloads.length} overloads and received ${args.length} args")
-    println(overloads)
-    classObj.reflectMethod(decl.asMethod).apply(args: _*)
+//    println(decl.asTerm.alternatives.filter(_.isMethod).map(_.asMethod)
+//      .filter(_.paramLists.head.length == args.length).map(pam => {
+//        val pm = pam.paramLists.head.map(_.typeSignature).map(_.toString).mkString(", ")
+//        s"($pm) => ${pam.returnType.toString}"
+//      }))
+//    println(s"$acc has ${overloads.length} overloads and received ${args.length} args")
+//    println(classObj.symbol)
+//    println(overloads)
+    classObj.reflectMethod(overloads(0)).apply(args: _*)
+//    classObj.reflectMethod(decl.asMethod).apply(args: _*)
+//    box.eval(
+//      q"""
+//         $decl($applied)
+//       """)
   }
 
   val accessEnv = new SpecialEnv {

@@ -1,0 +1,6 @@
+;Can interact with Java
+(define (count-length)
+    (define str (input "Please input a string:"))
+    (println! "The length of your string is" (.length str)))
+
+(count-length)

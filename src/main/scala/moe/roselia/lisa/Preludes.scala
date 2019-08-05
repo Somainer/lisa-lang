@@ -7,11 +7,20 @@ import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
 import scala.util.Try
 
 object Preludes {
-  private lazy val globalJSEngine = new javax.script.ScriptEngineManager().getEngineByName("ecmascript")
+  type EngineType = javax.script.ScriptEngine with javax.script.Invocable
+  private lazy val globalJSEngine = new javax.script.ScriptEngineManager()
+    .getEngineByName("ecmascript").asInstanceOf[EngineType]
+  private lazy val globalScalaEngine = {
+    val engine = new javax.script.ScriptEngineManager()
+      .getEngineByName("scala").asInstanceOf[EngineType]
+    engine
+  }
 
   private lazy val selectablePreludes = Map(
     "javascript" -> javaScriptPlugin,
-    "javascript-cross" -> javaScriptEnv
+    "javascript-cross" -> javaScriptEnv,
+    "scala" -> scalaPlugin,
+    "scala-cross" -> scalaEnv
   )
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
@@ -44,6 +53,20 @@ object Preludes {
       case x =>
         println(s"${x.mkString(" ")}")
         NilObj
+    },
+    "input" -> PrimitiveFunction {
+      x =>
+        SString(scala.io.StdIn.readLine(x.mkString(" ")))
+    },
+    "int" -> PrimitiveFunction {
+      case v::Nil => SInteger {
+        v match {
+          case SString(x) => x.toInt
+          case SInteger(x) => x
+          case SFloat(f) => f.toInt
+          case SBool(b) => if(b) 1 else 0
+        }
+      }
     },
     "eval" -> PrimitiveFunction {
       case x::Nil => Evaluator.eval(x, primitiveEnvironment).asInstanceOf[Evaluator.EvalSuccess].expression
@@ -78,6 +101,8 @@ object Preludes {
 
   }
 
+  private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")
+
   private lazy val javaScriptPlugin = EmptyEnv.withValues(Seq(
     "js" -> PrimitiveFunction {
       case SString(s)::Nil => Reflect.ScalaBridge.fromScalaNative(
@@ -102,6 +127,40 @@ object Preludes {
       case _ => Failure("Argument Error", "")
     }
   ))
+
+  private def makeEnvironment(engine: => EngineType, prefix: String) = {
+    if (engine == null) throw new NullPointerException("Fuck NPE!")
+    val environment = new SpecialEnv {
+      override def getValueOption(key: String): Option[Expression] =
+        Try(engine.getBindings(javax.script.ScriptContext.ENGINE_SCOPE).get(key)).filter(x => x != null).map(Reflect.ScalaBridge.fromScalaNative).toOption
+    }
+    (EmptyEnv.withValues(Seq(
+      prefix -> PrimitiveFunction {
+        case SString(s)::Nil => Reflect.ScalaBridge.fromScalaNative(
+          engine.eval(s)
+        )
+      },
+      s"set-$prefix!" -> PrimitiveFunction {
+        case Quote(Symbol(sym))::exp::Nil => {
+          engine.put(sym, toScalaNative(exp))
+          NilObj
+        }
+        case SString(sym)::exp::Nil => {
+          engine.put(sym, toScalaNative(exp))
+          NilObj
+        }
+      },
+      s"get-$prefix" -> PrimitiveFunction {
+        case Quote(Symbol(sym))::Nil =>
+          environment.getValueOption(sym).getOrElse(Failure("Lookup Error", s"Value $sym not found in $prefix env."))
+        case Quote(Symbol(sym))::alt::Nil =>
+          environment.getValueOption(sym).getOrElse(alt)
+        case _ => Failure("Argument Error", "")
+      }
+
+    )), environment)
+  }
+
 
   lazy val preludeEnvironment = CombineEnv(Seq(primitiveEnvironment))
 }

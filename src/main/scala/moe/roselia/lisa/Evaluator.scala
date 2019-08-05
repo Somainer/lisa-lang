@@ -1,5 +1,6 @@
 package moe.roselia.lisa
 
+import scala.annotation.tailrec
 import scala.util.Try
 
 object Evaluator {
@@ -32,7 +33,7 @@ object Evaluator {
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
     case Value(value) => {
-      if(value.matches("\\d+")) SInteger(value.toInt)
+      if(value.matches("-?\\d+")) SInteger(value.toInt)
       else Symbol(value)
     }
     case StringLiteral(value) => SString(value)
@@ -65,11 +66,37 @@ object Evaluator {
         }
         case _ => Failure("Syntax Error", "Error creating a closure.")
       }
+      case Value("let")::xs => xs match {
+        case SList(bounds)::sExpr =>
+          @annotation.tailrec
+          def compileBounds(sList: Seq[SimpleLispTree],
+                            acc: Option[List[(Symbol, Expression)]] = Some(Nil)): Option[List[(Symbol, Expression)]] =
+            sList match {
+              case Nil => acc.map(_.reverse)
+              case SList(Value(sym)::x::Nil)::xs => compileBounds(xs, acc.map((Symbol(sym), compile(x))::_))
+              case _ => None
+            }
+          compileBounds(bounds).map(cBounds => {
+            val cExpr = sExpr.map(compile)
+            Apply(LambdaExpression(cExpr.last, cBounds.map(_._1), cExpr.init), cBounds.map(_._2))
+          }).getOrElse(Failure("Let Error", "Error parsing bounding variables"))
+      }
       case Value("if")::xs => xs match {
         case pred :: cons :: alt :: Nil =>
           SIfElse(compile(pred), compile(cons), compile(alt))
         case _ => Failure("Syntax Error", "If else expect three expressions.")
       }
+      case Value("cond")::xs =>
+        @tailrec
+        def compileCond(sList: Seq[SimpleLispTree],
+                        acc: Option[List[(Expression, Expression)]] = Some(Nil)): Option[List[(Expression, Expression)]] =
+          sList match {
+            case Nil =>  acc.map(_.reverse)
+            case SList(Value("else")::res::Nil)::x => compileCond(x, acc.map((SBool(true), compile(res))::_))
+            case SList(pred::cons::Nil)::x  => compileCond(x, acc.map((compile(pred), compile(cons))::_))
+            case _ => None
+          }
+        compileCond(xs).map(SCond).getOrElse(Failure("Syntax Error", "Error parsing cond syntax."))
       case head::tail => Apply(compile(head), tail.map(compile))
       case Nil => NilObj
     }
@@ -129,6 +156,22 @@ object Evaluator {
           case f: EvalFailure => f
           case other => EvalFailure(s"Unexpected if predicate value: $other")
         }
+
+      case SCond(conditions) =>
+        @tailrec
+        def evCond(cond: List[(Expression, Expression)]): EvalResult = cond match {
+          case Nil => EvalFailure(s"No matching case")
+          case (pred, conseq)::xs =>
+            eval(pred, env) match { // Not using flatMap for tailrec
+              case EvalSuccess(res, _) => res match {
+                case SBool(true) => eval(conseq, env)
+                case SBool(false) => evCond(xs)
+                case other => EvalFailure(s"Can not tell $other is true or false.")
+              }
+              case fail => fail
+            }
+        }
+        evCond(conditions)
 
       case f => EvalFailure(s"Unexpected: $f")
     }

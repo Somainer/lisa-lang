@@ -64,6 +64,7 @@ object LispExp {
   case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {
     override def valid: Boolean = predicate.valid && consequence.valid && alternative.valid
   }
+  case class SCond(conditions: List[(Expression, Expression)]) extends Expression
 
   case class Apply(head: Expression, args: List[Expression]) extends Expression {
     override def valid: Boolean = head.valid && args.forall(_.valid)

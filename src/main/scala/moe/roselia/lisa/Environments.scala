@@ -53,4 +53,15 @@ object Environments {
     }
 
   }
+
+  case class NameSpacedEnv(nameSpace: String, env: Environment, separator: String = ".") extends Environment {
+    private val prefixLength = nameSpace.length + separator.length
+    override def has(key: String): Boolean = if (key.startsWith(s"$nameSpace$separator")) {
+      env.has(key.substring(prefixLength))
+    } else false
+
+    override def getValueOption(key: String): Option[LispExp.Expression] =
+      if (has(key)) env.getValueOption(key.substring(prefixLength))
+      else None
+  }
 }
