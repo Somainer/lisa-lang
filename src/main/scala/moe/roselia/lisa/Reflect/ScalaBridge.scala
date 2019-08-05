@@ -24,12 +24,14 @@ object ScalaBridge {
   def fromScalaNative(any: Any): Expression = any match {
     case b: Boolean => SBool(b)
     case i: Int => SInteger(i)
+    case i: java.lang.Integer => SInteger(i.intValue())
     case d: Double => SFloat(d)
     case f: Float => SFloat(f)
     case s: String => SString(s)
     case scala.Symbol(sym) => Symbol(sym)
     case () => NilObj
-    case fn: (List[Any] => Any) =>
+    case ls: List[Any] => WrappedScalaObject(ls)
+    case fn: Function[List[Any], Any] =>
       PrimitiveFunction(xs => fromScalaNative(fn(xs.map(toScalaNative))))
     case otherwise => WrappedScalaObject(otherwise)
   }

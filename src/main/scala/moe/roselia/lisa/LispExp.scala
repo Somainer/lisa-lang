@@ -34,12 +34,14 @@ object LispExp {
 
   case class WrappedScalaObject[T](obj: T) extends Expression {
     def get: T = obj
+
+    override def toString: String = s"#Scala($obj)"
   }
 
   trait Procedure extends Expression
 
   case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure {
-    override def toString: String = "#[Native Code]"
+    override def toString: String = s"#[Native Code]($function)"
   }
 
   case class SideEffectFunction(function: (List[Expression], Environment) => (Expression, Environment))

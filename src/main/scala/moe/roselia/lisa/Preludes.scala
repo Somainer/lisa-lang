@@ -90,7 +90,9 @@ object Preludes {
           (NilObj, CombineEnv(Seq(env, selectablePreludes(sym))))
         else (Failure("Import Error", s"Environment $sym not found"), env)
       case s => (Failure("Import Error", s"Cannot import ${s._1}"), s._2)
-    }
+    },
+    "list" -> PrimitiveFunction (xs => WrappedScalaObject(xs.map(toScalaNative))),
+    "seq" -> PrimitiveFunction (xs => WrappedScalaObject(xs.map(toScalaNative).toIndexedSeq))
   ))
 
   private lazy val javaScriptEnv = new SpecialEnv {

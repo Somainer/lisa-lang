@@ -16,13 +16,14 @@ object DotAccessor {
     val mirror = runtimeMirror(cls.getClassLoader)
     val classObj = mirror.reflect(obj)
     val decl = classObj.symbol.toType.decl(TermName(acc))
+//    println(cls.getDeclaredFields.map(_.getName).mkString(", "))
+//    println(cls.getDeclaredMethods.map(_.getName).mkString(", "))
     if(decl.isMethod) {
       val meth = classObj.reflectMethod(decl.asMethod)
-      meth.symbol.paramLists match {
-        case Nil => meth.apply()
-        case List(Nil) => meth.apply()
-        case _ => (xs: Any) => meth.apply(xs)
-      }
+      meth.apply()
+//      meth.symbol.paramLists match {
+//        case e => meth.apply()
+//      }
     }
     else classObj.reflectField(decl.asTerm).get
   }
