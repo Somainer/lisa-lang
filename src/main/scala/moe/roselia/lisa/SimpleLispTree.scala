@@ -9,6 +9,7 @@ object SimpleLispTree {
         else s"SList( )"
       case StringLiteral(value) => s"String($value)"
       case SQuote(value) => s"Quote(${value.repr})"
+      case SUnQuote(quoted) => s"UnQuote(${quoted.repr})"
     }
   }
 
@@ -25,5 +26,8 @@ object SimpleLispTree {
   }
   case class SQuote(quote: SimpleLispTree) extends SimpleLispTree {
     override def toString: String = s"'$quote"
+  }
+  case class SUnQuote(quoted: SimpleLispTree) extends SimpleLispTree {
+    override def toString: String = s"~$quoted"
   }
 }

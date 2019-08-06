@@ -2,12 +2,12 @@ package moe.roselia.lisa
 
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, SpecialEnv}
 import moe.roselia.lisa.LispExp._
-import moe.roselia.lisa.Reflect.PackageAccessor
+import moe.roselia.lisa.Reflect.{DotAccessor, PackageAccessor}
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
 
 import scala.util.Try
 
-object Preludes {
+object Preludes extends LispExp.Implicits {
   type EngineType = javax.script.ScriptEngine with javax.script.Invocable
   private lazy val globalJSEngine = new javax.script.ScriptEngineManager()
     .getEngineByName("ecmascript").asInstanceOf[EngineType]
@@ -22,7 +22,8 @@ object Preludes {
     "javascript-cross" -> javaScriptEnv,
     "scala" -> scalaPlugin,
     "scala-cross" -> scalaEnv,
-    "scala-root" -> PackageAccessor.rootScalaEnv
+    "scala-root" -> PackageAccessor.rootScalaEnv,
+    "dot-accessor" -> DotAccessor.accessEnv
   )
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
@@ -32,13 +33,14 @@ object Preludes {
       case xs: List[SString] => SString(xs.map(_.value).reduce(_ + _))
     },
     "-" -> PrimitiveFunction {
+      case SInteger(x)::Nil => -x
       case xs: List[SInteger] => SInteger(xs.map(_.value).reduce(_ - _))
     },
     "*" -> PrimitiveFunction {
       case xs: List[SInteger] => SInteger(xs.map(_.value).product)
     },
     "=" -> PrimitiveFunction {
-      case lhs::rhs::Nil => SBool(lhs == rhs)
+      case lhs::rhs::Nil => lhs == rhs
     },
     "print!" -> PrimitiveFunction {
       case x::Nil =>
@@ -51,10 +53,8 @@ object Preludes {
     "println!" -> PrimitiveFunction {
       case x::Nil =>
         println(x)
-        NilObj
       case x =>
         println(s"${x.mkString(" ")}")
-        NilObj
     },
     "input" -> PrimitiveFunction {
       x =>
@@ -94,7 +94,27 @@ object Preludes {
       case s => (Failure("Import Error", s"Cannot import ${s._1}"), s._2)
     },
     "list" -> PrimitiveFunction (xs => WrappedScalaObject(xs.map(toScalaNative))),
-    "seq" -> PrimitiveFunction (xs => WrappedScalaObject(xs.map(toScalaNative).toIndexedSeq))
+    "seq" -> PrimitiveFunction (xs => WrappedScalaObject(xs.map(toScalaNative).toIndexedSeq)),
+    "wrap-scala" -> PrimitiveFunction {
+      x => WrappedScalaObject(toScalaNative(x(0)))
+    },
+    "map" -> PrimitiveFunction {
+      case WrappedScalaObject(ls: Seq[Any])::fn::Nil => fn match {
+        case c: Closure =>
+          val newList = ls.map(x => Evaluator.apply(c, List(fromScalaNative(x))))
+          if(newList forall (_.isRight))
+            WrappedScalaObject(newList.map(_.toOption.get))
+          else newList.find(_.isLeft).get.left.toOption.map(Failure("map Error", _)).get
+        case PrimitiveFunction(fn) => WrappedScalaObject {
+          ls.map(x => fn(List(fromScalaNative(x))))
+        }
+        case WrappedScalaObject(obj) =>
+          WrappedScalaObject(ls.map(x => obj.asInstanceOf[Function[Any, Any]]
+            .apply(x)))
+        case _ => Failure("map Error", s"Cannot map $fn on $ls")
+      }
+      case _ => Failure("Arity Error", "map only accepts 2 arguments, a seq-like and a function-like.")
+    }
   ))
 
   private lazy val javaScriptEnv = new SpecialEnv {

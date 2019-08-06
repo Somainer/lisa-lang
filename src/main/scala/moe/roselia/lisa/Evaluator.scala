@@ -208,6 +208,10 @@ object Evaluator {
       }
       case PrimitiveFunction(fn) =>
         Try(fn(arguments)).fold(ex => Left(ex.getLocalizedMessage), Right(_))
+      case WrappedScalaObject(obj) =>
+        Try{
+          obj.asInstanceOf[Function[Seq[Any], Any]](arguments)
+        }.map(Reflect.ScalaBridge.fromScalaNative).fold(ex => Left(ex.getLocalizedMessage), Right(_))
       case _ => Left(s"Cannot apply $procedure to $arguments.")
     }
   }

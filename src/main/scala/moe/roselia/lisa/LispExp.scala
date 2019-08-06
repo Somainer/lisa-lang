@@ -88,8 +88,23 @@ object LispExp {
     override def toString: String = s"~$quote"
   }
 
+  case class SimpleMacro() extends Expression
+
   case class Failure(tp: String, message: String) extends Expression {
     override def valid: Boolean = false
   }
+
+  trait Implicits {
+    import scala.language.implicitConversions
+    implicit def fromInt(i: Int): SInteger = SInteger(i)
+    implicit def fromString(s: String): SString = SString(s)
+    implicit def fromSymbol(sym: scala.Symbol):Symbol = Symbol(sym.name)
+    implicit def fromFloat(f: Float): SFloat = SFloat(f)
+    implicit def fromDouble(d: Double): SFloat = SFloat(d)
+    implicit def fromBool(b: Boolean): SBool = SBool(b)
+    implicit def autoUnit(unit: Unit): NilObj.type = NilObj
+  }
+
+  object Implicits extends Implicits
 
 }
