@@ -98,6 +98,7 @@ object Preludes extends LispExp.Implicits {
     "wrap-scala" -> PrimitiveFunction {
       x => WrappedScalaObject(toScalaNative(x(0)))
     },
+    "wrap" -> PrimitiveFunction { x => WrappedScalaObject(x(0)) },
     "map" -> PrimitiveFunction {
       case WrappedScalaObject(ls: Seq[Any])::fn::Nil => fn match {
         case c: Closure =>
@@ -114,6 +115,16 @@ object Preludes extends LispExp.Implicits {
         case _ => Failure("map Error", s"Cannot map $fn on $ls")
       }
       case _ => Failure("Arity Error", "map only accepts 2 arguments, a seq-like and a function-like.")
+    },
+    "length" -> PrimitiveFunction {
+      case arg::Nil => arg match {
+        case Closure(boundVariable, _, _, _) => boundVariable.length
+        case SString(s) => s.length
+        case WrappedScalaObject(ls: Seq[Any]) => ls.length
+        case WrappedScalaObject(other) => DotAccessor.accessDot("length")(other).asInstanceOf[Int]
+        case other => Failure("Runtime Error", s"Can not get length for $other.")
+      }
+      case other => Failure("Arity Error", s"length only accepts one argument but ${other.length} found.")
     }
   ))
 
