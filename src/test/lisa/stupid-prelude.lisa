@@ -15,6 +15,13 @@
 
 (define (< a b)
     (= (.compareTo a b) -1))
+
+(define (< a b)
+    (define java-cmp (.compareTo a b))
+    (cond ((= java-cmp -1) true)
+          ((= java-cmp 0) false)
+          ((= java-cmp 1) false)
+          (else (< java-cmp 0))))
     
 (define (< a b)
     (cond ((= a b) false)

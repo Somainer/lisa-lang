@@ -34,12 +34,14 @@ object LispExp {
 
   case class WrappedScalaObject[T](obj: T) extends Expression {
     def get: T = obj
+
+    override def toString: String = s"#Scala($obj)"
   }
 
   trait Procedure extends Expression
 
   case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure {
-    override def toString: String = "#[Native Code]"
+    override def toString: String = s"#[Native Code]($function)"
   }
 
   case class SideEffectFunction(function: (List[Expression], Environment) => (Expression, Environment))
@@ -47,12 +49,12 @@ object LispExp {
     override def toString: String = "#[Native Code!]"
   }
 
-  case class LambdaExpression(body: Expression, boundVariable: List[Symbol],
+  case class LambdaExpression(body: Expression, boundVariable: List[Expression],
                               nestedExpressions: List[Expression] = List.empty) extends Expression {
     override def valid: Boolean = body.valid
   }
 
-  case class Closure(boundVariable: List[Symbol],
+  case class Closure(boundVariable: List[Expression],
                      body: Expression,
                      capturedEnv: Environments.Environment,
                      sideEffects: List[Expression] = List.empty) extends Procedure {
@@ -86,8 +88,29 @@ object LispExp {
     override def toString: String = s"~$quote"
   }
 
+  case class SimpleMacro(paramsPattern: Seq[Expression],
+                         body: Expression,
+                         defines: Seq[Expression]) extends Expression {
+    override def valid: Boolean = paramsPattern.forall(_.valid) && body.valid && defines.forall(_.valid)
+
+    override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
+  }
+
   case class Failure(tp: String, message: String) extends Expression {
     override def valid: Boolean = false
   }
+
+  trait Implicits {
+    import scala.language.implicitConversions
+    implicit def fromInt(i: Int): SInteger = SInteger(i)
+    implicit def fromString(s: String): SString = SString(s)
+    implicit def fromSymbol(sym: scala.Symbol):Symbol = Symbol(sym.name)
+    implicit def fromFloat(f: Float): SFloat = SFloat(f)
+    implicit def fromDouble(d: Double): SFloat = SFloat(d)
+    implicit def fromBool(b: Boolean): SBool = SBool(b)
+    implicit def autoUnit(unit: Unit): NilObj.type = NilObj
+  }
+
+  object Implicits extends Implicits
 
 }

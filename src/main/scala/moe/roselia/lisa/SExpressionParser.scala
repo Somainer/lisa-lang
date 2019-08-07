@@ -17,8 +17,10 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
 
   def sQuote = "'" ~> sExpression map SQuote
 
+  def sUnquote = "~" ~> sExpression map SUnQuote
+
   def sExpression: Parser[SimpleLispTree] =
-    ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | sQuote | sValue
+    ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | sQuote | sUnquote | sValue
 
   def eof = "\\z".r named "End of line"
 
