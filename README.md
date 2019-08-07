@@ -55,6 +55,15 @@ go ; Error: Symbol go not found.
 (.length "hello!"); <=> "hello!".length => 6
 
 (define eq? =) ; If you prefer eq? to =
+
+(define-macro 
+    (gen x 'for y 'in ls) ; Define a macro.
+        '(map ~ls (lambda (~y) ~x)))
+
+(gen (+ i 1) for i in (list 1 2 3)); <=>
+(map (list 1 2 3) (lambda (i) (+ i 1)))
+
+
 ```
 
 ## Interact with JavaScript
