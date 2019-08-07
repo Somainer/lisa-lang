@@ -10,9 +10,10 @@ object Environments {
     def withValue(key: String, value: LispExp.Expression): Env = newFrame withValue (key, value)
     def withValues(context: Seq[(String, LispExp.Expression)]): Env = newFrame withValues context
     def newMutableFrame = MutableEnv(mutableMap.empty, this)
+    def directHas(key: String) = false
   }
   case class Env(env: Map[String, LispExp.Expression], parent: Environment) extends Environment {
-    override def has(key: String): Boolean = env.contains(key) || parent.has(key)
+    override def has(key: String): Boolean = directHas(key) || parent.has(key)
 
     override def getValueOption(key: String): Option[LispExp.Expression] =
       env.get(key).orElse(parent getValueOption key)
@@ -20,6 +21,8 @@ object Environments {
     override def withValue(key: String, value: LispExp.Expression): Env = copy(env + (key -> value))
 
     override def withValues(context: Seq[(String, LispExp.Expression)]): Env = copy(env ++ context)
+
+    override def directHas(key: String): Boolean = env.contains(key)
   }
   object EmptyEnv extends Environment {
     override def has(key: String): Boolean = false
@@ -38,11 +41,15 @@ object Environments {
 
   }
 
+  object CombineEnv {
+    def of(env: Environment*) = CombineEnv(env.toSeq)
+  }
+
   abstract class SpecialEnv extends Environment
 
   case class MutableEnv(private val env: mutableMap[String, LispExp.Expression],
                         parent: Environment) extends Environment {
-    override def has(key: String): Boolean = env.contains(key) || parent.has(key)
+    override def has(key: String): Boolean = directHas(key) || parent.has(key)
 
     override def getValueOption(key: String): Option[LispExp.Expression] =
       env.get(key).orElse(parent getValueOption key)
@@ -52,17 +59,20 @@ object Environments {
       this
     }
 
+    override def directHas(key: String): Boolean = env.contains(key)
+
   }
 
   case class NameSpacedEnv(nameSpace: String, env: Environment, separator: String = ".") extends Environment {
     private val prefix = if (nameSpace.isEmpty) "" else s"$nameSpace$separator"
     private val prefixLength = prefix.length
-    override def has(key: String): Boolean = if (key.startsWith(prefix)) {
-      env.has(key.substring(prefixLength))
-    } else false
+    override def has(key: String): Boolean = key.startsWith(prefix) && env.has(key.substring(prefixLength))
 
     override def getValueOption(key: String): Option[LispExp.Expression] =
       if (has(key)) env.getValueOption(key.substring(prefixLength))
       else None
+
+    override def directHas(key: String): Boolean =
+      has(key)
   }
 }

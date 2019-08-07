@@ -1,6 +1,6 @@
 package moe.roselia.lisa
 
-import Environments.Environment
+import Environments.{CombineEnv, Environment, MutableEnv}
 
 object LispExp {
 
@@ -98,6 +98,61 @@ object LispExp {
 
   case class Failure(tp: String, message: String) extends Expression {
     override def valid: Boolean = false
+  }
+
+  case class PolymorphExpression(name: String,
+                                 variants: Seq[(Expression, Seq[Expression])],
+                                 innerEnvironment: MutableEnv, byName: Boolean=false) extends Expression {
+    def findMatch(args: Seq[Expression]) = {
+      @annotation.tailrec
+      def find(v: List[(Expression, Seq[Expression])]): Option[(Expression, Map[String, Expression])] = v match {
+        case Nil => None
+        case (exp, mat)::xs => Evaluator.matchArgument(mat, args) match {
+          case Some(x) => Some((exp, x))
+          case _ => find(xs)
+        }
+      }
+      val found = find(variants.toList)
+//      if(found.isDefined) println(s"${found.get} matches $args")
+      found
+    }
+
+    def withExpression(closure: Closure) = closure match {
+      case c@Closure(_, _, capturedEnv, _) =>
+        val nc = c.copy(capturedEnv=CombineEnv.of(innerEnvironment, capturedEnv))
+        val newPolymorph = copy(variants=variants.appended((nc, nc.boundVariable)))
+        innerEnvironment.addValue(name, newPolymorph)
+        newPolymorph
+    }
+
+
+    def withExpression(mac: SimpleMacro) = {
+      val newVariant = copy(variants=variants.appended((mac, mac.paramsPattern)))
+      innerEnvironment.addValue(name, newVariant)
+      newVariant
+    }
+
+    override def toString: String = s"#Polymorph(${variants.length} overloads)"
+  }
+
+  object PolymorphExpression {
+    def create(closure: Closure, name: String) = {
+      val sharedEnv = Environments.EmptyEnv.newMutableFrame
+      val recursiveClosure = closure.copy(capturedEnv =
+        Environments.CombineEnv.of(sharedEnv, closure.capturedEnv))
+      val polymorphed =
+        PolymorphExpression(name, Seq((recursiveClosure, recursiveClosure.boundVariable)), sharedEnv)
+      sharedEnv.addValue(name, polymorphed)
+      polymorphed
+    }
+
+    def create(mac: SimpleMacro, name: String) = {
+      val sharedEnv = Environments.EmptyEnv.newMutableFrame
+      val polymorphExpression =
+        PolymorphExpression(name, Seq((mac, mac.paramsPattern)), sharedEnv, byName = true)
+      sharedEnv.addValue(name, polymorphExpression)
+      polymorphExpression
+    }
   }
 
   trait Implicits {

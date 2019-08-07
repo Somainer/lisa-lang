@@ -125,12 +125,30 @@ object Evaluator {
       case Symbol(sym) => env.getValueOption(sym).map(pureValue).getOrElse(EvalFailure(s"Symbol $sym not found."))
       case bool: SBool => pureValue(bool)
       case NilObj => pureValue(NilObj)
+      case p: PolymorphExpression => pureValue(p)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
         case c@Closure(_, _, capturedEnv, _) =>
-          val recursiveFrame = capturedEnv.newMutableFrame
-          val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
-          recursiveFrame.addValue(sym, recursiveClosure)
-          unit(env.withValue(sym, recursiveClosure))
+          if(env.directHas(sym)) unit {
+            env.getValueOption(sym).get match {
+              case p: PolymorphExpression => env.withValue(sym, p.withExpression(c))
+              case closure: Closure =>
+                env.withValue(sym, PolymorphExpression.create(closure, sym).withExpression(c))
+              case _ => env.withValue(sym, PolymorphExpression.create(c, sym))
+            }
+          } else {
+            val recursiveFrame = capturedEnv.newMutableFrame
+            val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
+            recursiveFrame.addValue(sym, recursiveClosure)
+            unit(env.withValue(sym, recursiveClosure))
+          }
+        case mac: SimpleMacro if env.directHas(sym) =>
+          unit {
+            env.getValueOption(sym).get match {
+              case p: PolymorphExpression => env.withValue(sym, p.withExpression(mac))
+              case m: SimpleMacro => env.withValue(sym, PolymorphExpression.create(m, sym).withExpression(mac))
+              case _ => env.withValue(sym, mac)
+            }
+          }
         case result => unit(env.withValue(sym, result))
       }
       case LambdaExpression(body, boundVariable, nestedExpressions) =>
@@ -157,6 +175,17 @@ object Evaluator {
           }.fold(ex => EvalFailure(ex.getLocalizedMessage), x => x)
         case m@SimpleMacro(_, _, _) =>
           eval(expandMacro(m, args, env), env)
+        case pe: PolymorphExpression => {
+          def executeArgs(args: List[Expression]) =
+            pe.findMatch(args).map {
+              case (ex, _) => ex match {
+                case m: SimpleMacro => eval(expandMacro(m, args, env), env)
+                case els => apply(els, args).fold(EvalFailure, EvalSuccess(_, env))
+              }
+            }.getOrElse(EvalFailure("No matching procedure to apply"))
+          if(pe.byName) executeArgs(args)
+          else evalList(args, env).map(_.toList).fold(EvalFailure, executeArgs)
+        }
         case proc => evalList(args, env).fold(EvalFailure,
           evaledArguments => apply(proc, evaledArguments.toList).fold(EvalFailure, EvalSuccess(_, env)))
       }
@@ -195,7 +224,7 @@ object Evaluator {
   }
 
   def apply(procedure: Expression, arguments: List[Expression]): Either[String, Expression] = {
-//    println(s"Apply $procedure($arguments) with env $env")
+//    println(s"Apply $procedure($arguments)")
 //    println(s"EVAL: $procedure => ${eval(procedure, env)}")
     procedure match {
       case Closure(boundVariable, body, capturedEnv, sideEffects) => {
