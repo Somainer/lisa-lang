@@ -11,7 +11,7 @@ import scala.collection.StringOps
 object DotAccessor {
   import reflect.runtime.universe._
 
-  def accessDot[A: TypeTag : ClassTag](acc: String)(obj: A) = {
+  def accessDot[A : ClassTag](acc: String)(obj: A) = {
     val cls = obj.getClass
     val mirror = runtimeMirror(cls.getClassLoader)
     val classObj = mirror.reflect(obj)
@@ -51,7 +51,7 @@ object DotAccessor {
     case els => els
   }
 
-  def applyDot[A: TypeTag : ClassTag](acc: String)(obj: A)(args: Any*) = {
+  def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
 //    val obj = sugaredObject(rawObj)
     val cls = obj.getClass
     val mirror = runtimeMirror(cls.getClassLoader)

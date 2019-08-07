@@ -49,12 +49,12 @@ object LispExp {
     override def toString: String = "#[Native Code!]"
   }
 
-  case class LambdaExpression(body: Expression, boundVariable: List[Symbol],
+  case class LambdaExpression(body: Expression, boundVariable: List[Expression],
                               nestedExpressions: List[Expression] = List.empty) extends Expression {
     override def valid: Boolean = body.valid
   }
 
-  case class Closure(boundVariable: List[Symbol],
+  case class Closure(boundVariable: List[Expression],
                      body: Expression,
                      capturedEnv: Environments.Environment,
                      sideEffects: List[Expression] = List.empty) extends Procedure {
@@ -88,7 +88,13 @@ object LispExp {
     override def toString: String = s"~$quote"
   }
 
-  case class SimpleMacro() extends Expression
+  case class SimpleMacro(paramsPattern: Seq[Expression],
+                         body: Expression,
+                         defines: Seq[Expression]) extends Expression {
+    override def valid: Boolean = paramsPattern.forall(_.valid) && body.valid && defines.forall(_.valid)
+
+    override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
+  }
 
   case class Failure(tp: String, message: String) extends Expression {
     override def valid: Boolean = false

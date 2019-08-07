@@ -55,8 +55,9 @@ object Environments {
   }
 
   case class NameSpacedEnv(nameSpace: String, env: Environment, separator: String = ".") extends Environment {
-    private val prefixLength = nameSpace.length + separator.length
-    override def has(key: String): Boolean = if (key.startsWith(s"$nameSpace$separator")) {
+    private val prefix = if (nameSpace.isEmpty) "" else s"$nameSpace$separator"
+    private val prefixLength = prefix.length
+    override def has(key: String): Boolean = if (key.startsWith(prefix)) {
       env.has(key.substring(prefixLength))
     } else false
 
