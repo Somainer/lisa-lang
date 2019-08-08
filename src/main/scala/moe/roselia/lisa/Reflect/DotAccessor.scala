@@ -38,7 +38,7 @@ object DotAccessor {
       clsObj.symbol.toType <:< typ
     }
     sym.zip(args).forall {
-      case (x, y) => checkType(y)(x.typeSignature)
+      case (x, y) => checkType(y)(x.typeSignature) || checkType(sugaredObject(y))(x.typeSignature)
     }
   }
 
@@ -55,14 +55,17 @@ object DotAccessor {
 //    val obj = sugaredObject(rawObj)
     val cls = obj.getClass
     val mirror = runtimeMirror(cls.getClassLoader)
-    val box = scala.reflect.runtime.currentMirror.mkToolBox()
+//    val box = scala.reflect.runtime.currentMirror.mkToolBox()
     val classObj = mirror.reflect(obj)
     val decl = classObj.symbol.toType.decl(TermName(acc))
     val overloads = decl.asTerm.alternatives
       .filter(_.isMethod)
       .map(_.asMethod)
-      .filter(_.paramLists.head.length == args.length)
-      .filter(sig => checkTypeFits(sig.paramLists.head)(args.toSeq))
+      .filter(_.paramLists.head.length == args.length) match {
+        case xs@_::Nil => xs
+        case xs => xs.filter(sig => checkTypeFits(sig.paramLists.head)(args.toSeq))
+      }
+
 //    println(decl.asTerm.alternatives.filter(_.isMethod).map(_.asMethod)
 //      .filter(_.paramLists.head.length == args.length).map(pam => {
 //        val pm = pam.paramLists.head.map(_.typeSignature).map(_.toString).mkString(", ")

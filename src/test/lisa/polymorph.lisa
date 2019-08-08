@@ -1,0 +1,9 @@
+(define (f a b) (+ a b))
+(define (my-fact n)
+    (define (f 0 x) x)
+    (define (f x a) 
+        (f (- x 1) (* a x)))
+    (f n 1))
+
+(println! (my-fact 5))
+(println! (f 5 1))

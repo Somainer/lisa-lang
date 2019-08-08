@@ -41,8 +41,8 @@ object ScalaBridge {
     case scala.Symbol(sym) => Symbol(sym)
     case () => NilObj
     case ls: List[Any] => WrappedScalaObject(ls)
-    case fn: Function[Any, Any] =>
-      PrimitiveFunction(xs => fromScalaNative(fn(xs.map(toScalaNative))))
+//    case fn: Function[Any, Any] =>
+//      PrimitiveFunction(xs => fromScalaNative(fn(xs.map(toScalaNative))))
     case Failure(tp, message) => throw new RuntimeException(s"$tp: $message")
     case otherwise => WrappedScalaObject(otherwise)
   }

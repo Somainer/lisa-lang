@@ -235,8 +235,8 @@ object Evaluator {
 //            .withValues(boundVariable.map(_.asInstanceOf[Symbol].value).zip(arguments))
           val boundEnv = matchArgument(boundVariable, arguments).map(Env(_, capturedEnv))
           if (boundEnv.isDefined) {
-            sideEffects.foldRight[EvalResult](EvalSuccess(NilObj, boundEnv.get)) {
-              (sideEffect, accumulator) => accumulator flatMapWithEnv {
+            sideEffects.foldLeft[EvalResult](EvalSuccess(NilObj, boundEnv.get)) {
+              (accumulator, sideEffect) => accumulator flatMapWithEnv {
                 (_, env) => eval(sideEffect, env)
               }
             }.flatMapWithEnv {
@@ -253,6 +253,18 @@ object Evaluator {
       case WrappedScalaObject(obj) =>
         Try{
           obj.asInstanceOf[Function[Seq[Any], Any]](arguments)
+        }.orElse(
+          Try {
+            obj.asInstanceOf[{def apply(any: Any*): Any}].apply(arguments: _*)
+          }
+        ).orElse{
+          Try {
+            arguments match {
+              case x::Nil => obj.asInstanceOf[{def apply(any: Any): Any}].apply(x)
+              case x::y::Nil => obj.asInstanceOf[{def apply(a1: Any, a2: Any): Any}].apply(x, y)
+              case x::y::z::Nil => obj.asInstanceOf[{def apply(a1: Any, a2: Any, a3: Any)}].apply(x, y, z)
+            }
+          }
         }.map(Reflect.ScalaBridge.fromScalaNative).fold(ex => Left(ex.getLocalizedMessage), Right(_))
       case _ => Left(s"Cannot apply $procedure to $arguments.")
     }
@@ -303,8 +315,8 @@ object Evaluator {
       Failure("Macro Expansion Error", s"Expected ${paramsPattern.length} args but ${args.length} found.")
     else {
       val evalResult = matchArgument(paramsPattern, args).map(Env(_, env)).map(newEnv => {
-        defines.foldRight[EvalResult](EvalSuccess(NilObj, newEnv)) {
-          case (define, accumulator) => accumulator flatMapWithEnv {
+        defines.foldLeft[EvalResult](EvalSuccess(NilObj, newEnv)) {
+          case (accumulator, define) => accumulator flatMapWithEnv {
             case (_, e) => eval(define, e)
           }
         }.flatMapWithEnv {

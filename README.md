@@ -91,6 +91,19 @@ a ; => 1
 b ; => "3"
 ```
 
+## Do something cooler
+Let's write a factorial function again, in another way.
+```scheme
+(define (fact 0) 1)
+(define (fact n) (* n (fact (- n 1))))
+```
+Function arguments worked with pattern matching.
+```scheme
+(define (eq? x x) true)
+(define (eq? x y) false)
+```
+Remember corner cases should be defined first.
+
 ## Let's solve a problem!
 
 ```scheme

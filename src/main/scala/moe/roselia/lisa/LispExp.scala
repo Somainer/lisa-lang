@@ -132,7 +132,8 @@ object LispExp {
       newVariant
     }
 
-    override def toString: String = s"#Polymorph(${variants.length} overloads)"
+    override def toString: String =
+      s"#Polymorph(${variants.length} overloads)(${variants.map(_._2).mkString("|")})"
   }
 
   object PolymorphExpression {
