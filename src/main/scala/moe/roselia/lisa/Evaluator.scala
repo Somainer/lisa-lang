@@ -125,15 +125,15 @@ object Evaluator {
       case Symbol(sym) => env.getValueOption(sym).map(pureValue).getOrElse(EvalFailure(s"Symbol $sym not found."))
       case bool: SBool => pureValue(bool)
       case NilObj => pureValue(NilObj)
-      case p: PolymorphExpression => pureValue(p)
+      case p: PolymorphicExpression => pureValue(p)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
         case c@Closure(_, _, capturedEnv, _) =>
           if(env.directHas(sym)) unit {
             env.getValueOption(sym).get match {
-              case p: PolymorphExpression => env.withValue(sym, p.withExpression(c))
+              case p: PolymorphicExpression => env.withValue(sym, p.withExpression(c))
               case closure: Closure =>
-                env.withValue(sym, PolymorphExpression.create(closure, sym).withExpression(c))
-              case _ => env.withValue(sym, PolymorphExpression.create(c, sym))
+                env.withValue(sym, PolymorphicExpression.create(closure, sym).withExpression(c))
+              case _ => env.withValue(sym, PolymorphicExpression.create(c, sym))
             }
           } else {
             val recursiveFrame = capturedEnv.newMutableFrame
@@ -144,8 +144,8 @@ object Evaluator {
         case mac: SimpleMacro if env.directHas(sym) =>
           unit {
             env.getValueOption(sym).get match {
-              case p: PolymorphExpression => env.withValue(sym, p.withExpression(mac))
-              case m: SimpleMacro => env.withValue(sym, PolymorphExpression.create(m, sym).withExpression(mac))
+              case p: PolymorphicExpression => env.withValue(sym, p.withExpression(mac))
+              case m: SimpleMacro => env.withValue(sym, PolymorphicExpression.create(m, sym).withExpression(mac))
               case _ => env.withValue(sym, mac)
             }
           }
@@ -175,7 +175,7 @@ object Evaluator {
           }.fold(ex => EvalFailure(ex.getLocalizedMessage), x => x)
         case m@SimpleMacro(_, _, _) =>
           eval(expandMacro(m, args, env), env)
-        case pe: PolymorphExpression => {
+        case pe: PolymorphicExpression => {
           def executeArgs(args: List[Expression]) =
             pe.findMatch(args).map {
               case (ex, _) => ex match {

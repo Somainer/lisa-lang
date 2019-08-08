@@ -7,3 +7,12 @@
 
 (println! (my-fact 5))
 (println! (f 5 1))
+
+(define (fact 0) 1)
+(define (fact n)
+    (* n (fact (- n 1))))
+
+(define (len ls)
+    (define (_len x x) 0)
+    (define (_len x y) (+ 1 (_len (.tail x) y)))
+    (_len ls (list)))

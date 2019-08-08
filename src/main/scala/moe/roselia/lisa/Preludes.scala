@@ -100,7 +100,7 @@ object Preludes extends LispExp.Implicits {
     },
     "wrap" -> PrimitiveFunction { x => WrappedScalaObject(x(0)) },
     "map" -> PrimitiveFunction {
-      case WrappedScalaObject(ls: Seq[Any])::fn::Nil => fn match {
+      case WrappedScalaObject(ls: Iterable[Any])::fn::Nil => fn match {
         case c: Closure =>
           val newList = ls.map(x => Evaluator.apply(c, List(fromScalaNative(x))))
           if(newList forall (_.isRight))
@@ -110,11 +110,42 @@ object Preludes extends LispExp.Implicits {
           ls.map(x => fn(List(fromScalaNative(x))))
         }
         case WrappedScalaObject(obj) =>
-          WrappedScalaObject(ls.map(x => obj.asInstanceOf[Function[Any, Any]]
-            .apply(x)))
+          WrappedScalaObject(ls.map(x =>
+            obj.asInstanceOf[{def apply(a: Any): Any}].apply(x)))
         case _ => Failure("map Error", s"Cannot map $fn on $ls")
       }
       case _ => Failure("Arity Error", "map only accepts 2 arguments, a seq-like and a function-like.")
+    },
+    "filter" -> PrimitiveFunction {
+      case WrappedScalaObject(ls: Iterable[Any])::fn::Nil => {
+        def ensureBool(e: Expression) = e match {
+          case SBool(b) => b
+          case _ => throw new IllegalArgumentException("Function should return a Bool.")
+        }
+        fn match {
+          case c: Closure =>
+            val newList = ls.map(x => Evaluator.apply(c, List(fromScalaNative(x))))
+            if(newList forall (_.isRight))
+              WrappedScalaObject(newList.map(_.toOption.get).zip(ls).filter(x => ensureBool(x._1)).map(_._2))
+            else newList.find(_.isLeft).get.left.toOption.map(Failure("filter Error", _)).get
+          case PrimitiveFunction(fn) => WrappedScalaObject {
+            ls.filter(x => ensureBool(fn(List(fromScalaNative(x)))))
+          }
+          case WrappedScalaObject(obj) =>
+            WrappedScalaObject(ls.filter(x =>
+              obj.asInstanceOf[{def apply(a: Any): Boolean}].apply(x)))
+          case _ => Failure("filter Error", s"Cannot filter $fn on $ls")
+        }
+      }
+      case _ => Failure("Arity Error", "filter only accepts 2 arguments, a seq-like and a function-like.")
+    },
+    "iter" -> PrimitiveFunction {
+      case x::Nil => x match {
+        case SString(s) => WrappedScalaObject(s split "")
+        case WrappedScalaObject(xs: Iterable[Any]) => WrappedScalaObject(xs)
+        case _ => Failure("iter Error", s"$x is not iterable.")
+      }
+      case _ => Failure("Arity Error", "iter only accepts 1 argument, an iterable.")
     },
     "length" -> PrimitiveFunction {
       case arg::Nil => arg match {
@@ -128,43 +159,12 @@ object Preludes extends LispExp.Implicits {
     }
   ))
 
-  private lazy val javaScriptEnv = new SpecialEnv {
-    override def has(key: String): Boolean = getValueOption(key).isDefined
-
-    override def getValueOption(key: String): Option[Expression] =
-      Try(globalJSEngine.get(key)).filter(x => x != null).map(Reflect.ScalaBridge.fromScalaNative).toOption
-
-  }
-
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")
 
-  private lazy val javaScriptPlugin = EmptyEnv.withValues(Seq(
-    "js" -> PrimitiveFunction {
-      case SString(s)::Nil => Reflect.ScalaBridge.fromScalaNative(
-        globalJSEngine.eval(s)
-      )
-    },
-    "set-js!" -> PrimitiveFunction {
-      case Quote(Symbol(sym))::exp::Nil => {
-        globalJSEngine.put(sym, toScalaNative(exp))
-        NilObj
-      }
-      case SString(sym)::exp::Nil => {
-        globalJSEngine.put(sym, toScalaNative(exp))
-        NilObj
-      }
-    },
-    "get-js" -> PrimitiveFunction {
-      case Quote(Symbol(sym))::Nil =>
-        javaScriptEnv.getValueOption(sym).getOrElse(Failure("Lookup Error", s"Value $sym not found in JS env."))
-      case Quote(Symbol(sym))::alt::Nil =>
-        javaScriptEnv.getValueOption(sym).getOrElse(alt)
-      case _ => Failure("Argument Error", "")
-    }
-  ))
+  private lazy val (javaScriptPlugin, javaScriptEnv) = makeEnvironment(globalJSEngine, "js")
 
   private def makeEnvironment(engine: => EngineType, prefix: String) = {
-    if (engine == null) throw new NullPointerException("Fuck NPE!")
+    if (engine == null) throw new NullPointerException("The engine is not found")
     val environment = new SpecialEnv {
       override def getValueOption(key: String): Option[Expression] =
         Try(engine.getBindings(javax.script.ScriptContext.ENGINE_SCOPE).get(key)).filter(x => x != null).map(Reflect.ScalaBridge.fromScalaNative).toOption
@@ -176,14 +176,12 @@ object Preludes extends LispExp.Implicits {
         )
       },
       s"set-$prefix!" -> PrimitiveFunction {
-        case Quote(Symbol(sym))::exp::Nil => {
+        case Quote(Symbol(sym))::exp::Nil =>
           engine.put(sym, toScalaNative(exp))
           NilObj
-        }
-        case SString(sym)::exp::Nil => {
+        case SString(sym)::exp::Nil =>
           engine.put(sym, toScalaNative(exp))
           NilObj
-        }
       },
       s"get-$prefix" -> PrimitiveFunction {
         case Quote(Symbol(sym))::Nil =>

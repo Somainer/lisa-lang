@@ -45,18 +45,18 @@ object Main {
   }
   def executeFile(fileName: String, env: Environments.Environment): Environments.Environment = {
     val reader = parse(success(NilObj), scala.io.Source.fromFile(fileName).reader()).next
+    @scala.annotation.tailrec
     def doSeq(source: scala.util.parsing.input.Reader[Char],
               innerEnv: Environments.Environment): Environments.Environment = {
       if (!source.atEnd)
         parse(sExpression, source) match {
-          case Success(sExpr, next) => {
+          case Success(sExpr, next) =>
             Evaluator.eval(Evaluator.compile(sExpr), innerEnv) match {
               case Evaluator.EvalSuccess(_, nenv) => doSeq(next, nenv)
               case other =>
                 println(other)
                 innerEnv
             }
-          }
           case Failure(msg, next) =>
             if(!next.atEnd) println(s"Error: $msg")
             innerEnv

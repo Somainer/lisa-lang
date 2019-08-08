@@ -25,10 +25,10 @@ object DotAccessor {
 //        case e => meth.apply()
 //      }
     }
-    else classObj.reflectField(decl.asTerm).get
+    else classObj.reflectField(decl.asTerm.accessed.asTerm).get
   }
 
-  def checkTypeFits(sym: List[Symbol])(args: Seq[Any]) = {
+  def checkTypeFits(sym: List[Symbol])(args: Seq[Any]): Boolean = {
     def checkType[T: TypeTag: ClassTag](t: T)(typ: Type) = {
       val cls = t.getClass
       val mirror = runtimeMirror(cls.getClassLoader)
@@ -82,17 +82,16 @@ object DotAccessor {
 //       """)
   }
 
-  val accessEnv = new SpecialEnv {
+  val accessEnv: SpecialEnv = new SpecialEnv {
     override def has(key: String): Boolean = key.startsWith(".")
 
     override def getValueOption(key: String): Option[LispExp.Expression] = Some(LispExp.PrimitiveFunction {
-      case x::Nil => {
+      case x::Nil =>
         val field = key.substring(1)
         field.toIntOption.map(toScalaNative(x).asInstanceOf[Seq[Any]](_)).map(fromScalaNative).getOrElse {
           val res = accessDot(field)(toScalaNative(x))
           fromScalaNative(res)
         }
-      }
       case x::xs =>
         val field = key.substring(1)
         fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative): _*))

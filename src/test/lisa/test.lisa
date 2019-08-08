@@ -34,3 +34,8 @@
          (lambda (y)
              (* x y))) 4) 5))
 ()
+
+(define (sum-int ls) 
+    (cond 
+        ((= ls (list)) 0) 
+        (else (+ (.head ls) (sum-int (.tail ls))))))
