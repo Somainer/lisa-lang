@@ -103,6 +103,25 @@ Function arguments worked with pattern matching.
 (define (eq? x y) false)
 ```
 Remember corner cases should be defined first.
+Polymorphic functions work only when you define a function with a name and
+the name has already defined. If previously defined value is not a function,
+ or not in the same scope,
+then it will simply shadows the previous variable. Otherwise it will create a new 
+polymorphic function. Note that if two functions can match same
+case, the latter will never be matched.
+
+```scheme
+(define (f 0) 0)
+(define (f n) (+ n (f (- n 1))))
+(define (f x) 233) ; This function will never match.
+
+(define (my-f a)
+    (define (f 0) 1); This will shadow the previous f because they are not in the same scope.
+    (define (f n) (* n (f (- n 1)))) ; This will create a polymorphic function.
+    (f a))
+(f 5) ; => 15
+(my-f 5) ; => 120
+```
 
 ## Let's solve a problem!
 
