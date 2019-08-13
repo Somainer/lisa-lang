@@ -163,6 +163,7 @@ object Evaluator {
         case _ => EvalFailure(s"Cannot unquote $q.")
       }
       case m@SimpleMacro(_, _, _) => pureValue(m)
+      case pm: PrimitiveMacro => pureValue(pm)
 
       case Apply(func, args) => eval(func, env) flatMap {
         case SideEffectFunction(fn) =>
@@ -175,6 +176,11 @@ object Evaluator {
           }.fold(ex => EvalFailure(ex.getLocalizedMessage), x => x)
         case m@SimpleMacro(_, _, _) =>
           eval(expandMacro(m, args, env), env)
+        case PrimitiveMacro(m) =>
+          Try {
+            val (result, newEnv) = m(args, env)
+            eval(result, newEnv)
+          }.fold(ex => EvalFailure(ex.getLocalizedMessage), x => x)
         case pe: PolymorphicExpression => {
           def executeArgs(args: List[Expression]) =
             pe.findMatch(args).map {

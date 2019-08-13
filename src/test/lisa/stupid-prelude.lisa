@@ -11,6 +11,9 @@
 (define (not x)
     (if (truthy? x) false true))
 
+(define (logical-not false) true)
+(define (logical-not true) false)
+
 ;This implementation is stupid.
 
 (define (< a b)

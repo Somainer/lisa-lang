@@ -1,4 +1,5 @@
 (println! "In path:" __PATH__)
+(load! (+ __PATH__ "/../stupid-prelude.lisa"))
 (define sum 
     (lambda (n) (if (= n 0) 0 (+ (sum (- n 1)) n))))
 (define fib (lambda (n) (if (= n 0) 0 (if (= n 1) 1 (+ (fib (- n 1)) (fib (- n 2)))))))
@@ -33,9 +34,13 @@
     (((lambda (x)
          (lambda (y)
              (* x y))) 4) 5))
-()
 
-(define (sum-int ls) 
+(define (sum ls zero)
     (cond 
-        ((= ls (list)) 0) 
-        (else (+ (.head ls) (sum-int (.tail ls))))))
+        ((= ls (list)) zero)
+        (else (+ (.head ls) (sum (.tail ls) zero)))))
+(define (sum-int ls) 
+    (sum ls 0))
+
+(define (sum-str ls)
+    (sum ls ""))

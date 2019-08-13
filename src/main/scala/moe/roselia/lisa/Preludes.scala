@@ -1,6 +1,7 @@
 package moe.roselia.lisa
 
-import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, SpecialEnv}
+import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv, SpecialEnv, TransparentLayer}
+import moe.roselia.lisa.Evaluator.{EvalFailure, EvalSuccess}
 import moe.roselia.lisa.LispExp._
 import moe.roselia.lisa.Reflect.{DotAccessor, PackageAccessor}
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
@@ -156,6 +157,18 @@ object Preludes extends LispExp.Implicits {
         case other => Failure("Runtime Error", s"Can not get length for $other.")
       }
       case other => Failure("Arity Error", s"length only accepts one argument but ${other.length} found.")
+    },
+    "set!" -> PrimitiveMacro {
+      case (Symbol(x)::va::Nil, e) =>
+        Evaluator.eval(va, e) match {
+          case EvalSuccess(expression, env) => (NilObj, env.forceUpdated(x, expression))
+          case EvalFailure(message) => (Failure("Eval Failure", message), e)
+        }
+      case (other, e) => (Failure("Arity Error", s"set! only accepts a symbol and an expression, but $other found."), e)
+    },
+    "define-mutable!" -> PrimitiveMacro {
+      case (Symbol(x)::Nil, e) =>
+        (NilObj, TransparentLayer(MutableEnv.createEmpty.addValue(x, e.getValueOption(x).getOrElse(NilObj)), e))
     }
   ))
 

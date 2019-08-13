@@ -96,6 +96,10 @@ object LispExp {
     override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
   }
 
+  case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment)) extends Expression {
+    override def toString: String = s"#Macro![Native Code]"
+  }
+
   case class Failure(tp: String, message: String) extends Expression {
     override def valid: Boolean = false
   }

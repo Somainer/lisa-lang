@@ -1,7 +1,7 @@
 package moe.roselia.lisa
 
 import moe.roselia.lisa.Environments.CombineEnv
-import moe.roselia.lisa.LispExp.{NilObj, SString, SideEffectFunction}
+import moe.roselia.lisa.LispExp.{NilObj, SString, SideEffectFunction, WrappedScalaObject}
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -65,7 +65,7 @@ object Main {
             innerEnv
         } else innerEnv
     }
-    doSeq(reader, env)
+    doSeq(reader, env.newFrame).newFrame
   }
   def main(args: Array[String]): Unit = {
     val preludeEnv =
