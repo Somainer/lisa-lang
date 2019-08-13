@@ -75,14 +75,14 @@ To use that, you must import that environment first.
 The javascript engine will NOT be initialized until you import it.
 
 ```scheme
-(import-env! 'javascript)
+(import-env! javascript)
 (js "
     var a = 2, b = '3'
 ")
 
-(get-js 'a) ; => 2
-(get-js 'c "not found") ; => "not found"
-(set-js! 'a 1) ; a becomes 1 now.
+(get-js a) ; => 2
+(get-js c "not found") ; => "not found"
+(set-js! a 1) ; a becomes 1 now.
 
 ;If you want mix js in current environment
 (import-env! 'javascript-cross)
@@ -133,6 +133,29 @@ case, the latter will never be matched.
 (define b (int (input "Please input another number:")))
 (println! "Yes! b is" b)
 (println! "The answer is" (+ a b))
+```
+
+## Side Effects
+To change a value, you should declare a mutable value by `define-mutable!`.
+```scheme
+(define-mutable! v)
+```
+If there is a variable with same name, it will shadow the previous-defined value
+and be initialized with same value.
+
+Then you can change the value by `set!`, but you may not change immutable values.
+
+To illustrate that, let's write a counter.
+```scheme
+(define (make-counter init)
+    (define-mutable! init)
+    (lambda ()
+        (set! init (+ init 1))
+        init))
+(define c (make-counter 0))
+(c); => 1
+(c); => 2
+(set! c 3) ; set! Error: Can not assign an immutable value c.
 ```
 
 ## Great! How to use it?

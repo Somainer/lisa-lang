@@ -19,13 +19,13 @@
 
 (println! "Invoking javascript...")
 
-(import-env! 'javascript)
+(import-env! javascript)
 
 (js "
     var a = 2, b = '3'
 ")
 
-(import-env! 'javascript-cross)
+(import-env! javascript-cross)
 
 (define pair (cons a b))
 (println! (car pair) (cdr pair))

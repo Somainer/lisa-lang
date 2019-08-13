@@ -12,6 +12,7 @@ object Environments {
     def newMutableFrame = MutableEnv(MutableMap.empty, this)
     def directHas(key: String) = false
     def forceUpdated(key: String, value: LispExp.Expression): Environment = this
+    def isMutable(key: String) = false
   }
   case class Env(env: Map[String, LispExp.Expression], parent: Environment) extends Environment {
     override def has(key: String): Boolean = directHas(key) || parent.has(key)
@@ -28,6 +29,8 @@ object Environments {
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
       if (directHas(key)) copy(env=env.updated(key, value))
       else parent.forceUpdated(key, value)
+
+    override def isMutable(key: String): Boolean = parent.isMutable(key)
   }
   object EmptyEnv extends Environment {
     override def has(key: String): Boolean = false
@@ -52,6 +55,16 @@ object Environments {
         case _ => Nil
       }
       copy(updateChain(env))
+    }
+
+    override def isMutable(key: String): Boolean = {
+      @annotation.tailrec
+      def checkMutable(env: Seq[Environment]): Boolean = env match {
+        case x::_ if x.has(key) => x.isMutable(key)
+        case _::xs => checkMutable(xs)
+        case Nil => false
+      }
+      checkMutable(env)
     }
   }
 
@@ -78,6 +91,8 @@ object Environments {
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
       if(directHas(key)) addValue(key, value)
       else parent.forceUpdated(key, value)
+
+    override def isMutable(key: String): Boolean = directHas(key) || parent.isMutable(key)
   }
 
   object MutableEnv {
@@ -87,6 +102,8 @@ object Environments {
   case class NameSpacedEnv(nameSpace: String, env: Environment, separator: String = ".") extends Environment {
     private val prefix = if (nameSpace.isEmpty) "" else s"$nameSpace$separator"
     private val prefixLength = prefix.length
+    private def stripHead(key: String) =
+      if (key.startsWith(prefix)) key.substring(prefixLength) else ""
     override def has(key: String): Boolean = key.startsWith(prefix) && env.has(key.substring(prefixLength))
 
     override def getValueOption(key: String): Option[LispExp.Expression] =
@@ -97,7 +114,10 @@ object Environments {
       has(key)
 
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
-      env.forceUpdated(key, value)
+      if(key.startsWith(prefix)) env.forceUpdated(stripHead(key), value) else this
+
+    override def isMutable(key: String): Boolean =
+      has(key) && env.isMutable(stripHead(key))
   }
 
   case class TransparentLayer(layer: Environment, base: Environment) extends Environment {
@@ -111,5 +131,8 @@ object Environments {
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
       if(layer.has(key)) layer.forceUpdated(key, value)
       else base.forceUpdated(key, value)
+
+    override def isMutable(key: String): Boolean =
+      layer.isMutable(key) || base.isMutable(key)
   }
 }

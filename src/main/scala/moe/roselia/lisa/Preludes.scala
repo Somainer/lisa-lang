@@ -87,8 +87,8 @@ object Preludes extends LispExp.Implicits {
       }
       case _ => LispExp.Failure("Runtime Error", "truthy? can only apply to one value")
     },
-    "import-env!" -> SideEffectFunction {
-      case (Quote(Symbol(sym))::Nil, env) =>
+    "import-env!" -> PrimitiveMacro {
+      case (Symbol(sym)::Nil, env) =>
         if (selectablePreludes.contains(sym))
           (NilObj, CombineEnv(Seq(env, selectablePreludes(sym))))
         else (Failure("Import Error", s"Environment $sym not found"), env)
@@ -160,15 +160,18 @@ object Preludes extends LispExp.Implicits {
     },
     "set!" -> PrimitiveMacro {
       case (Symbol(x)::va::Nil, e) =>
-        Evaluator.eval(va, e) match {
-          case EvalSuccess(expression, env) => (NilObj, env.forceUpdated(x, expression))
-          case EvalFailure(message) => (Failure("Eval Failure", message), e)
-        }
+        if (e.isMutable(x))
+          Evaluator.eval(va, e) match {
+            case EvalSuccess(expression, env) => (NilObj, env.forceUpdated(x, expression))
+            case EvalFailure(message) => (Failure("Eval Failure", message), e)
+          }
+        else (Failure("set! Error", s"Can not assign an immutable value $x."), e)
       case (other, e) => (Failure("Arity Error", s"set! only accepts a symbol and an expression, but $other found."), e)
     },
     "define-mutable!" -> PrimitiveMacro {
       case (Symbol(x)::Nil, e) =>
         (NilObj, TransparentLayer(MutableEnv.createEmpty.addValue(x, e.getValueOption(x).getOrElse(NilObj)), e))
+      case (_, e) => (Failure("Define Failure", "define-mutable! only accepts one symbol."), e)
     }
   ))
 
@@ -188,20 +191,20 @@ object Preludes extends LispExp.Implicits {
           engine.eval(s)
         )
       },
-      s"set-$prefix!" -> PrimitiveFunction {
-        case Quote(Symbol(sym))::exp::Nil =>
+      s"set-$prefix!" -> PrimitiveMacro {
+        case (Symbol(sym)::exp::Nil, e) =>
           engine.put(sym, toScalaNative(exp))
-          NilObj
-        case SString(sym)::exp::Nil =>
+          (NilObj, e)
+        case (SString(sym)::exp::Nil, e) =>
           engine.put(sym, toScalaNative(exp))
-          NilObj
+          NilObj -> e
       },
-      s"get-$prefix" -> PrimitiveFunction {
-        case Quote(Symbol(sym))::Nil =>
-          environment.getValueOption(sym).getOrElse(Failure("Lookup Error", s"Value $sym not found in $prefix env."))
-        case Quote(Symbol(sym))::alt::Nil =>
-          environment.getValueOption(sym).getOrElse(alt)
-        case _ => Failure("Argument Error", "")
+      s"get-$prefix" -> PrimitiveMacro {
+        case (Symbol(sym)::Nil, e) =>
+          environment.getValueOption(sym).getOrElse(Failure("Lookup Error", s"Value $sym not found in $prefix env.")) -> e
+        case (Quote(Symbol(sym))::alt::Nil, e) =>
+          environment.getValueOption(sym).getOrElse(alt) -> e
+        case (other, e) => Failure("Argument Error", s"Invalid argument: $other") -> e
       }
 
     )), environment)
