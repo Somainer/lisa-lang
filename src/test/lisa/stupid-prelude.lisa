@@ -45,3 +45,52 @@
 (define eq? =)
 
 (define (Y fn) ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s))))))
+
+(define-macro (for v 'in 'range (n) ': do-sth) '(for ~v in range (0 , ~n) : ~do-sth))
+(define-macro (for v 'in 'range (s ', n) ': do-sth)
+    '(block 
+        (define-mutable! ~v)
+        (set! ~v ~s)
+        (while (< ~v ~n) 
+            (block 
+                ~do-sth 
+                (set! ~v (+ ~v 1))))))
+
+(define-macro (for (v '= s ', pred ', v '= next) '{ do-sth '})
+    '(group!
+        (define-mutable! ~v)
+        (set! ~v ~s)
+        (while ~pred
+            (group!
+                ~do-sth
+                (set! ~v ~next)))))
+
+(define (sum-from start end)
+    (define-mutable! start)
+    (define-mutable! result)
+    (set! result 0)
+    (while (<= start end) 
+        (group!
+            (set! result (+ result start))
+            (set! start (+ start 1))))
+    result)
+
+(define (fact n)
+    (define-mutable! result)
+    (set! result 1)
+    (define-mutable! i)
+    (set! i 1)
+    (while (<= i n)
+        (block
+            (set! result (* result i))
+            (set! i (+ i 1))))
+    result)
+
+(define-macro (for v from pred step body)
+    '(group!
+        (define-mutable! ~v)
+        (set! ~v ~from)
+        (while ~pred 
+            (group!
+                ~body
+                (set! ~v ~step)))))

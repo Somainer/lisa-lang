@@ -28,7 +28,7 @@ object Environments {
 
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
       if (directHas(key)) copy(env=env.updated(key, value))
-      else parent.forceUpdated(key, value)
+      else copy(parent=parent.forceUpdated(key, value))
 
     override def isMutable(key: String): Boolean = parent.isMutable(key)
   }
@@ -90,7 +90,7 @@ object Environments {
 
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
       if(directHas(key)) addValue(key, value)
-      else parent.forceUpdated(key, value)
+      else copy(parent=parent.forceUpdated(key, value))
 
     override def isMutable(key: String): Boolean = directHas(key) || parent.isMutable(key)
   }
@@ -114,7 +114,7 @@ object Environments {
       has(key)
 
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
-      if(key.startsWith(prefix)) env.forceUpdated(stripHead(key), value) else this
+      if(key.startsWith(prefix)) copy(env=env.forceUpdated(stripHead(key), value)) else this
 
     override def isMutable(key: String): Boolean =
       has(key) && env.isMutable(stripHead(key))
@@ -129,8 +129,8 @@ object Environments {
     override def directHas(key: String): Boolean = base.directHas(key)
 
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
-      if(layer.has(key)) layer.forceUpdated(key, value)
-      else base.forceUpdated(key, value)
+      if(layer.has(key)) copy(layer=layer.forceUpdated(key, value))
+      else copy(base=base.forceUpdated(key, value))
 
     override def isMutable(key: String): Boolean =
       layer.isMutable(key) || base.isMutable(key)

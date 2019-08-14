@@ -91,7 +91,7 @@ a ; => 1
 b ; => "3"
 ```
 
-## Do something cooler
+## Do Something Cooler
 Let's write a factorial function again, in another way.
 ```scheme
 (define (fact 0) 1)
@@ -156,6 +156,44 @@ To illustrate that, let's write a counter.
 (c); => 1
 (c); => 2
 (set! c 3) ; set! Error: Can not assign an immutable value c.
+```
+
+## Do Imperative Programming
+Since mutable values are available, it is possible to do imperative programming.
+You can use `(block <expression>*)` to introduce a new environment scope, it will do a list of expressions
+and return last expression as result.
+`(group! <expression>*)` will do the same thing, besides it will not introduce a new scope, and all changes are
+made in the same scope.
+
+`(while <predicate> <expression>)` macro will introduce a loop,
+do body while predicate is true.
+
+Let's write a factorial function.
+```scheme
+(define (fact n)
+    (define-mutable! result)
+    (set! result 1)
+    (define-mutable! i)
+    (set! i 1)
+    (while (<= i n)
+        (block
+            (set! result (* result i))
+            (set! i (+ i 1))))
+    result)
+```
+
+You can even write a for-loop macro.
+```scheme
+(define-macro (for v from pred step body)
+    '(group!
+        (define-mutable! ~v)
+        (set! ~v ~from)
+        (while ~pred 
+            (group!
+                ~body
+                (set! ~v ~step)))))
+
+(for i 0 (< i 100) (+ i 2) (prtinln! i))
 ```
 
 ## Great! How to use it?

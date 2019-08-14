@@ -1,6 +1,9 @@
 package moe.roselia.lisa
 
+import java.io.{FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutputStream}
+
 import moe.roselia.lisa.Environments.CombineEnv
+import moe.roselia.lisa.Evaluator.EvalResult
 import moe.roselia.lisa.LispExp.{NilObj, SString, SideEffectFunction, WrappedScalaObject}
 
 import scala.util.Try
@@ -67,6 +70,43 @@ object Main {
     }
     doSeq(reader, env.newFrame).newFrame
   }
+
+  def compileFile(fromFile: String, toFile: String): Unit = {
+    val reader = parse(success(NilObj), scala.io.Source.fromFile(fromFile).reader()).next
+    @annotation.tailrec
+    def compileChain(source: scala.util.parsing.input.Reader[Char],
+                     acc: List[LispExp.Expression] = Nil): List[LispExp.Expression] = {
+      if (!source.atEnd)
+        parse(sExpression, source) match {
+          case Success(sExpr, next) =>
+            Evaluator.compile(sExpr) match {
+              case LispExp.Failure(tp, message) =>
+                println(s"Compile Error: $tp", message)
+                Nil
+              case exp => compileChain(next, exp::acc)
+            }
+
+          case Failure(msg, _) =>
+            println(s"Fatal: $msg")
+            Nil
+        }
+      else acc.reverse
+    }
+    val compiled = compileChain(reader)
+    if(compiled.nonEmpty) {
+      val file = new FileOutputStream(toFile)
+      val oos = new ObjectOutputStream(file)
+      oos.writeObject(LispExp.Apply(LispExp.Symbol("group!"), compiled))
+    }
+  }
+
+  def executeCompiled(fromFile: String, env: Environments.Environment): EvalResult = {
+    val fis = new FileInputStream(fromFile)
+    val ois = new ObjectInputStream(fis)
+    val expr = ois.readObject().asInstanceOf[LispExp.Expression]
+    Evaluator.eval(expr, env)
+  }
+
   def main(args: Array[String]): Unit = {
     val preludeEnv =
       CombineEnv(Seq(Reflect.DotAccessor.accessEnv, Preludes.preludeEnvironment))
@@ -98,6 +138,11 @@ object Main {
           prompt(executeFile(
             fileName, preludeEnv.withValue("__PATH__", SString(fileName))
           ))
+        case Array("compile", fileName, "-o", toFile) =>
+          compileFile(fileName, toFile)
+        case Array("execute", fileName) =>
+          val result = executeCompiled(fileName, preludeEnv)
+          if(!result.isSuccess) println(s"Error: $result")
       }
 
     }

@@ -186,6 +186,9 @@ object Evaluator {
             pe.findMatch(args).map {
               case (ex, _) => ex match {
                 case m: SimpleMacro => eval(expandMacro(m, args, env), env)
+                case PrimitiveMacro(fn) => fn(args, env) match {
+                  case (exp, env) => eval(exp, env)
+                }
                 case els => apply(els, args).fold(EvalFailure, EvalSuccess(_, env))
               }
             }.getOrElse(EvalFailure("No matching procedure to apply"))
@@ -350,6 +353,7 @@ object Evaluator {
                     matchResult: collection.mutable.Map[String, Expression] = collection.mutable.Map.empty): Option[Map[String, Expression]] =
     pattern match {
       case Nil => if(arguments.isEmpty) Some(matchResult.toMap) else None
+      case Symbol("_")::xs => matchArgument(xs, arguments.tail, matchResult)
       case Symbol(sym)::xs => arguments match {
         case exp::ys =>
           if(matchResult.contains(sym)) {
@@ -359,6 +363,7 @@ object Evaluator {
             matchResult.update(sym, exp)
             matchArgument(xs, ys, matchResult)
           }
+        case _ => None
       }
       case Apply(head, args)::xs => arguments match {
         case Apply(yHead, yArgs)::ys => for {
@@ -366,6 +371,7 @@ object Evaluator {
           argsMatch <- matchArgument(args, yArgs, matchResult)
           rest <- matchArgument(xs, ys, matchResult)
         } yield headMatch ++ argsMatch ++ rest
+        case _ => None
       }
       case Quote(Symbol(sym))::xs => arguments match {
         case Symbol(`sym`)::ys => matchArgument(xs, ys, matchResult)

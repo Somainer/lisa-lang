@@ -1,7 +1,7 @@
 package moe.roselia.lisa
 
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv, SpecialEnv, TransparentLayer}
-import moe.roselia.lisa.Evaluator.{EvalFailure, EvalSuccess}
+import moe.roselia.lisa.Evaluator.{EvalFailure, EvalResult, EvalSuccess}
 import moe.roselia.lisa.LispExp._
 import moe.roselia.lisa.Reflect.{DotAccessor, PackageAccessor}
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
@@ -172,6 +172,42 @@ object Preludes extends LispExp.Implicits {
       case (Symbol(x)::Nil, e) =>
         (NilObj, TransparentLayer(MutableEnv.createEmpty.addValue(x, e.getValueOption(x).getOrElse(NilObj)), e))
       case (_, e) => (Failure("Define Failure", "define-mutable! only accepts one symbol."), e)
+    },
+    "group!" -> PrimitiveMacro {
+      case (xs, e) => xs.foldLeft[EvalResult](EvalSuccess(NilObj, e)) {
+        case (EvalSuccess(_, env), x) => Evaluator.eval(x, env)
+        case (f, _) => f
+      } match {
+        case EvalSuccess(expression, env) => expression -> env
+        case EvalFailure(msg) => Failure("Group Code Execution Failure", msg) -> e
+      }
+    },
+    "block" -> PrimitiveMacro {
+      case (xs, e) => xs.foldLeft[EvalResult](EvalSuccess(NilObj, e.newFrame)) {
+        case (EvalSuccess(_, env), x) => Evaluator.eval(x, env)
+        case (f, _) => f
+      } match {
+        case EvalSuccess(expression, _) => expression -> e
+        case EvalFailure(msg) => Failure("Block Code Execution Failure", msg) -> e
+      }
+    },
+    "while" -> PrimitiveMacro {
+      case (predicate::body::Nil, e) =>
+        @annotation.tailrec
+        def repeat(env: Environment): EvalResult = Evaluator.eval(predicate, env) match {
+          case EvalSuccess(SBool(true), _) =>
+            Evaluator.eval(body, env) match {
+              case EvalSuccess(_, ne) => repeat(ne)
+              case f => f
+            }
+          case f@EvalSuccess(SBool(false), _) => f
+          case EvalSuccess(expression, _) => EvalFailure(s"While predicate $expression is not a Bool.")
+          case f => f
+        }
+        repeat(e) match {
+          case EvalSuccess(_, en) => (NilObj, en)
+          case EvalFailure(msg) => Failure("While execution failure", msg) -> e
+        }
     }
   ))
 
