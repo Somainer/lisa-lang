@@ -16,7 +16,7 @@ object Main {
     val s = scala.io.StdIn.readLine("lisa>")
     if (s.nonEmpty) {
       //      println(s"Input: $s")
-      val exp = parse(root(sExpression), s)
+      val exp = parseAll(sExpression, s)
       exp match {
         case Success(expression, _) => expression match {
           case SList(List(Value("quit" | "exit"))) =>

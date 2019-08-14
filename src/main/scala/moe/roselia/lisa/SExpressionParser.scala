@@ -10,7 +10,10 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
   def sValue = "[^() \\s]+".r map Value named "Values"
 
   def string = "\"(((\\\\\")|[^\"])*)\"".r
-    .map(_.replace("\\\"", "\""))
+    .flatMap(x =>
+      scala.util
+        .Try(StringContext.processEscapes(x))
+        .fold(ex => err(ex.getLocalizedMessage), success))
     .map(_.drop(1).dropRight(1)) named "String Literals"
 
   def stringValue = string.map(StringLiteral) named "String Values"

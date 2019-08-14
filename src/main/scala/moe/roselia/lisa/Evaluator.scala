@@ -126,6 +126,7 @@ object Evaluator {
       case bool: SBool => pureValue(bool)
       case NilObj => pureValue(NilObj)
       case p: PolymorphicExpression => pureValue(p)
+      case o@WrappedScalaObject(_) => pureValue(o)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
         case c@Closure(_, _, capturedEnv, _) =>
           if(env.directHas(sym)) unit {
