@@ -31,7 +31,7 @@ object PackageAccessor {
         val name = TermName(key)
         val decl = clsObj.symbol.toType.decl(name)
         if (decl.isMethod) PrimitiveFunction {
-          xs => fromScalaNative(DotAccessor.applyDot(key)(obj)(xs: _*))
+          xs => fromScalaNative(DotAccessor.applyDot(key)(obj)(xs.map(toScalaNative): _*))
         }
         else throw new NoSuchMethodException(s"$name is not a method")
       }).toOption
