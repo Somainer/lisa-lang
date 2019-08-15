@@ -1,0 +1,62 @@
+(define (not true) "(not true) => false" false)
+(define (not false) "(not false) => true" true)
+
+(define-macro (or a b)
+    "or :: (Bool, Bool) => Bool = if(truthy? a) a else b"
+    '(block
+        (define __a ~a)
+        (if (truthy? __a) __a ~b)))
+
+(define-macro (and a b)
+    "and :: (Bool, Bool) => Bool = if(truthy? a) b else a"
+    '(block
+        (define __a ~a)
+        (if (truthy? __a) ~b __a)))
+
+(define (< a b)
+    "Return true if a < b. This funtion will invoke native java method."
+    (define java-cmp (.compareTo a b))
+    (cond ((= java-cmp -1) true)
+          ((= java-cmp 0) false)
+          ((= java-cmp 1) false)
+          (else (< java-cmp 0))))
+
+(define (<= a b)
+    (or (= a b) (< a b)))
+
+(define (> a b)
+    (< b a))
+
+(define (>= a b)
+    (or (= a b) (> a b)))
+
+(define (Y fn)
+    "Y combinator, nothing interesting."
+    ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s))))))
+
+(define-macro (lazy e)
+    "Construce a lazy value, note that it works the same as e => (lambda () e) so do not use it to shadow functions in the same scope."
+    '(lambda () ~e))
+
+(define (force e) (e))
+
+(define (sort-by ls _ (? (= (.length ls) 0))) ls)
+(define (sort-by ls by) ; Can only sort a seq
+    "sort :: (seq[e], e => bool) => seq[e] \n Sort <ls> by <by>"
+    (define head (.head ls))
+    (define tail (.tail ls))
+    (define left (filter tail (lambda (x) (by x head))))
+    (define right (filter tail (lambda (x) (not (by x head)))))
+    (.appendedAll 
+        (.appended (sort-by left by) head) 
+        (sort-by right by)))
+
+(define (max a b (? (< a b)))
+    "a < b, max(a, b) = b"
+    b)
+(define (max a _)
+    "Otherwise should be a"
+    a)
+
+(define (min a b (? < a b)) a)
+(define (min _ b) b)

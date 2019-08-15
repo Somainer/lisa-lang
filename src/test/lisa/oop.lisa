@@ -1,0 +1,27 @@
+(define (pair x y)
+    (define (select 0) x)
+    (define (select 1) y)
+    select)
+
+(define (people name age (? (>= age 0)))
+    (define-mutable! age)
+    (define-macro (getter s) 
+        '(define (select '~s ) ~s))
+    (define-macro (setter s)
+        '(define (select '~s __s) (set! ~s __s)))
+    
+    (define-macro (setter s 'when pred)
+        '(define (select '~s __s (? (~pred __s))) (set! ~s __s)))
+    (getter name)
+    (getter age)
+    (setter name) ; Setter should fail because name is not mutable.
+    (setter age when (lambda (x) (>= x 0)))
+    (define (select 'show ) (+ "I am " name ", " (.toString age) " years old."))
+    select)
+
+(define p (people "Senpai" 24))
+(println! (p 'show ))
+(p 'age 25)
+(println! (p 'show ))
+(println! (p 'name "MUR"))
+(println! (p 'show ))

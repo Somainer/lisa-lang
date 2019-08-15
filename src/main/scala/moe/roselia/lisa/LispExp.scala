@@ -1,11 +1,25 @@
 package moe.roselia.lisa
 
-import Environments.{CombineEnv, Environment, MutableEnv}
+import Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv}
 
 object LispExp {
 
-  sealed trait Expression {
+  trait DocumentAble {
+    var document = ""
+    def withDocString(string: String): this.type = {
+      document = string
+      this
+    }
+
+    def copyDocString(that: DocumentAble): this.type = withDocString(that.docString)
+
+    def docString: String = document
+  }
+
+  sealed trait Expression extends DocumentAble {
     def valid = true
+
+    def code = toString
   }
 
   case class Symbol(value: String) extends Expression {
@@ -26,6 +40,11 @@ object LispExp {
 
   case class SString(value: String) extends Expression {
     override def toString: String = value.toString
+
+    override def code: String = {
+      import scala.reflect.runtime.universe._
+      Literal(Constant(value)).toString()
+    }
   }
 
   case object NilObj extends Expression {
@@ -60,32 +79,60 @@ object LispExp {
                      sideEffects: List[Expression] = List.empty) extends Procedure {
     override def valid: Boolean = body.valid
 
-    override def toString: String = s"#Closure(${boundVariable.mkString(" ")})"
+    override def toString: String = s"#Closure[${genHead(boundVariable)}]"
+
+    override def docString: String = s"${genHead(boundVariable)}: ${if(document.isEmpty) code else document}"
+
+    def copy(boundVariable: List[Expression] = boundVariable,
+             body: Expression = body,
+             capturedEnv: Environments.Environment = capturedEnv,
+             sideEffects: List[Expression] = sideEffects): Closure =
+      Closure(boundVariable, body, capturedEnv, sideEffects).withDocString(document)
   }
 
   case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {
     override def valid: Boolean = predicate.valid && consequence.valid && alternative.valid
+
+    override def code: String = s"(if ${predicate.code} ${consequence.code} ${alternative.code})"
   }
   case class SCond(conditions: List[(Expression, Expression)]) extends Expression
 
   case class Apply(head: Expression, args: List[Expression]) extends Expression {
     override def valid: Boolean = head.valid && args.forall(_.valid)
+
+    override def code: String =
+      if(args.isEmpty) s"(${head.code})" else s"(${head.code} ${args.map(_.code).mkString(" ")})"
   }
 
   case class Define(symbol: Symbol, value: Expression) extends Expression {
     override def valid: Boolean = value.valid
+
+    override def code: String = s"(define ${symbol.code} ${value.code})"
   }
 
   case class Quote(exp: Expression) extends Expression {
     override def valid: Boolean = exp.valid
 
     override def toString: String = s"'${exp.toString}"
+
+    override def code: String = s"'${exp.code}"
   }
 
   case class UnQuote(quote: Expression) extends Expression {
     override def valid: Boolean = quote.valid
 
     override def toString: String = s"~$quote"
+
+    override def code: String = s"~${quote.code}"
+  }
+
+  def genHead(ex: Seq[Expression]): String = {
+    if (ex.isEmpty) "()"
+    else ex.last match {
+      case Apply(Symbol("?"), xs::Nil) => s"${genHead(ex.init)} when ${xs.code}"
+      case Apply(Symbol("..."), Symbol(x)::Nil) => genHead(ex.init appended Symbol(s"...$x"))
+      case _ => s"(${ex.map(_.code).mkString(" ")})"
+    }
   }
 
   case class SimpleMacro(paramsPattern: Seq[Expression],
@@ -107,11 +154,12 @@ object LispExp {
   case class PolymorphicExpression(name: String,
                                    variants: Seq[(Expression, Seq[Expression])],
                                    innerEnvironment: MutableEnv, byName: Boolean=false) extends Expression {
-    def findMatch(args: Seq[Expression]): Option[(Expression, Map[String, Expression])] = {
+    def findMatch(args: Seq[Expression],
+                  inEnv: Environment = EmptyEnv): Option[(Expression, Map[String, Expression])] = {
       @annotation.tailrec
       def find(v: List[(Expression, Seq[Expression])]): Option[(Expression, Map[String, Expression])] = v match {
         case Nil => None
-        case (exp, mat)::xs => Evaluator.matchArgument(mat, args) match {
+        case (exp, mat)::xs => Evaluator.matchArgument(mat, args, inEnv = inEnv) match {
           case Some(x) => Some((exp, x))
           case _ => find(xs)
         }
@@ -134,6 +182,21 @@ object LispExp {
       val newVariant = copy(variants=variants.appended((mac, mac.paramsPattern)))
       innerEnvironment.addValue(name, newVariant)
       newVariant
+    }
+
+    override def docString: String = {
+      if(variants.length == 1) {
+        variants.head._1.docString
+      } else {
+        val body = variants.map {
+          case (p, v) => if(p.docString.nonEmpty) p.docString else s"${genHead(v)}: ${p.code}"
+        }.mkString("\n")
+        s"""
+           |$name is a polymorphic function, with ${variants.length} overloads:
+           |
+           |$body
+           |""".stripMargin.strip()
+      }
     }
 
     override def toString: String =

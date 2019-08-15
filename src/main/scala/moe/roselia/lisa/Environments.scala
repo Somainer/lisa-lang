@@ -48,23 +48,16 @@ object Environments {
       env.find(_ has key).flatMap(_ getValueOption key)
 
     override def forceUpdated(key: String, value: LispExp.Expression): Environment = {
-      def updateChain(e: Seq[Environment]): Seq[Environment] = e match {
-        case x::xs =>
-          if(x.directHas(key)) x.forceUpdated(key, value)::xs
-          else x +: updateChain(xs)
-        case _ => Nil
+      val idx = env.indexWhere(_ has key)
+      if (idx < 0) this
+      else {
+        val toUpdate = env(idx)
+        copy(env.updated(idx, toUpdate.forceUpdated(key, value)))
       }
-      copy(updateChain(env))
     }
 
     override def isMutable(key: String): Boolean = {
-      @annotation.tailrec
-      def checkMutable(env: Seq[Environment]): Boolean = env match {
-        case x::_ if x.has(key) => x.isMutable(key)
-        case _::xs => checkMutable(xs)
-        case Nil => false
-      }
-      checkMutable(env)
+      env.find(_ has key).exists(_ isMutable key)
     }
   }
 
@@ -90,7 +83,8 @@ object Environments {
 
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
       if(directHas(key)) addValue(key, value)
-      else copy(parent=parent.forceUpdated(key, value))
+      else if(has(key)) copy(parent=parent.forceUpdated(key, value))
+      else this
 
     override def isMutable(key: String): Boolean = directHas(key) || parent.isMutable(key)
   }
@@ -130,7 +124,8 @@ object Environments {
 
     override def forceUpdated(key: String, value: LispExp.Expression): Environment =
       if(layer.has(key)) copy(layer=layer.forceUpdated(key, value))
-      else copy(base=base.forceUpdated(key, value))
+      else if(base.has(key)) copy(base=base.forceUpdated(key, value))
+      else this
 
     override def isMutable(key: String): Boolean =
       layer.isMutable(key) || base.isMutable(key)

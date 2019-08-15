@@ -162,7 +162,7 @@ object Preludes extends LispExp.Implicits {
       case (Symbol(x)::va::Nil, e) =>
         if (e.isMutable(x))
           Evaluator.eval(va, e) match {
-            case EvalSuccess(expression, env) => (NilObj, env.forceUpdated(x, expression))
+            case EvalSuccess(expression, _) => (NilObj, e.forceUpdated(x, expression))
             case EvalFailure(message) => (Failure("Eval Failure", message), e)
           }
         else (Failure("set! Error", s"Can not assign an immutable value $x."), e)
@@ -208,7 +208,13 @@ object Preludes extends LispExp.Implicits {
           case EvalSuccess(_, en) => (NilObj, en)
           case EvalFailure(msg) => Failure("While execution failure", msg) -> e
         }
-    }
+    },
+    "help" -> PrimitiveFunction {
+      case exp::Nil =>
+        val docString = exp.docString
+        if(docString.nonEmpty) docString else exp.code
+      case _ => Failure("Help error", "You can only get help from one object.")
+    }.withDocString("help :: Any => String\nGet document string from a object.")
   ))
 
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")

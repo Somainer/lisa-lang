@@ -123,6 +123,21 @@ case, the latter will never be matched.
 (my-f 5) ; => 120
 ```
 
+### Pattern Matching Guard
+
+The last argument in a function definition can be a pattern matching guard.
+It looks like an application of `?`, like `(? <predicate>)`. 
+The function will match only if the guard predicate indicates true. 
+And the guard *MUST* returns a Bool, otherwise will result in an `EvalFailure`.
+
+```scheme
+(define (fact 0) 1) ; Nothing interesting.
+(define (fact n (? (> n 0))) (* n (fact (- n 1)))) ; Will match only when n grater than 0.
+; Note that lisa has not defined > yet. You can define it as (define (> a b) (= 1 (.compareTo a b)))
+(fact 5) ; => 120
+(fact -5) ; => EvalFailure(No matching procedure to apply)
+```
+
 ## Let's solve a problem!
 
 ```scheme

@@ -95,15 +95,16 @@
                 ~body
                 (set! ~v ~step)))))
 
+(define (sort-by ls _ (? (= (.length ls) 0))) ls)
 (define (sort-by ls by) ; Can only sort a seq
-    (define (empty? ls) (= (.length ls) 0))
-    (if (empty? ls) ls
-        (block  (define head (.head ls))
-                (define tail (.tail ls))
-                (define left (filter tail (lambda (x) (by x head))))
-                (define right (filter tail (lambda (x) (not (by x head)))))
-                (.appendedAll 
-                    (.appended (sort-by left by) head) 
-                    (sort-by right by)))))
+    (define head (.head ls))
+    (define tail (.tail ls))
+    (define left (filter tail (lambda (x) (by x head))))
+    (define right (filter tail (lambda (x) (not (by x head)))))
+    (.appendedAll 
+        (.appended (sort-by left by) head) 
+        (sort-by right by)))
 
 (define (sort ls) (sort-by ls <))
+
+(define (make-vector (... vec)) vec)

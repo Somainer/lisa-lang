@@ -16,3 +16,15 @@
     (define (_len x x) 0)
     (define (_len x y) (+ 1 (_len (.tail x) y)))
     (_len ls (list)))
+
+(define (odd? n)
+    (define (is? 'even 0) true)
+    (define (is? 'even 1) false)
+    (define (is? 'even n) (is? 'odd (- n 1)))
+    (define (is? 'odd n) (is? 'even (- n 1)))
+    (is? 'odd n))
+
+(define (o-e-tag n)
+    (define (g x x) "odd")
+    (define (g x y) "even")
+    (g (odd? n) true))
