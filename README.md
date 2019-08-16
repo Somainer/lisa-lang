@@ -123,10 +123,27 @@ case, the latter will never be matched.
 (my-f 5) ; => 120
 ```
 
+### Match a List
+Pattern `(seq <h1> <h2>)` matches a list or a vector.
+`(... args)` matches the rest of the list.
+
+```scheme
+(define (sum-list (seq head (... tail))) (+ head (sum-list tail)))
+(define (sum-list (seq)) 0)
+```
+
+Note that same variable means same value.
+
+`(x (seq x x))` will match `(1 (list 1 1))` but not `(1 (list 1 2))`
+
 ### Pattern Matching Guard
 
 The last argument in a function definition can be a pattern matching guard.
-It looks like an application of `?`, like `(? <predicate>)`. 
+It looks like an application of `?`, `when`, or `when?`, like `(? <predicate>)`. 
+
+* `?`, `when` requires that predicate never be failure, if so, matching will result in an evail failure.
+* `when?` if predicate returns failure, this branch will be ignored and not match.
+
 The function will match only if the guard predicate indicates true. 
 And the guard *MUST* returns a Bool, otherwise will result in an `EvalFailure`.
 

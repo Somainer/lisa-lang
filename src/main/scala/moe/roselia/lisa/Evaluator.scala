@@ -21,16 +21,18 @@ object Evaluator {
 
     override def isSuccess: Boolean = true
 
-    override def appendTrace(msg: String): EvalResult = this
+    override def appendTrace(msg: String): EvalSuccess = this
   }
   case class EvalFailure(message: String) extends EvalResult {
     override def flatMap(fn: Expression => EvalResult): EvalResult = this
 
     override def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult = this
 
-    override def appendTrace(msg: String): EvalResult = copy(s"$message\n\t$msg")
+    override def appendTrace(msg: String): EvalFailure = copy(s"$message\n\t$msg")
 
     override def isSuccess: Boolean = false
+
+    override def toString: String = s"Failure: $message"
   }
 
   object EvalFailure {
@@ -50,7 +52,8 @@ object Evaluator {
     case Value("false") => SBool(false)
     case SUnQuote(q) => UnQuote(compile(q))
     case Value(value) => {
-      if(value.matches("-?\\d+")) SInteger(value.toInt)
+      if(value.matches("-?\\d+"))
+        value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
       else Symbol(value)
     }
     case StringLiteral(value) => SString(value)
@@ -65,10 +68,11 @@ object Evaluator {
       }
       case Value("define")::xs => xs match {
         case Value(sym)::expr::Nil => Define(Symbol(sym), compile(expr))
-        case SList(Value(sym)::params)::sExpr =>
+        case (sym@SUnQuote(_))::expr::Nil => Define(compile(sym), compile(expr))
+        case SList(sym::params)::sExpr =>
           params match {
             case list: List[Value] =>
-              Define(Symbol(sym), LambdaExpression(compile(sExpr.last),
+              Define(compile(sym), LambdaExpression(compile(sExpr.last),
                 list.map(compile), sExpr.init.map(compile)))
             case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
           }
@@ -145,6 +149,7 @@ object Evaluator {
       case Symbol(sym) => env.getValueOption(sym).map(pureValue).getOrElse(EvalFailure(s"Symbol $sym not found."))
       case bool: SBool => pureValue(bool)
       case NilObj => pureValue(NilObj)
+      case sf: SFloat => pureValue(sf)
       case p: PolymorphicExpression => pureValue(p)
       case o@WrappedScalaObject(_) => pureValue(o)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
@@ -276,9 +281,10 @@ object Evaluator {
             (_, env) => eval(body, env)
           } match {
             case EvalSuccess(result, _) => Right(result)
-            case EvalFailure(msg) => Left(msg)
+            case f@EvalFailure(_) =>
+              Left(f.appendTrace(s"at ${procedure.code}").message)
           }
-        } else Left(s"Match Error, $arguments does not match $boundVariable.")
+        } else Left(s"Match Error, ${genHead(arguments)} does not match ${genHead(boundVariable)}.")
       }
 
       case PrimitiveFunction(fn) =>
@@ -360,9 +366,10 @@ object Evaluator {
     })
 
     val result = evalResult match {
-      case Some(EvalFailure(msg)) => Failure("Macro Expansion Error", msg)
+      case Some(f@EvalFailure(_)) => Failure("Macro Expansion Error", f.appendTrace(s"in expanding: ${m.code}").message)
       case Some(EvalSuccess(exp, _)) => exp
-      case None => Failure("Macro Expansion Error", s"Error expanding $m.")
+      case None =>
+        Failure("Macro Expansion Error", s"Error expanding ${m.code}.")
     }
 //      println(s"$m expanded to $result")
     result
@@ -374,7 +381,10 @@ object Evaluator {
                     inEnv: Environment = EmptyEnv): Option[Map[String, Expression]] =
     pattern match {
       case Nil => if(arguments.isEmpty) Some(matchResult.toMap) else None
-      case Symbol("_")::xs => matchArgument(xs, arguments.tail, matchResult, inEnv)
+      case Symbol("_")::xs => arguments match {
+        case _::ys => matchArgument(xs, ys, matchResult, inEnv)
+        case Nil => None
+      }
       case Symbol(sym)::xs => arguments match {
         case exp::ys =>
           if(matchResult.contains(sym)) {
@@ -386,24 +396,34 @@ object Evaluator {
           }
         case _ => None
       }
-      case Apply(Symbol("?"), arg::Nil)::Nil => arguments match {
+      case Apply(Symbol("seq"), args)::xs if arguments.headOption.exists(_.isInstanceOf[WrappedScalaObject[Seq[Any]]]) =>
+        arguments match {
+          case WrappedScalaObject(s: Seq[Expression])::ys =>
+            for {
+              listMatch <- matchArgument(args, s.toList, matchResult, inEnv)
+              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
+            } yield listMatch ++ restMatch
+          case _ => None
+        }
+      case Apply(Symbol(ctrl@("?" | "when" | "when?")), arg::Nil)::Nil => arguments match {
         case Nil => eval(arg, MutableEnv(matchResult, inEnv)) match {
           case EvalSuccess(SBool(b), _) => if (b) Some(matchResult.toMap) else None
           case EvalSuccess(_, _) => throw new IllegalArgumentException("Matching guard must returns a boolean")
-          case EvalFailure(msg) => throw new ArithmeticException(s"Error in pattern matching: $msg")
+          case EvalFailure(msg) if ctrl != "when?" => throw new ArithmeticException(s"Error in pattern matching: $msg")
+          case _ => None // when? means treat exceptions as none.
         }
         case _ => None
       }
-      case Apply(Symbol("..."), Symbol(sym)::Nil)::Nil => sym match {
-        case "_" => matchArgument(Nil, Nil, matchResult, inEnv)
+      case Apply(Symbol("..."), Symbol(sym)::Nil)::xs => sym match {
+        case "_" => matchArgument(xs, Nil, matchResult, inEnv)
         case symbol if matchResult.contains(symbol) =>
           matchResult(symbol) match {
-            case WrappedScalaObject(`arguments`) => matchArgument(Nil, Nil, matchResult, inEnv)
+            case WrappedScalaObject(`arguments`) => matchArgument(xs, Nil, matchResult, inEnv)
             case _ => None
           }
         case _ =>
           matchResult.update(sym, WrappedScalaObject(arguments.toIndexedSeq))
-          matchArgument(Nil, Nil, matchResult, inEnv)
+          matchArgument(xs, Nil, matchResult, inEnv)
       }
       case Apply(head, args)::xs => arguments match {
         case Apply(yHead, yArgs)::ys => for {

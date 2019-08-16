@@ -26,13 +26,14 @@ object LispExp {
     override def toString: String = value
   }
 
-  case class SInteger(value: Int) extends Expression {
-    override def toString: String = value.toString
+  class SNumber[T](number: T)(implicit evidence: scala.math.Numeric[T]) extends Expression {
+    override def toString: String = number.toString
+    def ops = evidence
   }
 
-  case class SFloat(value: Double) extends Expression {
-    override def toString: String = value.toString
-  }
+  case class SInteger(value: Int) extends SNumber(value)
+
+  case class SFloat(value: Double) extends SNumber(value)
 
   case class SBool(value: Boolean) extends Expression {
     override def toString: String = value.toString
@@ -71,6 +72,9 @@ object LispExp {
   case class LambdaExpression(body: Expression, boundVariable: List[Expression],
                               nestedExpressions: List[Expression] = List.empty) extends Expression {
     override def valid: Boolean = body.valid
+
+    override def code: String =
+      s"(lambda ${genHead(boundVariable)} ${nestedExpressions.appended(body).map(_.code).mkString(" ")})"
   }
 
   case class Closure(boundVariable: List[Expression],
@@ -88,6 +92,8 @@ object LispExp {
              capturedEnv: Environments.Environment = capturedEnv,
              sideEffects: List[Expression] = sideEffects): Closure =
       Closure(boundVariable, body, capturedEnv, sideEffects).withDocString(document)
+
+    override def code: String = LambdaExpression(body, boundVariable, sideEffects).code
   }
 
   case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {
@@ -104,7 +110,7 @@ object LispExp {
       if(args.isEmpty) s"(${head.code})" else s"(${head.code} ${args.map(_.code).mkString(" ")})"
   }
 
-  case class Define(symbol: Symbol, value: Expression) extends Expression {
+  case class Define(symbol: Expression, value: Expression) extends Expression {
     override def valid: Boolean = value.valid
 
     override def code: String = s"(define ${symbol.code} ${value.code})"
@@ -129,7 +135,8 @@ object LispExp {
   def genHead(ex: Seq[Expression]): String = {
     if (ex.isEmpty) "()"
     else ex.last match {
-      case Apply(Symbol("?"), xs::Nil) => s"${genHead(ex.init)} when ${xs.code}"
+      case Apply(Symbol("?" | "when"), xs::Nil) => s"${genHead(ex.init)} when ${xs.code}"
+      case Apply(Symbol("when?"), xs::Nil) => s"${genHead(ex.init)} when? ${xs.code}"
       case Apply(Symbol("..."), Symbol(x)::Nil) => genHead(ex.init appended Symbol(s"...$x"))
       case _ => s"(${ex.map(_.code).mkString(" ")})"
     }
@@ -141,6 +148,8 @@ object LispExp {
     override def valid: Boolean = paramsPattern.forall(_.valid) && body.valid && defines.forall(_.valid)
 
     override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
+
+    override def code: String = LambdaExpression(body, paramsPattern.toList, defines.toList).code
   }
 
   case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment)) extends Expression {

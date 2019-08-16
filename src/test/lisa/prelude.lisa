@@ -34,29 +34,65 @@
     "Y combinator, nothing interesting."
     ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s))))))
 
-(define-macro (lazy e)
-    "Construce a lazy value, note that it works the same as e => (lambda () e) so do not use it to shadow functions in the same scope."
-    '(lambda () ~e))
+(define (cons x y)
+    "Construct a pair, use car to fetch the first and cdr to fetch the second."
+    (define (pair 0) x)
+    (define (pair 1) y)
+    (define (pair 'pair? ) true)
+    pair)
 
-(define (force e) (e))
+(define (pair? pair (when? (pair 'pair? ))) true)
+(define (pair? _) false)
 
-(define (sort-by ls _ (? (= (.length ls) 0))) ls)
-(define (sort-by ls by) ; Can only sort a seq
-    "sort :: (seq[e], e => bool) => seq[e] \n Sort <ls> by <by>"
-    (define head (.head ls))
-    (define tail (.tail ls))
+(define (car p (when (pair? p))) (p 0))
+(define (cdr p (when (pair? p))) (p 1))
+
+(define-macro (delay e)
+    "Construct a lazy value (named promise)."
+    '(block
+        (define (promise 'promise? ) true)
+        (define (promise) ~e)
+        promise))
+(define (promise? p (when? (p 'promise? ))) "Returns true if it is a promise" true)
+(define (promise? _) "Otherwise returns false" false)
+(define (force e (when (promise? e))) "Force execute a promise" (e))
+
+(define-macro (lazy-cons x y)
+    '(cons ~x (delay ~y)))
+
+(define lazy-car car)
+(define (lazy-cdr p) (force (cdr p)))
+
+(define (sort (seq) _) (seq))
+(define (sort (seq head (... tail)) by)
     (define left (filter tail (lambda (x) (by x head))))
     (define right (filter tail (lambda (x) (not (by x head)))))
     (.appendedAll 
-        (.appended (sort-by left by) head) 
-        (sort-by right by)))
+        (.appended (sort left by) head) 
+        (sort right by)))
+(define (sort ls) (sort ls <))
 
-(define (max a b (? (< a b)))
+(define (max-2 a b (? (< a b)))
     "a < b, max(a, b) = b"
     b)
-(define (max a _)
+(define (max-2 a _)
     "Otherwise should be a"
     a)
 
-(define (min a b (? < a b)) a)
-(define (min _ b) b)
+(define (max (seq)) (panic! "Max on an empty list."))
+(define (max (seq x)) x)
+(define (max (seq h (... t)))
+    (max-2 h (max t)))
+(define (max (... xs)) (max xs))
+
+(define (min-2 a b (? < a b)) a)
+(define (min-2 _ b) b)
+(define (min (seq)) (panic! "Min on an empty list."))
+(define (min (seq x)) x)
+(define (min (seq h (... t)))
+    (min-2 h (min t)))
+(define (min (... t)) (min t))
+
+(define-macro (shadow function)
+    "Shadow a defined function to (), in order to redefine a funtcion rather than create a polymorphic function."
+    '(define ~function ()))

@@ -94,8 +94,8 @@ object Preludes extends LispExp.Implicits {
         else (Failure("Import Error", s"Environment $sym not found"), env)
       case s => (Failure("Import Error", s"Cannot import ${s._1}"), s._2)
     },
-    "list" -> PrimitiveFunction (xs => WrappedScalaObject(xs.map(toScalaNative))),
-    "seq" -> PrimitiveFunction (xs => WrappedScalaObject(xs.map(toScalaNative).toIndexedSeq)),
+    "list" -> PrimitiveFunction (xs => WrappedScalaObject(xs)),
+    "seq" -> PrimitiveFunction (xs => WrappedScalaObject(xs.toIndexedSeq)),
     "wrap-scala" -> PrimitiveFunction {
       x => WrappedScalaObject(toScalaNative(x(0)))
     },
@@ -142,7 +142,7 @@ object Preludes extends LispExp.Implicits {
     },
     "iter" -> PrimitiveFunction {
       case x::Nil => x match {
-        case SString(s) => WrappedScalaObject(s split "")
+        case SString(s) => WrappedScalaObject(s.split("").toSeq)
         case WrappedScalaObject(xs: Iterable[Any]) => WrappedScalaObject(xs)
         case _ => Failure("iter Error", s"$x is not iterable.")
       }
@@ -214,7 +214,10 @@ object Preludes extends LispExp.Implicits {
         val docString = exp.docString
         if(docString.nonEmpty) docString else exp.code
       case _ => Failure("Help error", "You can only get help from one object.")
-    }.withDocString("help :: Any => String\nGet document string from a object.")
+    }.withDocString("help :: Any => String\nGet document string from a object."),
+    "panic!" -> PrimitiveFunction {
+      exp => throw new RuntimeException(exp.mkString(" "))
+    }
   ))
 
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")

@@ -12,6 +12,8 @@ import scala.util.control.NonFatal
 object Main {
   import SimpleLispTree._
   import SExpressionParser._
+  def printlnErr[S](s: S): Unit = System.err.println(s)
+
   @annotation.tailrec def prompt(env: Environments.Environment): Unit = {
     val s = scala.io.StdIn.readLine("lisa>")
     if (s.nonEmpty) {
@@ -24,24 +26,24 @@ object Main {
           case _ =>
             Try(Evaluator.eval(Evaluator.compile(expression), env))
               .recover{
-                case NonFatal(ex) => Evaluator.EvalFailure(ex.getLocalizedMessage)
+                case NonFatal(ex) => Evaluator.EvalFailure(ex.toString)
               }.get match {
               case Evaluator.EvalSuccess(result, newEnv) =>
                 result match {
                   case LispExp.Failure(typ, msg) =>
-                    println(s"$typ: $msg")
+                    printlnErr(s"$typ: $msg")
                   case NilObj =>
                   case s => println(s)
                 }
                 prompt(newEnv)
               case f =>
-                println(s"Runtime Error: $f")
+                printlnErr(s"Runtime Error: $f")
                 prompt(env)
             }
         }
         case f =>
-          println("Parse Error")
-          println(f)
+          printlnErr("Parse Error")
+          printlnErr(f)
           prompt(env)
       }
     } else prompt(env)
@@ -57,14 +59,15 @@ object Main {
             Evaluator.eval(Evaluator.compile(sExpr), innerEnv) match {
               case Evaluator.EvalSuccess(_, nenv) => doSeq(next, nenv)
               case other =>
-                println(other)
+                printlnErr(other)
+                printlnErr(s"\tsource: $sExpr")
                 innerEnv
             }
           case Failure(msg, next) =>
-            if(!next.atEnd) println(s"Error: $msg")
+            if(!next.atEnd) printlnErr(s"Error: $msg")
             innerEnv
           case Error(msg, _) =>
-            println(s"Fatal: $msg")
+            printlnErr(s"Fatal: $msg")
             innerEnv
         } else innerEnv
     }
@@ -81,13 +84,13 @@ object Main {
           case Success(sExpr, next) =>
             Evaluator.compile(sExpr) match {
               case LispExp.Failure(tp, message) =>
-                println(s"Compile Error: $tp", message)
+                printlnErr(s"Compile Error: $tp", message)
                 Nil
               case exp => compileChain(next, exp::acc)
             }
 
           case Failure(msg, _) =>
-            println(s"Fatal: $msg")
+            printlnErr(s"Fatal: $msg")
             Nil
         }
       else acc.reverse
@@ -142,7 +145,7 @@ object Main {
           compileFile(fileName, toFile)
         case Array("execute", fileName) =>
           val result = executeCompiled(fileName, preludeEnv)
-          if(!result.isSuccess) println(s"Error: $result")
+          if(!result.isSuccess) printlnErr(s"Error: $result")
       }
 
     }

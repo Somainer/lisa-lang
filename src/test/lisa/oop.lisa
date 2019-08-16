@@ -23,5 +23,5 @@
 (println! (p 'show ))
 (p 'age 25)
 (println! (p 'show ))
-(println! (p 'name "MUR"))
+(println! (p 'name "MUR")) ; Should fail here
 (println! (p 'show ))
