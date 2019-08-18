@@ -14,7 +14,7 @@
         (if (truthy? __a) ~b __a)))
 
 (define (< a b)
-    "Return true if a < b. This funtion will invoke native java method."
+    "Return true if a < b. This function will invoke native java method."
     (define java-cmp (.compareTo a b))
     (cond ((= java-cmp -1) true)
           ((= java-cmp 0) false)
@@ -94,5 +94,27 @@
 (define (min (... t)) (min t))
 
 (define-macro (shadow function)
-    "Shadow a defined function to (), in order to redefine a funtcion rather than create a polymorphic function."
+    "Shadow a defined function to (), in order to redefine a function rather than create a polymorphic function."
     '(define ~function ()))
+
+(define (constant x)
+    "constant :: a, b => a -> b -> a"
+    (lambda (_) x))
+
+(define (compose f g)
+    (lambda (x) (g (f x))))
+
+(define (curried fn (? (= (length fn) 2)))
+    (lambda (x)
+        (lambda (y) (fn x y))))
+
+(define (bool? f (when? ((constant true) (not f)))) true)
+(define (bool? _) false)
+
+(define (number? n (when? ((constant true) (+ 0 n)))) true)
+(define (number? _) false)
+
+(define (string? n (when? ((constant true) (+ "" n)))) true)
+(define (string? _) false)
+
+(define falsy? (compose truthy? not))
