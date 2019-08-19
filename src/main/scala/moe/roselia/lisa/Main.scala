@@ -2,7 +2,7 @@ package moe.roselia.lisa
 
 import java.io.{FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutputStream}
 
-import moe.roselia.lisa.Environments.CombineEnv
+import moe.roselia.lisa.Environments.{CombineEnv, NameSpacedEnv}
 import moe.roselia.lisa.Evaluator.EvalResult
 import moe.roselia.lisa.LispExp.{NilObj, SString, SideEffectFunction, WrappedScalaObject}
 
@@ -49,7 +49,6 @@ object Main {
     } else prompt(env)
   }
   def executeFile(fileName: String, env: Environments.Environment): Environments.Environment = {
-    val reader = parse(success(NilObj), scala.io.Source.fromFile(fileName).reader()).next
     @scala.annotation.tailrec
     def doSeq(source: scala.util.parsing.input.Reader[Char],
               innerEnv: Environments.Environment): Environments.Environment = {
@@ -71,11 +70,15 @@ object Main {
             innerEnv
         } else innerEnv
     }
-    doSeq(reader, env.newFrame).newFrame
+    scala.util.Using(scala.io.Source.fromFile(fileName)) {source => {
+      val reader = parse(success(NilObj), source.reader()).next
+      doSeq(reader, env.newFrame).newFrame
+    }}.get
   }
 
   def compileFile(fromFile: String, toFile: String): Unit = {
-    val reader = parse(success(NilObj), scala.io.Source.fromFile(fromFile).reader()).next
+    val fromSource = scala.io.Source.fromFile(fromFile)
+    val reader = parse(success(NilObj), fromSource.reader()).next
     @annotation.tailrec
     def compileChain(source: scala.util.parsing.input.Reader[Char],
                      acc: List[LispExp.Expression] = Nil): List[LispExp.Expression] = {
@@ -96,10 +99,12 @@ object Main {
       else acc.reverse
     }
     val compiled = compileChain(reader)
+    fromSource.close()
     if(compiled.nonEmpty) {
       val file = new FileOutputStream(toFile)
       val oos = new ObjectOutputStream(file)
       oos.writeObject(LispExp.Apply(LispExp.Symbol("group!"), compiled))
+      file.close()
     }
   }
 
@@ -107,12 +112,17 @@ object Main {
     val fis = new FileInputStream(fromFile)
     val ois = new ObjectInputStream(fis)
     val expr = ois.readObject().asInstanceOf[LispExp.Expression]
+    fis.close()
     Evaluator.eval(expr, env)
   }
 
   def main(args: Array[String]): Unit = {
     val preludeEnv =
-      CombineEnv(Seq(Reflect.DotAccessor.accessEnv, Preludes.preludeEnvironment))
+      CombineEnv(
+        Seq(
+          Reflect.DotAccessor.accessEnv,
+          Preludes.preludeEnvironment,
+          NameSpacedEnv("box", Reflect.ToolboxDotAccessor.accessEnv, "")))
         .withValue("load!", SideEffectFunction {
           case (SString(f)::Nil, env) =>
             (NilObj, executeFile(f, env.withValue("__PATH__", SString(f))))

@@ -104,10 +104,6 @@
 (define (compose f g)
     (lambda (x) (g (f x))))
 
-(define (curried fn (? (= (length fn) 2)))
-    (lambda (x)
-        (lambda (y) (fn x y))))
-
 (define (bool? f (when? ((constant true) (not f)))) true)
 (define (bool? _) false)
 
@@ -117,4 +113,47 @@
 (define (string? n (when? ((constant true) (+ "" n)))) true)
 (define (string? _) false)
 
+(define (closure? c (when? (.startsWith (.toString (wrap c)) "#Closure"))) true)
+(define (closure? c (when? (.startsWith (.toString (wrap c)) "#PolymorphClosure"))) true)
+(define (closure? _) false)
+
+(define (macro? m (when? (.startsWith (.toString (wrap m)) "#Macro"))) true)
+(define (macro? m (when? (.startsWith (.toString (wrap m)) "#PolymorphMacro"))) true)
+(define (macro? _) false)
+
+(define (polymorphic? m (when? (.startsWith (.toString (wrap m)) "#Polymorph"))) true)
+(define (polymorphic? _) false)
+
+
+(define (curried-2 fn) ; For procedures with no arity.
+    (lambda (x)
+        (lambda (y) (fn x y))))
+
+(define (curried fn (when? ((constant true) (length fn))))
+    (define arity (length fn))
+    (define (curried-impl f arg (when (>= (length arg) arity)))
+        (apply f arg))
+    (define (curried-impl f arg)
+        (lambda ((... args))
+            (curried-impl f (.appendedAll arg args))))
+    (define (func (... args)) (curried-impl fn args))
+    (set-doc func (+ "Curried: " (get-doc fn)))) ; Ensure curried returns a closure when encounters 0-arity functions.
+
+(define (flip-closure fn)
+    "filp-closure :: (a -> b -> c) -> b -> a -> c"
+    (lambda (x y) (fn y x)))
+
 (define falsy? (compose truthy? not))
+
+(define-macro (unless pred alt cons)
+    '(if ~pred ~cons ~alt))
+
+(define (|> x (... fs))
+    (define (apply-seq a (seq)) a)
+    (define (apply-seq a (seq h (... t)))
+        (apply-seq (h a) t))
+    (apply-seq x fs))
+
+(define limit-arity (curried limit-arity))
+(define (copied-docstring f1 f2)
+    (set-doc f1 (get-doc f2)))

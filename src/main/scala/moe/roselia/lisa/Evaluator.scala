@@ -11,7 +11,7 @@ object Evaluator {
     def flatMap(fn: Expression => EvalResult): EvalResult
     def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult
     def isSuccess: Boolean
-    def appendTrace(msg: String): EvalResult
+    def appendTrace(msg: => String): EvalResult
   }
   case class EvalSuccess(expression: Expression, env: Environment) extends EvalResult {
     override def flatMap(fn: Expression => EvalResult): EvalResult = fn(expression)
@@ -21,14 +21,14 @@ object Evaluator {
 
     override def isSuccess: Boolean = true
 
-    override def appendTrace(msg: String): EvalSuccess = this
+    override def appendTrace(msg: => String): EvalSuccess = this
   }
   case class EvalFailure(message: String) extends EvalResult {
     override def flatMap(fn: Expression => EvalResult): EvalResult = this
 
     override def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult = this
 
-    override def appendTrace(msg: String): EvalFailure = copy(s"$message\n\t$msg")
+    override def appendTrace(msg: => String): EvalFailure = copy(s"$message\n\t$msg")
 
     override def isSuccess: Boolean = false
 
@@ -398,9 +398,9 @@ object Evaluator {
       }
       case Apply(Symbol("seq"), args)::xs if arguments.headOption.exists(_.isInstanceOf[WrappedScalaObject[Seq[Any]]]) =>
         arguments match {
-          case WrappedScalaObject(s: Seq[Expression])::ys =>
+          case WrappedScalaObject(s: Seq[Any])::ys =>
             for {
-              listMatch <- matchArgument(args, s.toList, matchResult, inEnv)
+              listMatch <- matchArgument(args, s.map(Reflect.ScalaBridge.fromScalaNative).toList, matchResult, inEnv)
               restMatch <- matchArgument(xs, ys, matchResult, inEnv)
             } yield listMatch ++ restMatch
           case _ => None

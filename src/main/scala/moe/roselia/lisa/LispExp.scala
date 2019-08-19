@@ -2,6 +2,8 @@ package moe.roselia.lisa
 
 import Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv}
 
+import scala.annotation.tailrec
+
 object LispExp {
 
   trait DocumentAble {
@@ -60,10 +62,9 @@ object LispExp {
 
   trait Procedure extends Expression
 
-  case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure {
+  case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure with DeclareArityAfter {
     override def toString: String = s"#[Native Code]($function)"
   }
-
   case class SideEffectFunction(function: (List[Expression], Environment) => (Expression, Environment))
     extends Procedure {
     override def toString: String = "#[Native Code!]"
@@ -80,7 +81,7 @@ object LispExp {
   case class Closure(boundVariable: List[Expression],
                      body: Expression,
                      capturedEnv: Environments.Environment,
-                     sideEffects: List[Expression] = List.empty) extends Procedure {
+                     sideEffects: List[Expression] = List.empty) extends Procedure with MayHaveArity {
     override def valid: Boolean = body.valid
 
     override def toString: String = s"#Closure[${genHead(boundVariable)}]"
@@ -94,6 +95,8 @@ object LispExp {
       Closure(boundVariable, body, capturedEnv, sideEffects).withDocString(document)
 
     override def code: String = LambdaExpression(body, boundVariable, sideEffects).code
+
+    override lazy val arity: Option[Int] = getArityOfPattern(boundVariable)
   }
 
   case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {
@@ -142,17 +145,42 @@ object LispExp {
     }
   }
 
+  @tailrec
+  def getArityOfPattern(pat: List[Expression], accumulator: Int = 0): Option[Int] = pat match {
+    case Nil => Some(accumulator)
+    case Apply(Symbol("..."), _)::Nil => None // Can not count arity on va-args.
+    case Apply(Symbol("?" | "when?" | "when"), _)::Nil => Some(accumulator) // Match guards
+    case _::xs => getArityOfPattern(xs, accumulator + 1)
+  }
+
+  trait MayHaveArity {
+    def arity: Option[Int]
+  }
+
+  trait DeclareArityAfter extends MayHaveArity {
+    private [this] var _arity: Option[Int] = None
+
+    override def arity: Option[Int] = _arity
+
+    def withArity(n: Int): this.type = {
+      _arity = Some(n)
+      this
+    }
+  }
+
   case class SimpleMacro(paramsPattern: Seq[Expression],
                          body: Expression,
-                         defines: Seq[Expression]) extends Expression {
+                         defines: Seq[Expression]) extends Expression with MayHaveArity {
     override def valid: Boolean = paramsPattern.forall(_.valid) && body.valid && defines.forall(_.valid)
 
     override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
 
     override def code: String = LambdaExpression(body, paramsPattern.toList, defines.toList).code
+
+    override lazy val arity: Option[Int] = getArityOfPattern(paramsPattern.toList)
   }
 
-  case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment)) extends Expression {
+  case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment)) extends Expression with DeclareArityAfter {
     override def toString: String = s"#Macro![Native Code]"
   }
 
@@ -162,7 +190,7 @@ object LispExp {
 
   case class PolymorphicExpression(name: String,
                                    variants: Seq[(Expression, Seq[Expression])],
-                                   innerEnvironment: MutableEnv, byName: Boolean=false) extends Expression {
+                                   innerEnvironment: MutableEnv, byName: Boolean=false) extends Expression with MayHaveArity {
     def findMatch(args: Seq[Expression],
                   inEnv: Environment = EmptyEnv): Option[(Expression, Map[String, Expression])] = {
       @annotation.tailrec
@@ -208,8 +236,16 @@ object LispExp {
       }
     }
 
+    def polymorphicType: String =
+      if (variants.length == 1) ""
+      else if (byName) "Macro" else "Closure"
+
     override def toString: String =
-      s"#Polymorph(${variants.length} overloads)(${variants.map(_._2).mkString("|")})"
+      s"#Polymorph$polymorphicType(${variants.length} overloads)(${variants.map(_._2).mkString("|")})"
+
+    override lazy val arity: Option[Int] =
+      if (variants.length == 1) getArityOfPattern(variants.head._2.toList)
+      else None
   }
 
   object PolymorphicExpression {
