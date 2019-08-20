@@ -18,14 +18,24 @@ object DotAccessor {
     mirror.reflect(obj)
   }
 
+  @throws[ScalaReflectionException]("If no such field or 0-arity method")
   def accessDot[A : ClassTag](acc: String)(obj: A) = {
     val classObj = getClassObject(obj)
     val decl = classObj.symbol.toType.decl(TermName(acc))
-    if(decl.isMethod) {
-      val meth = classObj.reflectMethod(decl.asMethod)
-      meth.apply()
-    }
-    else classObj.reflectField(decl.asTerm.accessed.asTerm).get
+    if(decl.isTerm) {
+      decl.asTerm.alternatives
+        .filter(_.isMethod)
+        .map(_.asMethod)
+        .find(_.paramLists match {
+          case Nil => true
+          case Nil::Nil => true
+          case _ => false
+        })
+        .map(_.asMethod)
+        .map(classObj.reflectMethod)
+        .map(_.apply())
+        .getOrElse(classObj.reflectField(decl.asTerm.accessed.asTerm).get)
+    } else throw ScalaReflectionException(s"Field or 0-arity method $acc for $obj not found")
   }
 
   def checkTypeFits(sym: List[Symbol])(args: Seq[Any]): Boolean = {
@@ -54,9 +64,11 @@ object DotAccessor {
     }
   }
 
+  @throws[ScalaReflectionException]("When no underlying method")
   def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
     val classObj = getClassObject(obj)
     val decl = classObj.symbol.toType.decl(TermName(acc))
+    if(!decl.isTerm) throw ScalaReflectionException(s"No such method $acc in $obj to apply")
     val overloads = decl.asTerm.alternatives
       .filter(_.isMethod)
       .map(_.asMethod)
@@ -73,7 +85,7 @@ object DotAccessor {
 //    println(s"$acc has ${overloads.length} overloads and received ${args.length} args")
 //    println(classObj.symbol)
 //    println(overloads)
-    if (overloads.isEmpty) throw new NoSuchMethodException(s"No such method $acc in $obj to apply")
+    if (overloads.isEmpty) throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
     classObj.reflectMethod(overloads.head).apply(args: _*)
   }
 

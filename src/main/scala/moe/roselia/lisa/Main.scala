@@ -48,6 +48,8 @@ object Main {
       }
     } else prompt(env)
   }
+
+  @throws[java.io.FileNotFoundException]()
   def executeFile(fileName: String, env: Environments.Environment): Environments.Environment = {
     @scala.annotation.tailrec
     def doSeq(source: scala.util.parsing.input.Reader[Char],
@@ -76,6 +78,7 @@ object Main {
     }}.get
   }
 
+  @throws[java.io.FileNotFoundException]("on wrong path")
   def compileFile(fromFile: String, toFile: String): Unit = {
     val fromSource = scala.io.Source.fromFile(fromFile)
     val reader = parse(success(NilObj), fromSource.reader()).next
@@ -108,6 +111,10 @@ object Main {
     }
   }
 
+  @throws[java.io.FileNotFoundException]("When wrong from file")
+  @throws[java.io.IOException]()
+  @throws[ClassCastException]()
+  @throws[java.io.StreamCorruptedException]()
   def executeCompiled(fromFile: String, env: Environments.Environment): EvalResult = {
     val fis = new FileInputStream(fromFile)
     val ois = new ObjectInputStream(fis)

@@ -157,3 +157,11 @@
 (define limit-arity (curried limit-arity))
 (define (copied-docstring f1 f2)
     (set-doc f1 (get-doc f2)))
+
+(define (polymorph-lambda (... fs))
+    (define-mutable! fs)
+    (while (> (length fs) 0)
+        (group!
+            (define self (.head fs))
+            (set! fs (.tail fs))))
+    self)

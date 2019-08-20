@@ -315,6 +315,10 @@ object Evaluator {
       def liftOption[T](op: Seq[Option[T]]): Option[Seq[T]] =
         if(op.forall(_.isDefined)) Some(op.map(_.get))
         else None
+      def flattenSeq(ex: Seq[Expression]) = ex flatMap {
+        case WrappedScalaObject(seq: Seq[Expression]) => seq
+        case e => Seq(e)
+      }
       expression match {
         case Quote(s) => u(s).map(Quote)
         case UnQuote(Symbol(sym)) => env.getValueOption(sym)
@@ -323,13 +327,13 @@ object Evaluator {
           for {
             h <- u(head)
             x <- liftOption(args.map(u))
-          } yield Apply(h, x.toList)
+          } yield Apply(h, flattenSeq(x).toList)
         case LambdaExpression(body, boundVariable, nestedExpressions) =>
           for {
             b <- u(body)
             bv <- liftOption(boundVariable.map(u))
             ne <- liftOption(nestedExpressions.map(u))
-          } yield LambdaExpression(b, bv.toList, ne.toList)
+          } yield LambdaExpression(b, flattenSeq(bv).toList, flattenSeq(ne).toList)
 
         case SIfElse(predicate, consequence, alternative) =>
           for {

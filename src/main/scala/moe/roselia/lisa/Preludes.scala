@@ -120,6 +120,9 @@ object Preludes extends LispExp.Implicits {
             obj.asInstanceOf[{def apply(a: Any): Any}].apply(x)))
         case _ => Failure("map Error", s"Cannot map $fn on $ls")
       }
+      case WrappedScalaObject(els)::fn::Nil => fromScalaNative(els.asInstanceOf[{
+        def map(a: Any): Any
+      }].map(toScalaNative(fn)))
       case _ => Failure("Arity Error", "map only accepts 2 arguments, a seq-like and a function-like.")
     }.withArity(2),
     "filter" -> PrimitiveFunction {
@@ -249,7 +252,8 @@ object Preludes extends LispExp.Implicits {
     if (engine == null) throw new NullPointerException("The engine is not found")
     val environment = new SpecialEnv {
       override def getValueOption(key: String): Option[Expression] =
-        Try(engine.getBindings(javax.script.ScriptContext.ENGINE_SCOPE).get(key)).filter(x => x != null).map(Reflect.ScalaBridge.fromScalaNative).toOption
+        Try(engine.getContext.getAttribute(key, javax.script.ScriptContext.ENGINE_SCOPE))
+          .filter(x => x != null).map(Reflect.ScalaBridge.fromScalaNative).toOption
     }
     (EmptyEnv.withValues(Seq(
       prefix -> PrimitiveFunction {
@@ -259,11 +263,8 @@ object Preludes extends LispExp.Implicits {
       },
       s"set-$prefix!" -> PrimitiveMacro {
         case (Symbol(sym)::exp::Nil, e) =>
-          engine.put(sym, toScalaNative(exp))
+          engine.getContext.setAttribute(sym, toScalaNative(exp), javax.script.ScriptContext.ENGINE_SCOPE)
           (NilObj, e)
-        case (SString(sym)::exp::Nil, e) =>
-          engine.put(sym, toScalaNative(exp))
-          NilObj -> e
       },
       s"get-$prefix" -> PrimitiveMacro {
         case (Symbol(sym)::Nil, e) =>
