@@ -12,40 +12,68 @@ import scala.util.control.NonFatal
 object Main {
   import SimpleLispTree._
   import SExpressionParser._
-  def printlnErr[S](s: S): Unit = System.err.println(s)
+  def printlnErr[S](s: S): Unit = Console.err.println(s)
 
-  @annotation.tailrec def prompt(env: Environments.Environment): Unit = {
-    val s = scala.io.StdIn.readLine("lisa>")
-    if (s.nonEmpty) {
+  @`inline` private def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
+    if (pairs < 0) pairs
+    else if (c == '(') pairs + 1
+    else if (c == ')') pairs - 1
+    else pairs
+  })
+  @`inline` private def needMoreInput(input: String) = {
+    indentLevel(input) > 0
+  }
+
+  private val robot = new java.awt.Robot()
+  private def sendKey(code: Int): Unit = {
+    robot.keyPress(code)
+    robot.keyRelease(code)
+  }
+
+  private def sendSpace(spaceNum: Int): Unit =
+    1 to spaceNum foreach (_ => sendKey(java.awt.event.KeyEvent.VK_SPACE))
+
+  @annotation.tailrec def prompt(env: Environments.Environment, lastInput: String = ""): Unit = {
+    val lastIndentLevel = indentLevel(lastInput)
+//    val tabs = if (lastIndentLevel > 0) "\t".repeat(lastIndentLevel) else ""
+    if (lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
+    val s = scala.io.StdIn
+      .readLine(if(lastInput.isEmpty) "lisa>" else s"....>")
+    val concatInput = s"${lastInput}\n$s"
+    if (concatInput.nonEmpty) {
       //      println(s"Input: $s")
-      val exp = parseAll(sExpression, s)
-      exp match {
-        case Success(expression, _) => expression match {
-          case SList(List(Value("quit" | "exit"))) =>
-            println("Good bye")
-          case _ =>
-            Try(Evaluator.eval(Evaluator.compile(expression), env))
-              .recover{
-                case NonFatal(ex) => Evaluator.EvalFailure(ex.toString)
-              }.get match {
-              case Evaluator.EvalSuccess(result, newEnv) =>
-                result match {
-                  case LispExp.Failure(typ, msg) =>
-                    printlnErr(s"$typ: $msg")
-                  case NilObj =>
-                  case s => println(s)
-                }
-                prompt(newEnv)
-              case f =>
-                printlnErr(s"Runtime Error: $f")
-                prompt(env)
-            }
+      if (!concatInput.replace(" ", "").endsWith("\n\n") && needMoreInput(concatInput)) prompt(env, concatInput)
+      else {
+        val exp = parseAll(sExpression, concatInput)
+        exp match {
+          case Success(expression, _) => expression match {
+            case SList(List(Value("quit" | "exit"))) =>
+              println("Good bye")
+            case _ =>
+              Try(Evaluator.eval(Evaluator.compile(expression), env))
+                .recover{
+                  case NonFatal(ex) => Evaluator.EvalFailure(ex.toString)
+                }.get match {
+                case Evaluator.EvalSuccess(result, newEnv) =>
+                  result match {
+                    case LispExp.Failure(typ, msg) =>
+                      printlnErr(s"$typ: $msg")
+                    case NilObj =>
+                    case s => println(s)
+                  }
+                  prompt(newEnv)
+                case f =>
+                  printlnErr(s"Runtime Error: $f")
+                  prompt(env)
+              }
+          }
+          case f =>
+            printlnErr("Parse Error")
+            printlnErr(f)
+            prompt(env)
         }
-        case f =>
-          printlnErr("Parse Error")
-          printlnErr(f)
-          prompt(env)
       }
+
     } else prompt(env)
   }
 
@@ -163,6 +191,7 @@ object Main {
         case Array("execute", fileName) =>
           val result = executeCompiled(fileName, preludeEnv)
           if(!result.isSuccess) printlnErr(s"Error: $result")
+        case _ => printlnErr("I could not understand your arguments.")
       }
 
     }

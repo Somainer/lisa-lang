@@ -24,17 +24,23 @@ object PackageAccessor {
     }
 
     override def getValueOption(key: String): Option[Expression] =
-      Try {toolBox.eval(toolBox.parse(key))}.orElse(Try{
-        ToolboxDotAccessor.accessDot(key)(obj)
-      }).map(fromScalaNative).orElse(Try[Expression] {
+      Try[Expression] {
         val clsObj = toolBox.mirror.reflect(obj)
         val name = TermName(key)
         val decl = clsObj.symbol.toType.decl(name)
-        if (decl.isTerm) PrimitiveFunction {
-          xs => fromScalaNative(ToolboxDotAccessor.applyDot(key)(obj)(xs.map(toScalaNative): _*))
+        if (decl.isTerm) {
+          val nilArityMethod = decl.asTerm.alternatives
+            .filter(_.isMethod)
+            .map(_.asMethod)
+            .find(_.paramLists == Nil)
+            .map(clsObj.reflectMethod)
+          if (nilArityMethod.isDefined) nilArityMethod.map(_.apply()).map(fromScalaNative).get
+          else PrimitiveFunction {
+            xs => fromScalaNative(DotAccessor.applyDot(key)(obj)(xs.map(toScalaNative): _*))
+          }
         }
-        else throw new NoSuchMethodException(s"$name is not a method")
-      }).toOption
+        else throw ScalaReflectionException(s"$name is not a method")
+      }.toOption
   }
 
 

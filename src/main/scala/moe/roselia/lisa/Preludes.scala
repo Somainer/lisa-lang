@@ -19,7 +19,12 @@ object Preludes extends LispExp.Implicits {
     engine
   }
 
-  private lazy val selectablePreludes = Map(
+  type DirtyPromise[T] = () => T
+  import scala.language.implicitConversions
+  implicit def wrapPromise[T](t: => T): DirtyPromise[T] = () => t
+  implicit def unwrapPromise[T](t: DirtyPromise[T]): T = t()
+
+  private lazy val selectablePreludes = Map[String, DirtyPromise[Environment]](
     "javascript" -> javaScriptPlugin,
     "javascript-cross" -> javaScriptEnv,
     "scala" -> scalaPlugin,

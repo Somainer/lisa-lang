@@ -124,6 +124,8 @@
 (define (polymorphic? m (when? (.startsWith (.toString (wrap m)) "#Polymorph"))) true)
 (define (polymorphic? _) false)
 
+(define (quoted? x (when? ((constant true) ~x))) true)
+(define (quoted? _) false)
 
 (define (curried-2 fn) ; For procedures with no arity.
     (lambda (x)
@@ -150,11 +152,13 @@
 
 (define (|> x (... fs))
     (define (apply-seq a (seq)) a)
+    (define (apply-seq a (seq h (... t)) (? (quoted? h)))
+        (apply-seq (a h) t))
     (define (apply-seq a (seq h (... t)))
         (apply-seq (h a) t))
     (apply-seq x fs))
 
-(define limit-arity (curried limit-arity))
+; (define limit-arity (curried limit-arity))
 (define (copied-docstring f1 f2)
     (set-doc f1 (get-doc f2)))
 
@@ -165,3 +169,26 @@
             (define self (.head fs))
             (set! fs (.tail fs))))
     self)
+
+(import-env! scala-root scala)
+(define (none 'option? ) true)
+(define (none 'map ) none)
+(define (none 'filter ) none)
+(define (none 'get-or-else x) x)
+(define (none 'or-else x) x)
+(define (none 'to-scala ) scala.None)
+(define (some x)
+    (define (some-impl 'option? ) true)
+    (define (some-impl 'map fn)
+        (some (fn x)))
+    (define (some-impl 'filter fn (? (fn x))) some-impl)
+    (define (some-impl 'filter _) none)
+    (define (some-impl 'get ) x)
+    (define (some-impl 'get-or-else _) x)
+    (define (some-impl 'or-else _) some-impl)
+    (define (some-impl 'to-scala) (scala.Some x))
+    some-impl)
+
+
+(define-macro (method-caller method (... args))
+    '(lambda (object) (object '~method ~args)))

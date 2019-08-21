@@ -47,6 +47,7 @@ object Evaluator {
   }
 
   def compile(tree: SimpleLispTree): Expression = tree match {
+    case PrecompiledSExpression(p) => p
     case SQuote(exp) => Quote(compile(exp))
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
