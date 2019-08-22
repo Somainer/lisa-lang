@@ -3,7 +3,18 @@ package moe.roselia.lisa
 object Environments {
   private val MutableMap = collection.mutable.Map
   private type MutableMap[K, V] = collection.mutable.Map[K, V]
-  sealed trait Environment {
+  sealed trait Identifiable {
+    var identify: String = ##.toString
+    def withIdentify(id: String): this.type = {
+      identify = id
+      this
+    }
+    @`inline` def =:=(that: Identifiable): Boolean = identify == that.identify
+    @`inline` def =:=(that: String): Boolean = identify == that
+    @`inline` def =/=(that: Identifiable): Boolean = ! =:=(that)
+    @`inline` def =/=(that: String): Boolean = ! =:=(that)
+  }
+  sealed trait Environment extends Identifiable {
     def has(key: String): Boolean = getValueOption(key).isDefined
     def getValueOption(key: String): Option[LispExp.Expression]
     def newFrame = Env(Map.empty, this)
@@ -13,6 +24,23 @@ object Environments {
     def directHas(key: String) = false
     def forceUpdated(key: String, value: LispExp.Expression): Environment = this
     def isMutable(key: String) = false
+    def collectBy(p: Environment => Boolean): Environment = this
+    def isEmpty: Boolean = this == EmptyEnv
+    def collectDefinedValues: Set[String] = Set.empty
+    def flatten: Environment = {
+      val values = collectDefinedValues
+      if(values.isEmpty) EmptyEnv
+      else {
+        val (mutable, immutable) = values.partition(isMutable)
+        val immutableParts = immutable.zip(immutable.map(x => getValueOption(x).get)).toMap
+        val mutableParts = MutableMap.from(mutable.zip(mutable.map(x => getValueOption(x).get)))
+        if (mutable.isEmpty)
+          Env(immutableParts, EmptyEnv)
+        else if(immutable.isEmpty)
+          MutableEnv(mutableParts, EmptyEnv)
+        else Env(immutableParts, MutableEnv(mutableParts, EmptyEnv))
+      }
+    }
   }
   case class Env(env: Map[String, LispExp.Expression], parent: Environment) extends Environment {
     override def has(key: String): Boolean = directHas(key) || parent.has(key)
@@ -30,15 +58,24 @@ object Environments {
       if (directHas(key)) copy(env=env.updated(key, value))
       else copy(parent=parent.forceUpdated(key, value))
 
-    override def isMutable(key: String): Boolean = parent.isMutable(key)
+    override def isMutable(key: String): Boolean = !directHas(key) && parent.isMutable(key)
+
+    override def collectBy(p: Environment => Boolean): Environment =
+      if (!p(this)) EmptyEnv
+      else copy(parent=parent.collectBy(p))
+
+    override def isEmpty: Boolean = env.isEmpty && parent.isEmpty
+
+    override def collectDefinedValues: Set[String] = env.keySet ++ parent.collectDefinedValues
   }
-  object EmptyEnv extends Environment {
+  case object EmptyEnv extends Environment {
     override def has(key: String): Boolean = false
 
     override def getValueOption(key: String): Option[LispExp.Expression] = None
 
     override def toString: String = "{}"
 
+    override def isEmpty: Boolean = true
   }
 
   case class CombineEnv(env: Seq[Environment]) extends Environment {
@@ -59,6 +96,18 @@ object Environments {
     override def isMutable(key: String): Boolean = {
       env.find(_ has key).exists(_ isMutable key)
     }
+
+    override def collectBy(p: Environment => Boolean): Environment = {
+      val flatSeq = env.filter(p).map(_.collectBy(p)).filter(_ != EmptyEnv)
+//      println(s"$env flatten to $flatSeq")
+      if (flatSeq.isEmpty) EmptyEnv
+      else copy(flatSeq)
+    }
+
+    override def isEmpty: Boolean = env.forall(_.isEmpty)
+
+    override def collectDefinedValues: Set[String] =
+      env.map(_.collectDefinedValues).reduce(_ ++ _)
   }
 
   object CombineEnv {
@@ -87,6 +136,15 @@ object Environments {
       else this
 
     override def isMutable(key: String): Boolean = directHas(key) || parent.isMutable(key)
+
+    override def isEmpty: Boolean = env.isEmpty && parent.isEmpty
+
+    override def collectBy(p: Environment => Boolean): Environment =
+      if (!p(this)) EmptyEnv
+      else copy(parent=parent.collectBy(p))
+
+    override def collectDefinedValues: Set[String] =
+      env.keySet.toSet ++ parent.collectDefinedValues
   }
 
   object MutableEnv {
@@ -112,6 +170,14 @@ object Environments {
 
     override def isMutable(key: String): Boolean =
       has(key) && env.isMutable(stripHead(key))
+
+    override def collectBy(p: Environment => Boolean): Environment = {
+      val newEnv = env.collectBy(p)
+      if (newEnv.isEmpty) EmptyEnv
+      else copy(env=newEnv)
+    }
+
+    override def collectDefinedValues: Set[String] = env.collectDefinedValues.map(prefix.concat)
   }
 
   case class TransparentLayer(layer: Environment, base: Environment) extends Environment {
@@ -129,5 +195,19 @@ object Environments {
 
     override def isMutable(key: String): Boolean =
       layer.isMutable(key) || base.isMutable(key)
+
+    override def collectBy(p: Environment => Boolean): Environment = {
+      val newLayer = layer.collectBy(p)
+      if (newLayer.isEmpty) base.collectBy(p)
+      else {
+        val baseLayer = base.collectBy(p)
+        if (baseLayer.isEmpty) newLayer
+        else copy(newLayer, baseLayer)
+      }
+
+    }
+
+    override def collectDefinedValues: Set[String] =
+      layer.collectDefinedValues ++ base.collectDefinedValues
   }
 }

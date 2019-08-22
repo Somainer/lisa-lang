@@ -1,6 +1,6 @@
 package moe.roselia.lisa
 
-import java.io.{FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutputStream}
+import java.io.{ByteArrayOutputStream, FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutputStream}
 
 import moe.roselia.lisa.Environments.{CombineEnv, NameSpacedEnv}
 import moe.roselia.lisa.Evaluator.EvalResult
@@ -135,6 +135,7 @@ object Main {
       val file = new FileOutputStream(toFile)
       val oos = new ObjectOutputStream(file)
       oos.writeObject(LispExp.Apply(LispExp.Symbol("group!"), compiled))
+      oos.close()
       file.close()
     }
   }
@@ -151,6 +152,14 @@ object Main {
     Evaluator.eval(expr, env)
   }
 
+  def dumpEnv(env: Environments.Environment): Array[Byte] = {
+    val bos = new ByteArrayOutputStream()
+    val oos = new ObjectOutputStream(bos)
+    oos.writeObject(env)
+    oos.close()
+    bos.toByteArray
+  }
+
   def main(args: Array[String]): Unit = {
     val preludeEnv =
       CombineEnv(
@@ -163,7 +172,7 @@ object Main {
             (NilObj, executeFile(f, env.withValue("__PATH__", SString(f))))
           case (els, env) =>
             (LispExp.Failure("Load error", s"Can only load 1 file but $els found."), env)
-        })
+        }).withIdentify("prelude").newFrame
     if(args.isEmpty) {
       println(
         """

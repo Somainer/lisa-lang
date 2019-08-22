@@ -31,7 +31,7 @@ object Preludes extends LispExp.Implicits {
     "scala-cross" -> scalaEnv,
     "scala-root" -> PackageAccessor.rootScalaEnv,
     "dot-accessor" -> ToolboxDotAccessor.accessEnv
-  )
+  ).view.mapValues(_.withIdentify("prelude"))
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
     "+" -> PrimitiveFunction {
@@ -283,5 +283,5 @@ object Preludes extends LispExp.Implicits {
   }
 
 
-  lazy val preludeEnvironment = CombineEnv(Seq(primitiveEnvironment))
+  lazy val preludeEnvironment: CombineEnv = CombineEnv(Seq(primitiveEnvironment))
 }

@@ -228,6 +228,30 @@ You can even write a for-loop macro.
 (for i 0 (< i 100) (+ i 2) (prtinln! i))
 ```
 
+## Syntax Sugars
+### Anonymous Function Literal
+
+Anonymous functions can be created by `&` before an expression.
+Variables starts with `#` and follows with a number will be captured as bound
+variables. Ordered by its number, variable with only `#` will always be the first 
+bound variable.
+
+```scheme
+&(+ #1 #2) ; Equals to
+(lambda (#1 #2) (+ #1 #2))
+
+&(* # #) ; ==>
+(lambda (#) (* # #))
+
+&(- #3 #1) ; ==>
+(lambda (#1 #3) (- #3 #1)) ; Unlike Elixir, missing numbers are not checked!
+```
+
+The secondary usage is to limit the arity of an va-arg function, like `+`.
+The syntax looks like `&<func_name>/<arity>`.
+`&+/2` will be compiled to `(lambda (arg0 arg1) (+ arg0 arg1))`, limiting the arity helps to implement currying, because
+it will be possible to get function arity via `length` primitive procedure.
+
 ## Great! How to use it?
 
 `sbt pack`

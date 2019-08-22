@@ -18,10 +18,18 @@ object LispExp {
     def docString: String = document
   }
 
+  trait MayBeDefined {
+    protected def pattern: List[List[Expression]] = Nil
+
+    def isDefinedAt(input: List[Expression], env: Environment): Boolean = {
+      pattern.exists(Evaluator.matchArgument(_, input, inEnv = env).isDefined)
+    }
+  }
+
   sealed trait Expression extends DocumentAble {
     def valid = true
 
-    def code = toString
+    def code: String = toString
   }
 
   case class Symbol(value: String) extends Expression {
@@ -54,7 +62,7 @@ object LispExp {
     override def toString: String = "( )"
   }
 
-  case class WrappedScalaObject[T](obj: T) extends Expression {
+  case class WrappedScalaObject[+T](obj: T) extends Expression {
     def get: T = obj
 
     override def toString: String = s"#Scala($obj)"
@@ -81,7 +89,7 @@ object LispExp {
   case class Closure(boundVariable: List[Expression],
                      body: Expression,
                      capturedEnv: Environments.Environment,
-                     sideEffects: List[Expression] = List.empty) extends Procedure with MayHaveArity {
+                     sideEffects: List[Expression] = List.empty) extends Procedure with MayHaveArity with MayBeDefined {
     override def valid: Boolean = body.valid
 
     override def toString: String = s"#Closure[${genHead(boundVariable)}]"
@@ -97,6 +105,11 @@ object LispExp {
     override def code: String = LambdaExpression(body, boundVariable, sideEffects).code
 
     override lazy val arity: Option[Int] = getArityOfPattern(boundVariable)
+
+    override def pattern: List[List[Expression]] = boundVariable::Nil
+
+    override def isDefinedAt(input: List[Expression], _env: Environment): Boolean =
+      super.isDefinedAt(input, capturedEnv)
   }
 
   case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {
@@ -170,7 +183,7 @@ object LispExp {
 
   case class SimpleMacro(paramsPattern: Seq[Expression],
                          body: Expression,
-                         defines: Seq[Expression]) extends Expression with MayHaveArity {
+                         defines: Seq[Expression]) extends Expression with MayHaveArity with MayBeDefined {
     override def valid: Boolean = paramsPattern.forall(_.valid) && body.valid && defines.forall(_.valid)
 
     override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
@@ -178,6 +191,8 @@ object LispExp {
     override def code: String = LambdaExpression(body, paramsPattern.toList, defines.toList).code
 
     override lazy val arity: Option[Int] = getArityOfPattern(paramsPattern.toList)
+
+    override def pattern: List[List[Expression]] = paramsPattern.toList::Nil
   }
 
   case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment)) extends Expression with DeclareArityAfter {
@@ -190,16 +205,22 @@ object LispExp {
 
   case class PolymorphicExpression(name: String,
                                    variants: Seq[(Expression, Seq[Expression])],
-                                   innerEnvironment: MutableEnv, byName: Boolean=false) extends Expression with MayHaveArity {
+                                   innerEnvironment: MutableEnv, byName: Boolean=false)
+    extends Expression with MayHaveArity with MayBeDefined {
     def findMatch(args: Seq[Expression],
                   inEnv: Environment = EmptyEnv): Option[(Expression, Map[String, Expression])] = {
       @annotation.tailrec
       def find(v: List[(Expression, Seq[Expression])]): Option[(Expression, Map[String, Expression])] = v match {
         case Nil => None
-        case (exp, mat)::xs => Evaluator.matchArgument(mat, args, inEnv = inEnv) match {
-          case Some(x) => Some((exp, x))
-          case _ => find(xs)
-        }
+        case (exp, mat)::xs =>
+          val env = exp match {
+            case Closure(_, _, capturedEnv, _) => capturedEnv
+            case _ => inEnv
+          }
+          Evaluator.matchArgument(mat, args, inEnv = env) match {
+            case Some(x) => Some((exp, x))
+            case _ => find(xs)
+          }
       }
       val found = find(variants.toList)
 //      if(found.isDefined) println(s"${found.get} matches $args")
@@ -209,9 +230,9 @@ object LispExp {
     def withExpression(closure: Closure): PolymorphicExpression = closure match {
       case c@Closure(_, _, capturedEnv, _) =>
         val nc = c.copy(capturedEnv=CombineEnv.of(innerEnvironment, capturedEnv))
-        val newPolymorph = copy(variants=variants.appended((nc, nc.boundVariable)))
-        innerEnvironment.addValue(name, newPolymorph)
-        newPolymorph
+        val newPolymorphic = copy(variants=variants.appended((nc, nc.boundVariable)))
+        innerEnvironment.addValue(name, newPolymorphic)
+        newPolymorphic
     }
 
 
@@ -246,6 +267,8 @@ object LispExp {
     override lazy val arity: Option[Int] =
       if (variants.length == 1) getArityOfPattern(variants.head._2.toList)
       else None
+
+    override def isDefinedAt(input: List[Expression], env: Environment): Boolean = findMatch(input, env).isDefined
   }
 
   object PolymorphicExpression {
@@ -253,10 +276,10 @@ object LispExp {
       val sharedEnv = Environments.EmptyEnv.newMutableFrame
       val recursiveClosure = closure.copy(capturedEnv =
         Environments.CombineEnv.of(sharedEnv, closure.capturedEnv))
-      val polymorphed =
+      val polymorphic =
         PolymorphicExpression(name, Seq((recursiveClosure, recursiveClosure.boundVariable)), sharedEnv)
-      sharedEnv.addValue(name, polymorphed)
-      polymorphed
+      sharedEnv.addValue(name, polymorphic)
+      polymorphic
     }
 
     def create(mac: SimpleMacro, name: String): PolymorphicExpression = {
