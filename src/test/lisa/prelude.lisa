@@ -192,3 +192,7 @@
 
 (define-macro (method-caller method (... args))
     '(lambda (object) (object '~method ~args)))
+
+(define-macro (current-env)
+    (.parent (.capturedEnv (wrap &#))))
+(define identity &#)

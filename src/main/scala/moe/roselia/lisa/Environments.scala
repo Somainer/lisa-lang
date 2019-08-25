@@ -4,7 +4,7 @@ object Environments {
   private val MutableMap = collection.mutable.Map
   private type MutableMap[K, V] = collection.mutable.Map[K, V]
   sealed trait Identifiable {
-    var identify: String = ##.toString
+    var identify: String = java.util.UUID.randomUUID().toString
     def withIdentify(id: String): this.type = {
       identify = id
       this

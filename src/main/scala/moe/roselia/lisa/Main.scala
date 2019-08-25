@@ -24,10 +24,13 @@ object Main {
     indentLevel(input) > 0
   }
 
-  private val robot = new java.awt.Robot()
+  private lazy val robot = new java.awt.Robot()
   private def sendKey(code: Int): Unit = {
     robot.keyPress(code)
     robot.keyRelease(code)
+  }
+  lazy val isMac = {
+    System.getProperty("os.name").startsWith("Mac OS")
   }
 
   private def sendSpace(spaceNum: Int): Unit =
@@ -35,10 +38,10 @@ object Main {
 
   @annotation.tailrec def prompt(env: Environments.Environment, lastInput: String = ""): Unit = {
     val lastIndentLevel = indentLevel(lastInput)
-//    val tabs = if (lastIndentLevel > 0) "\t".repeat(lastIndentLevel) else ""
-    if (lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
+    val tabs = if (isMac && lastIndentLevel > 0) " ".repeat(lastIndentLevel << 2) else ""
+    if (!isMac && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
     val s = scala.io.StdIn
-      .readLine(if(lastInput.isEmpty) "lisa>" else s"....>")
+      .readLine(if(lastInput.isEmpty) "lisa>" else s"....>${tabs}")
     val concatInput = s"${lastInput}\n$s"
     if (concatInput.nonEmpty) {
       //      println(s"Input: $s")
