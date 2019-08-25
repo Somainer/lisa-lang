@@ -1,8 +1,8 @@
 package moe.roselia.lisa
 
-import java.io.{FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutputStream}
+import java.io.{ByteArrayOutputStream, FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutputStream}
 
-import moe.roselia.lisa.Environments.CombineEnv
+import moe.roselia.lisa.Environments.{CombineEnv, NameSpacedEnv}
 import moe.roselia.lisa.Evaluator.EvalResult
 import moe.roselia.lisa.LispExp.{NilObj, SString, SideEffectFunction, WrappedScalaObject}
 
@@ -12,42 +12,76 @@ import scala.util.control.NonFatal
 object Main {
   import SimpleLispTree._
   import SExpressionParser._
-  @annotation.tailrec def prompt(env: Environments.Environment): Unit = {
-    val s = scala.io.StdIn.readLine("lisa>")
-    if (s.nonEmpty) {
+  def printlnErr[S](s: S): Unit = Console.err.println(s)
+
+  @`inline` private def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
+    if (pairs < 0) pairs
+    else if (c == '(') pairs + 1
+    else if (c == ')') pairs - 1
+    else pairs
+  })
+  @`inline` private def needMoreInput(input: String) = {
+    indentLevel(input) > 0
+  }
+
+  private lazy val robot = new java.awt.Robot()
+  private def sendKey(code: Int): Unit = {
+    robot.keyPress(code)
+    robot.keyRelease(code)
+  }
+  lazy val isMac = {
+    System.getProperty("os.name").startsWith("Mac OS")
+  }
+
+  private def sendSpace(spaceNum: Int): Unit =
+    1 to spaceNum foreach (_ => sendKey(java.awt.event.KeyEvent.VK_SPACE))
+
+  @annotation.tailrec def prompt(env: Environments.Environment, lastInput: String = ""): Unit = {
+    val lastIndentLevel = indentLevel(lastInput)
+    val tabs = if (isMac && lastIndentLevel > 0) " ".repeat(lastIndentLevel << 2) else ""
+    if (!isMac && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
+    val s = scala.io.StdIn
+      .readLine(if(lastInput.isEmpty) "lisa>" else s"....>${tabs}")
+    val concatInput = s"${lastInput}\n$s"
+    if (concatInput.nonEmpty) {
       //      println(s"Input: $s")
-      val exp = parseAll(sExpression, s)
-      exp match {
-        case Success(expression, _) => expression match {
-          case SList(List(Value("quit" | "exit"))) =>
-            println("Good bye")
-          case _ =>
-            Try(Evaluator.eval(Evaluator.compile(expression), env))
-              .recover{
-                case NonFatal(ex) => Evaluator.EvalFailure(ex.getLocalizedMessage)
-              }.get match {
-              case Evaluator.EvalSuccess(result, newEnv) =>
-                result match {
-                  case LispExp.Failure(typ, msg) =>
-                    println(s"$typ: $msg")
-                  case NilObj =>
-                  case s => println(s)
-                }
-                prompt(newEnv)
-              case f =>
-                println(s"Runtime Error: $f")
-                prompt(env)
-            }
+      if (!concatInput.replace(" ", "").endsWith("\n\n") && needMoreInput(concatInput)) prompt(env, concatInput)
+      else {
+        val exp = parseAll(sExpression, concatInput)
+        exp match {
+          case Success(expression, _) => expression match {
+            case SList(List(Value("quit" | "exit"))) =>
+              println("Good bye")
+            case _ =>
+              Try(Evaluator.eval(Evaluator.compile(expression), env))
+                .recover{
+                  case NonFatal(ex) => Evaluator.EvalFailure(ex.toString)
+                }.get match {
+                case Evaluator.EvalSuccess(result, newEnv) =>
+                  result match {
+                    case LispExp.Failure(typ, msg) =>
+                      printlnErr(s"$typ: $msg")
+                    case NilObj =>
+                    case s => println(s)
+                  }
+                  prompt(newEnv)
+                case f =>
+                  printlnErr(s"Runtime Error: $f")
+                  prompt(env)
+              }
+          }
+          case f =>
+            printlnErr("Parse Error")
+            printlnErr(f)
+            prompt(env)
         }
-        case f =>
-          println("Parse Error")
-          println(f)
-          prompt(env)
       }
+
     } else prompt(env)
   }
+
+  @throws[java.io.FileNotFoundException]()
   def executeFile(fileName: String, env: Environments.Environment): Environments.Environment = {
-    val reader = parse(success(NilObj), scala.io.Source.fromFile(fileName).reader()).next
     @scala.annotation.tailrec
     def doSeq(source: scala.util.parsing.input.Reader[Char],
               innerEnv: Environments.Environment): Environments.Environment = {
@@ -57,22 +91,28 @@ object Main {
             Evaluator.eval(Evaluator.compile(sExpr), innerEnv) match {
               case Evaluator.EvalSuccess(_, nenv) => doSeq(next, nenv)
               case other =>
-                println(other)
+                printlnErr(other)
+                printlnErr(s"\tsource: $sExpr")
                 innerEnv
             }
           case Failure(msg, next) =>
-            if(!next.atEnd) println(s"Error: $msg")
+            if(!next.atEnd) printlnErr(s"Error: $msg")
             innerEnv
           case Error(msg, _) =>
-            println(s"Fatal: $msg")
+            printlnErr(s"Fatal: $msg")
             innerEnv
         } else innerEnv
     }
-    doSeq(reader, env.newFrame).newFrame
+    scala.util.Using(scala.io.Source.fromFile(fileName)) {source => {
+      val reader = parse(success(NilObj), source.reader()).next
+      doSeq(reader, env.newFrame).newFrame
+    }}.get
   }
 
+  @throws[java.io.FileNotFoundException]("on wrong path")
   def compileFile(fromFile: String, toFile: String): Unit = {
-    val reader = parse(success(NilObj), scala.io.Source.fromFile(fromFile).reader()).next
+    val fromSource = scala.io.Source.fromFile(fromFile)
+    val reader = parse(success(NilObj), fromSource.reader()).next
     @annotation.tailrec
     def compileChain(source: scala.util.parsing.input.Reader[Char],
                      acc: List[LispExp.Expression] = Nil): List[LispExp.Expression] = {
@@ -81,41 +121,61 @@ object Main {
           case Success(sExpr, next) =>
             Evaluator.compile(sExpr) match {
               case LispExp.Failure(tp, message) =>
-                println(s"Compile Error: $tp", message)
+                printlnErr(s"Compile Error: $tp", message)
                 Nil
               case exp => compileChain(next, exp::acc)
             }
 
           case Failure(msg, _) =>
-            println(s"Fatal: $msg")
+            printlnErr(s"Fatal: $msg")
             Nil
         }
       else acc.reverse
     }
     val compiled = compileChain(reader)
+    fromSource.close()
     if(compiled.nonEmpty) {
       val file = new FileOutputStream(toFile)
       val oos = new ObjectOutputStream(file)
       oos.writeObject(LispExp.Apply(LispExp.Symbol("group!"), compiled))
+      oos.close()
+      file.close()
     }
   }
 
+  @throws[java.io.FileNotFoundException]("When wrong from file")
+  @throws[java.io.IOException]()
+  @throws[ClassCastException]()
+  @throws[java.io.StreamCorruptedException]()
   def executeCompiled(fromFile: String, env: Environments.Environment): EvalResult = {
     val fis = new FileInputStream(fromFile)
     val ois = new ObjectInputStream(fis)
     val expr = ois.readObject().asInstanceOf[LispExp.Expression]
+    fis.close()
     Evaluator.eval(expr, env)
+  }
+
+  def dumpEnv(env: Environments.Environment): Array[Byte] = {
+    val bos = new ByteArrayOutputStream()
+    val oos = new ObjectOutputStream(bos)
+    oos.writeObject(env)
+    oos.close()
+    bos.toByteArray
   }
 
   def main(args: Array[String]): Unit = {
     val preludeEnv =
-      CombineEnv(Seq(Reflect.DotAccessor.accessEnv, Preludes.preludeEnvironment))
+      CombineEnv(
+        Seq(
+          Reflect.DotAccessor.accessEnv,
+          Preludes.preludeEnvironment,
+          NameSpacedEnv("box", Reflect.ToolboxDotAccessor.accessEnv, "")))
         .withValue("load!", SideEffectFunction {
           case (SString(f)::Nil, env) =>
             (NilObj, executeFile(f, env.withValue("__PATH__", SString(f))))
           case (els, env) =>
             (LispExp.Failure("Load error", s"Can only load 1 file but $els found."), env)
-        })
+        }).withIdentify("prelude").newFrame
     if(args.isEmpty) {
       println(
         """
@@ -142,7 +202,8 @@ object Main {
           compileFile(fileName, toFile)
         case Array("execute", fileName) =>
           val result = executeCompiled(fileName, preludeEnv)
-          if(!result.isSuccess) println(s"Error: $result")
+          if(!result.isSuccess) printlnErr(s"Error: $result")
+        case _ => printlnErr("I could not understand your arguments.")
       }
 
     }

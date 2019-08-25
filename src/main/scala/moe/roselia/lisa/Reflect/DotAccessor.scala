@@ -1,7 +1,6 @@
 package moe.roselia.lisa.Reflect
 import language.experimental.macros
 import scala.reflect.ClassTag
-import scala.tools.reflect.ToolBox
 import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
 import ScalaBridge._
@@ -11,24 +10,47 @@ import scala.collection.StringOps
 object DotAccessor {
   import reflect.runtime.universe._
 
-  def accessDot[A : ClassTag](acc: String)(obj: A) = {
+  def getTypeTag[T: TypeTag](t: T) = typeOf[T]
+
+  def getClassObject[A : ClassTag](obj: A) = {
     val cls = obj.getClass
     val mirror = runtimeMirror(cls.getClassLoader)
-    val classObj = mirror.reflect(obj)
+    mirror.reflect(obj)
+  }
+
+  @throws[ScalaReflectionException]("If no such field or 0-arity method")
+  def accessDot[A : ClassTag](acc: String)(obj: A) = {
+    val classObj = getClassObject(obj)
     val decl = classObj.symbol.toType.decl(TermName(acc))
-//    println(cls.getDeclaredFields.map(_.getName).mkString(", "))
-//    println(cls.getDeclaredMethods.map(_.getName).mkString(", "))
-    if(decl.isMethod) {
-      val meth = classObj.reflectMethod(decl.asMethod)
-      meth.apply()
-//      meth.symbol.paramLists match {
-//        case e => meth.apply()
-//      }
-    }
-    else classObj.reflectField(decl.asTerm.accessed.asTerm).get
+    if(decl.isTerm) {
+      decl.asTerm.alternatives
+        .filter(_.isMethod)
+        .map(_.asMethod)
+        .find(_.paramLists match {
+          case Nil => true
+          case Nil::Nil => true
+          case _ => false
+        })
+        .map(_.asMethod)
+        .map(classObj.reflectMethod)
+        .map(_.apply())
+        .getOrElse(classObj.reflectField(decl.asTerm.accessed.asTerm).get)
+    } else throw ScalaReflectionException(s"Field or 0-arity method $acc for $obj not found")
   }
 
   def checkTypeFits(sym: List[Symbol])(args: Seq[Any]): Boolean = {
+    def boxedType(tpe: Type): Type = tpe match {
+      case a if a =:= typeOf[Int] => getTypeTag(Int.box(0))
+      case a if a =:= typeOf[Boolean] => getTypeTag(Boolean.box(false))
+      case a if a =:= typeOf[Double] => getTypeTag(Double.box(0))
+      case a if a =:= typeOf[Float] => getTypeTag(Float.box(0))
+      case a if a =:= typeOf[Char] => getTypeTag(Char.box(0))
+      case a if a =:= typeOf[Short] => getTypeTag(Short.box(0))
+      case a if a =:= typeOf[Byte] => getTypeTag(Byte.box(0))
+      case a if a =:= typeOf[Long] => getTypeTag(Long.box(0))
+      case a => a
+    }
+
     def checkType[T: TypeTag: ClassTag](t: T)(typ: Type) = {
       val cls = t.getClass
       val mirror = runtimeMirror(cls.getClassLoader)
@@ -38,26 +60,15 @@ object DotAccessor {
       clsObj.symbol.toType <:< typ
     }
     sym.zip(args).forall {
-      case (x, y) => checkType(y)(x.typeSignature) || checkType(sugaredObject(y))(x.typeSignature)
+      case (x, y) => checkType(y)(x.typeSignature) || checkType(y)(x.typeSignature.map(boxedType))
     }
   }
 
-  def sugaredObject(obj: Any): Any = obj match {
-    case i: java.lang.Integer => i.intValue()
-    case d: java.lang.Double => d.doubleValue()
-    case f: java.lang.Float => f.floatValue()
-    case b: java.lang.Boolean => b.booleanValue()
-    case s: java.lang.String => new StringOps(s)
-    case els => els
-  }
-
+  @throws[ScalaReflectionException]("When no underlying method")
   def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
-//    val obj = sugaredObject(rawObj)
-    val cls = obj.getClass
-    val mirror = runtimeMirror(cls.getClassLoader)
-//    val box = scala.reflect.runtime.currentMirror.mkToolBox()
-    val classObj = mirror.reflect(obj)
+    val classObj = getClassObject(obj)
     val decl = classObj.symbol.toType.decl(TermName(acc))
+    if(!decl.isTerm) throw ScalaReflectionException(s"No such method $acc in $obj to apply")
     val overloads = decl.asTerm.alternatives
       .filter(_.isMethod)
       .map(_.asMethod)
@@ -74,15 +85,11 @@ object DotAccessor {
 //    println(s"$acc has ${overloads.length} overloads and received ${args.length} args")
 //    println(classObj.symbol)
 //    println(overloads)
-    classObj.reflectMethod(overloads(0)).apply(args: _*)
-//    classObj.reflectMethod(decl.asMethod).apply(args: _*)
-//    box.eval(
-//      q"""
-//         $decl($applied)
-//       """)
+    if (overloads.isEmpty) throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
+    classObj.reflectMethod(overloads.head).apply(args: _*)
   }
 
-  val accessEnv: SpecialEnv = new SpecialEnv {
+  lazy val accessEnv: SpecialEnv = new SpecialEnv {
     override def has(key: String): Boolean = key.startsWith(".")
 
     override def getValueOption(key: String): Option[LispExp.Expression] = Some(LispExp.PrimitiveFunction {
@@ -95,6 +102,7 @@ object DotAccessor {
       case x::xs =>
         val field = key.substring(1)
         fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative): _*))
-    })
+    }.withDocString(s"$key: Access ${key substring 1} attribute or method of a scala object. " +
+      s"If you do not care about performance, use box$key"))
   }
 }

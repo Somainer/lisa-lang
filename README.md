@@ -123,6 +123,38 @@ case, the latter will never be matched.
 (my-f 5) ; => 120
 ```
 
+### Match a List
+Pattern `(seq <h1> <h2>)` matches a list or a vector.
+`(... args)` matches the rest of the list.
+
+```scheme
+(define (sum-list (seq head (... tail))) (+ head (sum-list tail)))
+(define (sum-list (seq)) 0)
+```
+
+Note that same variable means same value.
+
+`(x (seq x x))` will match `(1 (list 1 1))` but not `(1 (list 1 2))`
+
+### Pattern Matching Guard
+
+The last argument in a function definition can be a pattern matching guard.
+It looks like an application of `?`, `when`, or `when?`, like `(? <predicate>)`. 
+
+* `?`, `when` requires that predicate never be failure, if so, matching will result in an evail failure.
+* `when?` if predicate returns failure, this branch will be ignored and not match.
+
+The function will match only if the guard predicate indicates true. 
+And the guard *MUST* returns a Bool, otherwise will result in an `EvalFailure`.
+
+```scheme
+(define (fact 0) 1) ; Nothing interesting.
+(define (fact n (? (> n 0))) (* n (fact (- n 1)))) ; Will match only when n grater than 0.
+; Note that lisa has not defined > yet. You can define it as (define (> a b) (= 1 (.compareTo a b)))
+(fact 5) ; => 120
+(fact -5) ; => EvalFailure(No matching procedure to apply)
+```
+
 ## Let's solve a problem!
 
 ```scheme
@@ -195,6 +227,30 @@ You can even write a for-loop macro.
 
 (for i 0 (< i 100) (+ i 2) (prtinln! i))
 ```
+
+## Syntax Sugars
+### Anonymous Function Literal
+
+Anonymous functions can be created by `&` before an expression.
+Variables starts with `#` and follows with a number will be captured as bound
+variables. Ordered by its number, variable with only `#` will always be the first 
+bound variable.
+
+```scheme
+&(+ #1 #2) ; Equals to
+(lambda (#1 #2) (+ #1 #2))
+
+&(* # #) ; ==>
+(lambda (#) (* # #))
+
+&(- #3 #1) ; ==>
+(lambda (#1 #3) (- #3 #1)) ; Unlike Elixir, missing numbers are not checked!
+```
+
+The secondary usage is to limit the arity of an va-arg function, like `+`.
+The syntax looks like `&<func_name>/<arity>`.
+`&+/2` will be compiled to `(lambda (arg0 arg1) (+ arg0 arg1))`, limiting the arity helps to implement currying, because
+it will be possible to get function arity via `length` primitive procedure.
 
 ## Great! How to use it?
 

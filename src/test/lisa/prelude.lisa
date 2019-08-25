@@ -1,0 +1,198 @@
+(define (not true) "(not true) => false" false)
+(define (not false) "(not false) => true" true)
+
+(define-macro (or a b)
+    "or :: (Bool, Bool) => Bool = if(truthy? a) a else b"
+    '(block
+        (define __a ~a)
+        (if (truthy? __a) __a ~b)))
+
+(define-macro (and a b)
+    "and :: (Bool, Bool) => Bool = if(truthy? a) b else a"
+    '(block
+        (define __a ~a)
+        (if (truthy? __a) ~b __a)))
+
+(define (< a b)
+    "Return true if a < b. This function will invoke native java method."
+    (define java-cmp (.compareTo a b))
+    (cond ((= java-cmp -1) true)
+          ((= java-cmp 0) false)
+          ((= java-cmp 1) false)
+          (else (< java-cmp 0))))
+
+(define (<= a b)
+    (or (= a b) (< a b)))
+
+(define (> a b)
+    (< b a))
+
+(define (>= a b)
+    (or (= a b) (> a b)))
+
+(define (Y fn)
+    "Y combinator, nothing interesting."
+    ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s))))))
+
+(define (cons x y)
+    "Construct a pair, use car to fetch the first and cdr to fetch the second."
+    (define (pair 0) x)
+    (define (pair 1) y)
+    (define (pair 'pair? ) true)
+    pair)
+
+(define (pair? pair (when? (pair 'pair? ))) true)
+(define (pair? _) false)
+
+(define (car p (when (pair? p))) (p 0))
+(define (cdr p (when (pair? p))) (p 1))
+
+(define-macro (delay e)
+    "Construct a lazy value (named promise)."
+    '(block
+        (define (promise 'promise? ) true)
+        (define (promise) ~e)
+        promise))
+(define (promise? p (when? (p 'promise? ))) "Returns true if it is a promise" true)
+(define (promise? _) "Otherwise returns false" false)
+(define (force e (when (promise? e))) "Force execute a promise" (e))
+
+(define-macro (lazy-cons x y)
+    '(cons ~x (delay ~y)))
+
+(define lazy-car car)
+(define (lazy-cdr p) (force (cdr p)))
+
+(define (sort (seq) _) (seq))
+(define (sort (seq head (... tail)) by)
+    (define left (filter tail (lambda (x) (by x head))))
+    (define right (filter tail (lambda (x) (not (by x head)))))
+    (.appendedAll 
+        (.appended (sort left by) head) 
+        (sort right by)))
+(define (sort ls) (sort ls <))
+
+(define (max-2 a b (? (< a b)))
+    "a < b, max(a, b) = b"
+    b)
+(define (max-2 a _)
+    "Otherwise should be a"
+    a)
+
+(define (max (seq)) (panic! "Max on an empty list."))
+(define (max (seq x)) x)
+(define (max (seq h (... t)))
+    (max-2 h (max t)))
+(define (max (... xs)) (max xs))
+
+(define (min-2 a b (? < a b)) a)
+(define (min-2 _ b) b)
+(define (min (seq)) (panic! "Min on an empty list."))
+(define (min (seq x)) x)
+(define (min (seq h (... t)))
+    (min-2 h (min t)))
+(define (min (... t)) (min t))
+
+(define-macro (shadow function)
+    "Shadow a defined function to (), in order to redefine a function rather than create a polymorphic function."
+    '(define ~function ()))
+
+(define (constant x)
+    "constant :: a, b => a -> b -> a"
+    (lambda (_) x))
+
+(define (compose f g)
+    (lambda (x) (g (f x))))
+
+(define (bool? f (when? ((constant true) (not f)))) true)
+(define (bool? _) false)
+
+(define (number? n (when? ((constant true) (+ 0 n)))) true)
+(define (number? _) false)
+
+(define (string? n (when? ((constant true) (+ "" n)))) true)
+(define (string? _) false)
+
+(define (closure? c (when? (.startsWith (.toString (wrap c)) "#Closure"))) true)
+(define (closure? c (when? (.startsWith (.toString (wrap c)) "#PolymorphClosure"))) true)
+(define (closure? _) false)
+
+(define (macro? m (when? (.startsWith (.toString (wrap m)) "#Macro"))) true)
+(define (macro? m (when? (.startsWith (.toString (wrap m)) "#PolymorphMacro"))) true)
+(define (macro? _) false)
+
+(define (polymorphic? m (when? (.startsWith (.toString (wrap m)) "#Polymorph"))) true)
+(define (polymorphic? _) false)
+
+(define (quoted? x (when? ((constant true) ~x))) true)
+(define (quoted? _) false)
+
+(define (curried-2 fn) ; For procedures with no arity.
+    (lambda (x)
+        (lambda (y) (fn x y))))
+
+(define (curried fn (when? ((constant true) (length fn))))
+    (define arity (length fn))
+    (define (curried-impl f arg (when (>= (length arg) arity)))
+        (apply f arg))
+    (define (curried-impl f arg)
+        (lambda ((... args))
+            (curried-impl f (.appendedAll arg args))))
+    (define (func (... args)) (curried-impl fn args))
+    (set-doc func (+ "Curried: " (get-doc fn)))) ; Ensure curried returns a closure when encounters 0-arity functions.
+
+(define (flip-closure fn)
+    "filp-closure :: (a -> b -> c) -> b -> a -> c"
+    (lambda (x y) (fn y x)))
+
+(define falsy? (compose truthy? not))
+
+(define-macro (unless pred alt cons)
+    '(if ~pred ~cons ~alt))
+
+(define (|> x (... fs))
+    (define (apply-seq a (seq)) a)
+    (define (apply-seq a (seq h (... t)) (? (quoted? h)))
+        (apply-seq (a h) t))
+    (define (apply-seq a (seq h (... t)))
+        (apply-seq (h a) t))
+    (apply-seq x fs))
+
+; (define limit-arity (curried limit-arity))
+(define (copied-docstring f1 f2)
+    (set-doc f1 (get-doc f2)))
+
+(define (polymorph-lambda (... fs))
+    (define-mutable! fs)
+    (while (> (length fs) 0)
+        (group!
+            (define self (.head fs))
+            (set! fs (.tail fs))))
+    self)
+
+(import-env! scala-root scala)
+(define (none 'option? ) true)
+(define (none 'map ) none)
+(define (none 'filter ) none)
+(define (none 'get-or-else x) x)
+(define (none 'or-else x) x)
+(define (none 'to-scala ) scala.None)
+(define (some x)
+    (define (some-impl 'option? ) true)
+    (define (some-impl 'map fn)
+        (some (fn x)))
+    (define (some-impl 'filter fn (? (fn x))) some-impl)
+    (define (some-impl 'filter _) none)
+    (define (some-impl 'get ) x)
+    (define (some-impl 'get-or-else _) x)
+    (define (some-impl 'or-else _) some-impl)
+    (define (some-impl 'to-scala) (scala.Some x))
+    some-impl)
+
+
+(define-macro (method-caller method (... args))
+    '(lambda (object) (object '~method ~args)))
+
+(define-macro (current-env)
+    (.parent (.capturedEnv (wrap &#))))
+(define identity &#)
