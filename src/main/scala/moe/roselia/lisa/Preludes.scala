@@ -171,7 +171,7 @@ object Preludes extends LispExp.Implicits {
       }
       case other => Failure("Arity Error", s"length only accepts one argument but ${other.length} found.")
     }.withArity(1),
-    "set!" -> PrimitiveMacro {
+    "set!" -> new PrimitiveMacro({
       case (Symbol(x)::va::Nil, e) =>
         if (e.isMutable(x))
           Evaluator.eval(va, e) match {
@@ -180,11 +180,23 @@ object Preludes extends LispExp.Implicits {
           }
         else (Failure("set! Error", s"Can not assign an immutable value $x."), e)
       case (other, e) => (Failure("Arity Error", s"set! only accepts a symbol and an expression, but $other found."), e)
+    }) with WithFreeValues {
+      override def collectEnvDependency(defined: Set[String], env: Environment, context: List[Expression]): (Set[String], Set[String]) =
+        context match {
+          case Symbol(x)::_::Nil => (if(defined contains x) Set.empty else Set(x), defined)
+          case _ => throw new IllegalArgumentException(s"set! only accepts a symbol and an expression, but $context found.")
+        }
     }.withArity(2),
-    "define-mutable!" -> PrimitiveMacro {
+    "define-mutable!" -> new PrimitiveMacro({
       case (Symbol(x)::Nil, e) =>
         (NilObj, TransparentLayer(MutableEnv.createEmpty.addValue(x, e.getValueOption(x).getOrElse(NilObj)), e))
       case (_, e) => (Failure("Define Failure", "define-mutable! only accepts one symbol."), e)
+    }) with WithFreeValues {
+      override def collectEnvDependency(defined: Set[String], env: Environment, context: List[Expression]): (Set[String], Set[String]) =
+        context match {
+          case Symbol(x)::Nil => (Set.empty, defined + x)
+          case _ => throw new IllegalArgumentException(s"Can not define mutable value: $context")
+        }
     }.withArity(1),
     "group!" -> PrimitiveMacro {
       case (xs, e) => xs.foldLeft[EvalResult](EvalSuccess(NilObj, e)) {

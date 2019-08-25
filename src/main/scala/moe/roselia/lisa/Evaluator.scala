@@ -153,38 +153,49 @@ object Evaluator {
       case sf: SFloat => pureValue(sf)
       case p: PolymorphicExpression => pureValue(p)
       case o@WrappedScalaObject(_) => pureValue(o)
-      case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
-        case c@Closure(_, _, capturedEnv, _) =>
-          if(env.directHas(sym)) unit {
-            env.getValueOption(sym).get match {
-              case p: PolymorphicExpression => env.withValue(sym, p.withExpression(c))
-              case closure: Closure =>
-                env.withValue(sym, PolymorphicExpression.create(closure, sym).withExpression(c))
-              case _ => env.withValue(sym, PolymorphicExpression.create(c, sym))
+      case Define(Symbol(sym), expr) =>
+        val selfDependency = env.newFrame.withValue(sym, NilObj)
+        eval(expr, selfDependency) flatMap {
+          case c@Closure(_, _, capturedEnv, _) =>
+            if(env.directHas(sym)) unit {
+              env.getValueOption(sym).get match {
+                case p: PolymorphicExpression => env.withValue(sym, p.withExpression(c))
+                case closure: Closure =>
+                  env.withValue(sym, PolymorphicExpression.create(closure, sym).withExpression(c))
+                case _ => env.withValue(sym, PolymorphicExpression.create(c, sym))
+              }
+            } else if(c.freeVariables.contains(sym)) {
+              val recursiveFrame = capturedEnv.newMutableFrame
+              val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
+              recursiveFrame.addValue(sym, recursiveClosure)
+              unit(env.withValue(sym, recursiveClosure))
+            } else {
+              unit(env.withValue(sym, c))
             }
-          } else {
-            val recursiveFrame = capturedEnv.newMutableFrame
-            val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
-            recursiveFrame.addValue(sym, recursiveClosure)
-            unit(env.withValue(sym, recursiveClosure))
-          }
-        case mac: SimpleMacro if env.directHas(sym) =>
-          unit {
-            env.getValueOption(sym).get match {
-              case p: PolymorphicExpression => env.withValue(sym, p.withExpression(mac))
-              case m: SimpleMacro => env.withValue(sym, PolymorphicExpression.create(m, sym).withExpression(mac))
-              case _ => env.withValue(sym, mac)
+          case mac: SimpleMacro if env.directHas(sym) =>
+            unit {
+              env.getValueOption(sym).get match {
+                case p: PolymorphicExpression => env.withValue(sym, p.withExpression(mac))
+                case m: SimpleMacro => env.withValue(sym, PolymorphicExpression.create(m, sym).withExpression(mac))
+                case _ => env.withValue(sym, mac)
+              }
             }
-          }
-        case result => unit(env.withValue(sym, result))
+          case result => unit(env.withValue(sym, result))
       }
-      case LambdaExpression(body, boundVariable, nestedExpressions) =>
-        val closure = Closure(boundVariable, body, env, nestedExpressions)
-        pureValue(nestedExpressions match {
-          case SString(document)::_ =>
-            closure.withDocString(document)
-          case _ => closure
-        })
+      case lambda@LambdaExpression(body, boundVariable, nestedExpressions) =>
+        val freeValues = lambda.freeVariables(env)
+        if (freeValues.forall(env.has)) {
+          val closure = Closure(boundVariable, body, env.collectValues(freeValues.toSeq), nestedExpressions)
+          pureValue(nestedExpressions match {
+            case SString(document)::_ =>
+              closure.withDocString(document)
+            case _ => closure
+          })
+        } else {
+          val notCaptured = freeValues.filterNot(env.has)
+          EvalFailure(s"Can not capture: ${notCaptured.mkString(", ")}")
+        }
+
       case c: Closure => pureValue(c)
       case fn: PrimitiveFunction => pureValue(fn)
       case s: SString => pureValue(s)
