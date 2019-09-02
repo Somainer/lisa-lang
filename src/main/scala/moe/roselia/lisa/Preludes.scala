@@ -250,7 +250,7 @@ object Preludes extends LispExp.Implicits {
     }.withArity(2),
     "limit-arity" -> PrimitiveFunction {
       case SInteger(n)::fn::Nil =>
-        val argList = 0.until(n).map(i => s"arg$i").map(Symbol).toList
+        val argList = 0.until(n).map(i => s"arg$i").map(PlainSymbol).toList
         Closure(argList, Apply(fn, argList), EmptyEnv).copyDocString(fn)
     }.withArity(2).withDocString("Limit va-arg function to accept n arguments"),
     "get-doc" -> PrimitiveFunction {
@@ -258,7 +258,30 @@ object Preludes extends LispExp.Implicits {
     }.withArity(1),
     "set-doc" -> PrimitiveFunction {
       case f1::SString(s)::Nil => f1.withDocString(s)
-    }.withArity(2)
+    }.withArity(2),
+    "define-phrase" -> PrimitiveMacro {(x, e) =>
+      def defineHelper(toBeDefined: SimpleMacro) = {
+        val previous = e.getValueOption(PHRASE_VAR)
+        if (previous.exists(_.isInstanceOf[PolymorphicExpression]))
+          NilObj -> e.withValue(PHRASE_VAR, previous.get.asInstanceOf[PolymorphicExpression].withExpression(toBeDefined))
+        else Define(Symbol(PHRASE_VAR), toBeDefined) -> e
+      }
+      (x, e) match {
+        case (Apply(head, tail) :: body, _) =>
+          val toBeDefined = SimpleMacro(head :: tail, body.last, body.init)
+          defineHelper(toBeDefined)
+        case (Symbol(defined)::Nil, _)
+          if e.getValueOption(defined).exists(_.isInstanceOf[SimpleMacro]) =>
+          defineHelper(e.getValueOption(defined).get.asInstanceOf[SimpleMacro])
+      }
+    },
+    "try-option" -> PrimitiveMacro {
+      case (expr::Nil, e) => Evaluator.eval(expr, e) match {
+        case EvalSuccess(obj, _) => WrappedScalaObject(Some(obj)) -> e
+        case _ => WrappedScalaObject(None) -> e
+      }
+      case (_, e) => Failure("Arity Error", "try-option only accepts one argument.") -> e
+    }.withArity(1)
   ))
 
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")

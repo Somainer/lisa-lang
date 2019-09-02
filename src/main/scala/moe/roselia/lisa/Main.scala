@@ -188,7 +188,15 @@ object Main {
           |Welcome to Lisa REPL by Somainer (moe.roselia.lisa).
           |Type in expressions for evaluation. (quit) to quit.
         """.stripMargin)
-      prompt(preludeEnv)
+      try {
+        prompt(preludeEnv)
+      } catch {
+        case ex: java.lang.StackOverflowError =>
+          ex.printStackTrace()
+          printlnErr("You input has caused a death loop. Recover you from prelude.")
+          main(args)
+      }
+
     }
     else {
       args match {

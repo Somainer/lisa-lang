@@ -52,6 +52,7 @@ object Evaluator {
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
     case SUnQuote(q) => UnQuote(compile(q))
+    case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value(value) => {
       if(value.matches("-?\\d+"))
         value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
@@ -153,49 +154,38 @@ object Evaluator {
       case sf: SFloat => pureValue(sf)
       case p: PolymorphicExpression => pureValue(p)
       case o@WrappedScalaObject(_) => pureValue(o)
-      case Define(Symbol(sym), expr) =>
-        val selfDependency = env.newFrame.withValue(sym, NilObj)
-        eval(expr, selfDependency) flatMap {
-          case c@Closure(_, _, capturedEnv, _) =>
-            if(env.directHas(sym)) unit {
-              env.getValueOption(sym).get match {
-                case p: PolymorphicExpression => env.withValue(sym, p.withExpression(c))
-                case closure: Closure =>
-                  env.withValue(sym, PolymorphicExpression.create(closure, sym).withExpression(c))
-                case _ => env.withValue(sym, PolymorphicExpression.create(c, sym))
-              }
-            } else if(c.freeVariables.contains(sym)) {
-              val recursiveFrame = capturedEnv.newMutableFrame
-              val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
-              recursiveFrame.addValue(sym, recursiveClosure)
-              unit(env.withValue(sym, recursiveClosure))
-            } else {
-              unit(env.withValue(sym, c))
+      case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
+        case c@Closure(_, _, capturedEnv, _) =>
+          if(env.directHas(sym)) unit {
+            env.getValueOption(sym).get match {
+              case p: PolymorphicExpression => env.withValue(sym, p.withExpression(c))
+              case closure: Closure =>
+                env.withValue(sym, PolymorphicExpression.create(closure, sym).withExpression(c))
+              case _ => env.withValue(sym, PolymorphicExpression.create(c, sym))
             }
-          case mac: SimpleMacro if env.directHas(sym) =>
-            unit {
-              env.getValueOption(sym).get match {
-                case p: PolymorphicExpression => env.withValue(sym, p.withExpression(mac))
-                case m: SimpleMacro => env.withValue(sym, PolymorphicExpression.create(m, sym).withExpression(mac))
-                case _ => env.withValue(sym, mac)
-              }
+          } else if(c.freeVariables contains sym) {
+            val recursiveFrame = capturedEnv.newMutableFrame
+            val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
+            recursiveFrame.addValue(sym, recursiveClosure)
+            unit(env.withValue(sym, recursiveClosure))
+          } else unit(env.withValue(sym, c))
+        case mac: SimpleMacro if env.directHas(sym) =>
+          unit {
+            env.getValueOption(sym).get match {
+              case p: PolymorphicExpression => env.withValue(sym, p.withExpression(mac))
+              case m: SimpleMacro => env.withValue(sym, PolymorphicExpression.create(m, sym).withExpression(mac))
+              case _ => env.withValue(sym, mac)
             }
-          case result => unit(env.withValue(sym, result))
+          }
+        case result => unit(env.withValue(sym, result))
       }
-      case lambda@LambdaExpression(body, boundVariable, nestedExpressions) =>
-        val freeValues = lambda.freeVariables(env)
-        if (freeValues.forall(env.has)) {
-          val closure = Closure(boundVariable, body, env.collectValues(freeValues.toSeq), nestedExpressions)
-          pureValue(nestedExpressions match {
-            case SString(document)::_ =>
-              closure.withDocString(document)
-            case _ => closure
-          })
-        } else {
-          val notCaptured = freeValues.filterNot(env.has)
-          EvalFailure(s"Can not capture: ${notCaptured.mkString(", ")}")
-        }
-
+      case LambdaExpression(body, boundVariable, nestedExpressions) =>
+        val closure = Closure(boundVariable, body, env, nestedExpressions)
+        pureValue(nestedExpressions match {
+          case SString(document)::_ =>
+            closure.withDocString(document)
+          case _ => closure
+        })
       case c: Closure => pureValue(c)
       case fn: PrimitiveFunction => pureValue(fn)
       case s: SString => pureValue(s)
@@ -240,6 +230,14 @@ object Evaluator {
         }
         case proc => evalList(args, env).fold(EvalFailure(_),
           evaledArguments => apply(proc, evaledArguments.toList).fold(EvalFailure(_), EvalSuccess(_, env)))
+      } match {
+        case success@EvalSuccess(_, _) => success
+        case _ if func != Symbol(PHRASE_VAR) && env
+          .getValueOption(PHRASE_VAR)
+          .filter(_.isInstanceOf[MayBeDefined])
+          .exists(_.asInstanceOf[MayBeDefined].isDefinedAt(func :: args, env)) =>
+          eval(Apply(Symbol(PHRASE_VAR), func :: args), env)
+        case f => f
       }
       case SIfElse(predicate, consequence, alternative) =>
         eval(predicate, env) match {
@@ -401,6 +399,13 @@ object Evaluator {
         case _::ys => matchArgument(xs, ys, matchResult, inEnv)
         case Nil => None
       }
+      case GraveAccentSymbol(sym)::xs
+        if inEnv.has(sym) && !matchResult.contains(sym) =>
+        val contextValue = inEnv.getValueOption(sym).get
+        arguments match {
+          case `contextValue`::ys => matchArgument(xs, ys, matchResult, inEnv)
+          case _ => None
+        }
       case Symbol(sym)::xs => arguments match {
         case exp::ys =>
           if(matchResult.contains(sym)) {

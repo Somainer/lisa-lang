@@ -56,14 +56,24 @@ object LispExp {
     def code: String = toString
   }
 
-  case class Symbol(value: String) extends Expression {
-    override def toString: String = value
+  trait Symbol extends Expression {
+    def value: String
 
+    override def toString: String = value
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
       val dep = if (defined contains value) Set.empty[String] else Set(value)
       dep -> defined
     }
   }
+
+  object Symbol {
+    def apply(symbol: String): Symbol = PlainSymbol(symbol)
+
+    def unapply(arg: Symbol): Option[String] = Some(arg.value)
+  }
+
+  case class PlainSymbol(value: String) extends Symbol
+  case class GraveAccentSymbol(value: String) extends Symbol
 
   class SNumber[T](number: T)(implicit evidence: scala.math.Numeric[T]) extends Expression with NoExternalDependency {
     override def toString: String = number.toString
@@ -163,6 +173,8 @@ object LispExp {
 
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
       rawLambdaExpression collectEnvDependency defined
+
+    def flattenCaptured: Closure = copy(capturedEnv=capturedEnv.collectValues(freeVariables.toList))
   }
 
   case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {
