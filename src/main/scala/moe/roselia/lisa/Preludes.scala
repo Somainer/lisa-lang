@@ -35,18 +35,56 @@ object Preludes extends LispExp.Implicits {
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
     "+" -> PrimitiveFunction {
-      case ls@x::_ if x.isInstanceOf[SInteger] =>
-        SInteger(ls.asInstanceOf[List[SInteger]].map(_.value).sum)
+      case ls@x :: _ if x.isInstanceOf[SNumber[_]] =>
+        ls.asInstanceOf[List[SNumber[_]]].reduce(SNumber.performComputation(_ + _))
       case xs: List[SString] => SString(xs.map(_.value).reduce(_ + _))
     },
     "-" -> PrimitiveFunction {
-      case SInteger(x)::Nil => -x
-      case xs: List[SInteger] => SInteger(xs.map(_.value).reduce(_ - _))
+      case (x: SNumber[_])::Nil => -x
+      case xs: List[SNumber[_]] => xs.reduce(SNumber.performComputation(_ - _))
     },
     "*" -> PrimitiveFunction {
-      case xs: List[SInteger] => SInteger(xs.map(_.value).product)
+      case xs: List[SNumber[_]] => xs.reduce(SNumber.performComputation(_ * _))
+    },
+    "/" -> PrimitiveFunction {
+      case (lhs: SNumber[_]) :: (rhs: SNumber[_]) :: Nil =>
+        SNumber.performComputation(_ / _)(lhs, rhs)
+    },
+    "<" -> PrimitiveFunction {
+      case xs@head::_::_ if head.isInstanceOf[SNumber[_]] =>
+        val ls = xs.asInstanceOf[List[SNumber[_]]]
+        SBool(ls.zip(ls.tail).view.map(Function.tupled(SNumber.performComputation(_ < _))).forall(identity))
+      case xs@head::_::_ if head.isInstanceOf[Comparable[_]] =>
+        val ls = xs.asInstanceOf[List[Comparable[Any]]]
+        ls.zip(ls.tail).view.map(Function.tupled(_ compareTo _)).forall(_ < 0)
+    },
+    "<=" -> PrimitiveFunction {
+      case xs@head::_::_ if head.isInstanceOf[SNumber[_]] =>
+        val ls = xs.asInstanceOf[List[SNumber[_]]]
+        SBool(ls.zip(ls.tail).view.map(Function.tupled(SNumber.performComputation(_ <= _))).forall(identity))
+      case xs@head::_::_ if head.isInstanceOf[Comparable[_]] =>
+        val ls = xs.asInstanceOf[List[Comparable[Any]]]
+        ls.zip(ls.tail).view.map(Function.tupled(_ compareTo _)).forall(_ <= 0)
+    },
+    ">" -> PrimitiveFunction {
+      case xs@head::_::_ if head.isInstanceOf[SNumber[_]] =>
+        val ls = xs.asInstanceOf[List[SNumber[_]]]
+        SBool(ls.zip(ls.tail).view.map(Function.tupled(SNumber.performComputation(_ > _))).forall(identity))
+      case xs@head::_::_ if head.isInstanceOf[Comparable[_]] =>
+        val ls = xs.asInstanceOf[List[Comparable[Any]]]
+        ls.zip(ls.tail).view.map(Function.tupled(_ compareTo _)).forall(_ > 0)
+    },
+    ">=" -> PrimitiveFunction {
+      case xs@head::_::_ if head.isInstanceOf[SNumber[_]] =>
+        val ls = xs.asInstanceOf[List[SNumber[_]]]
+        SBool(ls.zip(ls.tail).view.map(Function.tupled(SNumber.performComputation(_ >= _))).forall(identity))
+      case xs@head::_::_ if head.isInstanceOf[Comparable[_]] =>
+        val ls = xs.asInstanceOf[List[Comparable[Any]]]
+        ls.zip(ls.tail).view.map(Function.tupled(_ compareTo _)).forall(_ >= 0)
     },
     "=" -> PrimitiveFunction {
+      case (lhs: SNumber[_]) :: (rhs: SNumber[_]) :: Nil =>
+        SNumber.performComputation(_ equalsTo _)(lhs, rhs)
       case lhs::rhs::Nil => lhs == rhs
     }.withArity(2),
     "print!" -> PrimitiveFunction {

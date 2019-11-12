@@ -56,7 +56,7 @@ object Evaluator {
     case Value(value) => {
       if(value.matches("-?\\d+"))
         value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
-      else Symbol(value)
+      else value.toDoubleOption.map(SFloat).getOrElse(Symbol(value))
     }
     case StringLiteral(value) => SString(value)
     case SList(ls) => ls match {
@@ -298,7 +298,13 @@ object Evaluator {
       }
 
       case PrimitiveFunction(fn) =>
-        Try(fn(arguments)).fold(ex => Left(ex.toString), Right(_))
+        Try(fn(arguments)).fold(ex => {
+          val cause = ex.getCause
+          val sb = new StringBuilder
+          sb.append(ex.toString)
+          if (cause ne null) sb.append(s"(Caused by $cause)")
+          Left(sb.toString())
+        }, Right(_))
       case WrappedScalaObject(obj) =>
         Try{
           obj.asInstanceOf[Function[Seq[Any], Any]](arguments)

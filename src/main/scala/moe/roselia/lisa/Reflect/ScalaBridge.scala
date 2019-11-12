@@ -25,6 +25,7 @@ object ScalaBridge {
     case Symbol(sym) => scala.Symbol(sym)
     case SFloat(fl) => fl
     case NilObj => ()
+    case SRational(rat) => rat.doubleValue
     case PrimitiveFunction(fn) => (xs: Any) => fn(ensureSeq(xs).map(fromScalaNative).toList)
     case c@Closure(_, _, _, _) =>
       evalClosure(c)(_)
