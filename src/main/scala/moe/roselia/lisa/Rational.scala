@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 import languageFeature.implicitConversions
 import Integral.Implicits._
 
-case class Rational[T: Integral](numerator: T, denominator: T = 1) extends Ordered[Rational[T]] {
+case class Rational[T: Integral](numerator: T, denominator: T) extends Ordered[Rational[T]] {
   private[this] def evidence: Integral[T] = implicitly
   def doubleValue = numerator.toDouble / denominator.toDouble
   def flatMap(f: (T, T) => Rational[T]) = f(numerator, denominator)
@@ -55,7 +55,7 @@ case class Rational[T: Integral](numerator: T, denominator: T = 1) extends Order
 }
 
 object Rational {
-  def apply[T: Integral](numerator: T, denominator: T = 1): Rational[T] = {
+  def apply[T: Integral](numerator: T, denominator: T): Rational[T] = {
     require(denominator != 0, "Denominator can not be 0.")
     val g = gcd(numerator, denominator)
     val na = numerator / g
@@ -63,6 +63,8 @@ object Rational {
     if (nb.sign.toInt > 0) new Rational(na, nb)
     else new Rational(-na, -nb)
   }
+
+  def apply[T: Integral](numerator: T): Rational[T] = apply(numerator, implicitly[Integral[T]].one)
 
   @tailrec
   def gcd[T: Integral](a: T, b: T): T =
@@ -114,13 +116,13 @@ object Rational {
     }
   }
 
-  implicit object RationalOfIntIsNumeric extends RationalIsNumeric[Int] {
-    override def integralEvidence: Integral[Int] = implicitly
+  def RationalIsNumericEvidenceMaker[T: Integral]: RationalIsNumeric[T] = new RationalIsNumeric[T] {
+    override def integralEvidence: Integral[T] = implicitly
   }
 
-  implicit object RationalOfBigIntIsNumeric extends RationalIsNumeric[BigInt] {
-    override def integralEvidence: Integral[BigInt] = implicitly
-  }
+  implicit val RationalOfIntIsNumeric: RationalIsNumeric[Int] = RationalIsNumericEvidenceMaker[Int]
+  implicit val RationalOfBigIntIsNumeric: RationalIsNumeric[BigInt] = RationalIsNumericEvidenceMaker[BigInt]
+
   trait Implicits {
     implicit def integralToSRational[T](t: T)(implicit isIntegral: Integral[T]): Rational[T] =
       Rational(t, isIntegral.one)
