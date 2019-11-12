@@ -15,11 +15,23 @@ object SimpleLispTree {
     def collectVariables: Set[String] = Set.empty
   }
 
-  case class Value(get: String) extends SimpleLispTree {
+  trait Value extends SimpleLispTree {
+    def get: String
     override def toString: String = get
 
     override def collectVariables: Set[String] = Set(get)
   }
+
+  object Value {
+    def apply(value: String): Value = PlainValue(value)
+
+    def unapply(arg: Value): Option[String] = Some(arg.get)
+  }
+
+  case class PlainValue(get: String) extends Value
+
+  case class GraveAccentAtom(get: String) extends Value
+
   case class StringLiteral(content: String) extends SimpleLispTree {
     override def toString: String = s"${content.replace("\"", "\\\"")}"
   }

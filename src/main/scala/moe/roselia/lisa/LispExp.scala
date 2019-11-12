@@ -26,30 +26,69 @@ object LispExp {
     }
   }
 
-  sealed trait Expression extends DocumentAble {
+  trait WithFreeValues {
+    def freeVariables: Set[String] = collectEnvDependency(Set.empty)._1
+    def freeVariables(env: Environment) = collectEnvDependency(Set.empty, env, Nil)._1
+    def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
+      // (Dependency, NewDefined)
+      collectEnvDependency(defined, EmptyEnv, Nil)
+    }
+    def collectEnvDependency(defined: Set[String], env: Environment, context: List[Expression] = Nil): (Set[String], Set[String]) =
+      collectEnvDependency(defined)
+    protected def accumulateDependencies(expressions: List[Expression], initial: Set[String]) =
+      expressions.foldLeft(Set.empty[String] -> initial) {
+        case ((dependency, defined), expression) =>
+          val (deps, defs) = expression.collectEnvDependency(defined)
+          (dependency ++ deps, defined ++ defs)
+      }
+  }
+
+  trait NoExternalDependency extends WithFreeValues {
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
+      (Set.empty, defined)
+    }
+
+  }
+
+  sealed trait Expression extends DocumentAble with WithFreeValues {
     def valid = true
 
     def code: String = toString
   }
 
-  case class Symbol(value: String) extends Expression {
+  trait Symbol extends Expression {
+    def value: String
+
     override def toString: String = value
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
+      val dep = if (defined contains value) Set.empty[String] else Set(value)
+      dep -> defined
+    }
   }
 
-  class SNumber[T](number: T)(implicit evidence: scala.math.Numeric[T]) extends Expression {
+  object Symbol {
+    def apply(symbol: String): Symbol = PlainSymbol(symbol)
+
+    def unapply(arg: Symbol): Option[String] = Some(arg.value)
+  }
+
+  case class PlainSymbol(value: String) extends Symbol
+  case class GraveAccentSymbol(value: String) extends Symbol
+
+  class SNumber[T](number: T)(implicit evidence: scala.math.Numeric[T]) extends Expression with NoExternalDependency {
     override def toString: String = number.toString
     def ops = evidence
   }
 
-  case class SInteger(value: Int) extends SNumber(value)
+  case class SInteger(value: Int) extends SNumber(value) with NoExternalDependency
 
-  case class SFloat(value: Double) extends SNumber(value)
+  case class SFloat(value: Double) extends SNumber(value) with NoExternalDependency
 
-  case class SBool(value: Boolean) extends Expression {
+  case class SBool(value: Boolean) extends Expression with NoExternalDependency {
     override def toString: String = value.toString
   }
 
-  case class SString(value: String) extends Expression {
+  case class SString(value: String) extends Expression with NoExternalDependency {
     override def toString: String = value.toString
 
     override def code: String = {
@@ -58,11 +97,11 @@ object LispExp {
     }
   }
 
-  case object NilObj extends Expression {
+  case object NilObj extends Expression with NoExternalDependency {
     override def toString: String = "( )"
   }
 
-  case class WrappedScalaObject[+T](obj: T) extends Expression {
+  case class WrappedScalaObject[+T](obj: T) extends Expression with NoExternalDependency {
     def get: T = obj
 
     override def toString: String = s"#Scala($obj)"
@@ -70,11 +109,12 @@ object LispExp {
 
   trait Procedure extends Expression
 
-  case class PrimitiveFunction(function: List[Expression] => Expression) extends Procedure with DeclareArityAfter {
+  case class PrimitiveFunction(function: List[Expression] => Expression)
+    extends Procedure with DeclareArityAfter with NoExternalDependency {
     override def toString: String = s"#[Native Code]($function)"
   }
   case class SideEffectFunction(function: (List[Expression], Environment) => (Expression, Environment))
-    extends Procedure {
+    extends Procedure with NoExternalDependency {
     override def toString: String = "#[Native Code!]"
   }
 
@@ -84,6 +124,24 @@ object LispExp {
 
     override def code: String =
       s"(lambda ${genHead(boundVariable)} ${nestedExpressions.appended(body).map(_.code).mkString(" ")})"
+
+    override def collectEnvDependency(defined: Set[String],
+                                      environment: Environment,
+                                      context: List[Expression]): (Set[String], Set[String]) = {
+      val innerDefinition = getBoundVariables(boundVariable) ++ defined
+      val guardDependency = boundVariable.lastOption.map {
+        case Apply(Symbol("?" | "when" | "when?"), xs::Nil) =>
+          xs.collectEnvDependency(innerDefinition)._1
+        case _ => Set.empty[String]
+      }.getOrElse(Set.empty)
+      val (dependency, defines) = nestedExpressions.foldLeft(Set.empty[String] -> (innerDefinition)) {
+        case ((dependency, defined), expression) =>
+          val (deps, defs) = expression.collectEnvDependency(defined, environment, context)
+          val newDef = defs -- defined
+          (dependency ++ deps -- newDef, defined ++ defs)
+      }
+      (dependency ++ guardDependency ++ body.collectEnvDependency(defines)._1) -> defined
+    }
   }
 
   case class Closure(boundVariable: List[Expression],
@@ -102,7 +160,9 @@ object LispExp {
              sideEffects: List[Expression] = sideEffects): Closure =
       Closure(boundVariable, body, capturedEnv, sideEffects).withDocString(document)
 
-    override def code: String = LambdaExpression(body, boundVariable, sideEffects).code
+    private lazy val rawLambdaExpression = LambdaExpression(body, boundVariable, sideEffects)
+
+    override def code: String = rawLambdaExpression.code
 
     override lazy val arity: Option[Int] = getArityOfPattern(boundVariable)
 
@@ -110,29 +170,65 @@ object LispExp {
 
     override def isDefinedAt(input: List[Expression], _env: Environment): Boolean =
       super.isDefinedAt(input, capturedEnv)
+
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
+      rawLambdaExpression collectEnvDependency defined
+
+    def flattenCaptured: Closure = copy(capturedEnv=capturedEnv.collectValues(freeVariables.toList))
   }
 
   case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {
     override def valid: Boolean = predicate.valid && consequence.valid && alternative.valid
 
     override def code: String = s"(if ${predicate.code} ${consequence.code} ${alternative.code})"
+
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
+      accumulateDependencies(predicate::consequence::alternative::Nil, defined)
   }
-  case class SCond(conditions: List[(Expression, Expression)]) extends Expression
+  case class SCond(conditions: List[(Expression, Expression)]) extends Expression {
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
+      accumulateDependencies(conditions.flatMap(it => it._1::it._2::Nil), defined)
+  }
 
   case class Apply(head: Expression, args: List[Expression]) extends Expression {
     override def valid: Boolean = head.valid && args.forall(_.valid)
 
     override def code: String =
       if(args.isEmpty) s"(${head.code})" else s"(${head.code} ${args.map(_.code).mkString(" ")})"
+
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
+      accumulateDependencies(head::args, defined)
+    }
+
+    override def collectEnvDependency(defined: Set[String],
+                                      env: Environment,
+                                      context: List[Expression]): (Set[String], Set[String]) = {
+      val (lastDeps, lastDefs) = collectEnvDependency(defined)
+      head match {
+        case Symbol(sym) if env.has(sym) =>
+          val (deps, defs) = env.getValueOption(sym).get.collectEnvDependency(defined, env, args)
+          (lastDeps ++ deps, lastDefs ++ defs)
+        case _ => lastDeps -> lastDefs
+      }
+    }
   }
 
   case class Define(symbol: Expression, value: Expression) extends Expression {
     override def valid: Boolean = value.valid
 
     override def code: String = s"(define ${symbol.code} ${value.code})"
+
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
+      val (deps, defs) = value.collectEnvDependency(defined)
+      val newDef = symbol match {
+        case Symbol(sym) => defs + sym
+        case _ => defs
+      }
+      deps -> newDef
+    }
   }
 
-  case class Quote(exp: Expression) extends Expression {
+  case class Quote(exp: Expression) extends Expression with NoExternalDependency {
     override def valid: Boolean = exp.valid
 
     override def toString: String = s"'${exp.toString}"
@@ -140,7 +236,7 @@ object LispExp {
     override def code: String = s"'${exp.code}"
   }
 
-  case class UnQuote(quote: Expression) extends Expression {
+  case class UnQuote(quote: Expression) extends Expression with NoExternalDependency {
     override def valid: Boolean = quote.valid
 
     override def toString: String = s"~$quote"
@@ -156,6 +252,17 @@ object LispExp {
       case Apply(Symbol("..."), Symbol(x)::Nil) => genHead(ex.init appended Symbol(s"...$x"))
       case _ => s"(${ex.map(_.code).mkString(" ")})"
     }
+  }
+
+  def getBoundVariables(pat: List[Expression]): Set[String] = pat match {
+    case Nil => Set.empty
+    case Apply(Symbol("..."), Symbol(sym)::Nil)::Nil => Set(sym)
+    case Apply(Symbol("?" | "when?" | "when"), _)::Nil => Set.empty
+    case Symbol("_")::xs => getBoundVariables(xs)
+    case Symbol(sym)::xs => getBoundVariables(xs) + sym
+    case Apply(Symbol("seq"), args)::xs => getBoundVariables(xs) ++ getBoundVariables(args)
+    case Apply(ex, args)::xs => getBoundVariables(ex::xs) ++ getBoundVariables(args)
+    case _::xs => getBoundVariables(xs)
   }
 
   @tailrec
@@ -183,7 +290,8 @@ object LispExp {
 
   case class SimpleMacro(paramsPattern: Seq[Expression],
                          body: Expression,
-                         defines: Seq[Expression]) extends Expression with MayHaveArity with MayBeDefined {
+                         defines: Seq[Expression])
+    extends Expression with MayHaveArity with MayBeDefined with NoExternalDependency {
     override def valid: Boolean = paramsPattern.forall(_.valid) && body.valid && defines.forall(_.valid)
 
     override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
@@ -195,11 +303,12 @@ object LispExp {
     override def pattern: List[List[Expression]] = paramsPattern.toList::Nil
   }
 
-  case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment)) extends Expression with DeclareArityAfter {
+  case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment))
+    extends Expression with DeclareArityAfter with NoExternalDependency {
     override def toString: String = s"#Macro![Native Code]"
   }
 
-  case class Failure(tp: String, message: String) extends Expression {
+  case class Failure(tp: String, message: String) extends Expression with NoExternalDependency {
     override def valid: Boolean = false
   }
 
@@ -229,7 +338,9 @@ object LispExp {
 
     def withExpression(closure: Closure): PolymorphicExpression = closure match {
       case c@Closure(_, _, capturedEnv, _) =>
-        val nc = c.copy(capturedEnv=CombineEnv.of(innerEnvironment, capturedEnv))
+        val nc =
+          if(c.freeVariables.contains(name)) c.copy(capturedEnv=CombineEnv.of(innerEnvironment, capturedEnv))
+          else c
         val newPolymorphic = copy(variants=variants.appended((nc, nc.boundVariable)))
         innerEnvironment.addValue(name, newPolymorphic)
         newPolymorphic
@@ -269,6 +380,10 @@ object LispExp {
       else None
 
     override def isDefinedAt(input: List[Expression], env: Environment): Boolean = findMatch(input, env).isDefined
+
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
+      accumulateDependencies(variants.map(_._1).toList, defined + name)
+    }
   }
 
   object PolymorphicExpression {

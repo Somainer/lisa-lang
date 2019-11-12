@@ -173,7 +173,7 @@ To change a value, you should declare a mutable value by `define-mutable!`.
 (define-mutable! v)
 ```
 If there is a variable with same name, it will shadow the previous-defined value
-and be initialized with same value.
+and be initialized with same value, otherwise it will be initialized with `()`.
 
 Then you can change the value by `set!`, but you may not change immutable values.
 
@@ -251,6 +251,62 @@ The secondary usage is to limit the arity of an va-arg function, like `+`.
 The syntax looks like `&<func_name>/<arity>`.
 `&+/2` will be compiled to `(lambda (arg0 arg1) (+ arg0 arg1))`, limiting the arity helps to implement currying, because
 it will be possible to get function arity via `length` primitive procedure.
+**Note** that an anonymous function with no bound arguments will be treated as a constant function, which receives arbitrary arguments
+and returns a constant value. E.g. `&1` is equivalent to `(lambda ((... _)) 1)`.
+
+### Phrase Definition
+```scheme
+(define-phrase (args*) body*)
+```
+
+is equivalent to 
+
+```scheme
+(define-macro (`&__PHRASE__` args*) body*)
+```
+
+`&__PHRASE__` will be automatically applied if
+one expression do not have a valid result and
+`&__PHRASE__` macro is defined at your input.
+
+**Note:** Unlike macro definition, defining a new phrase 
+using `define-phrase` in
+a new scope will not shadow previously defined phrases,
+and it will create a new polymorphic variant. 
+
+```scheme
+(define-phrase (a '+ b) '(+ ~a ~b)) ; <==>
+(define-macro (`&__PHRASE__` a '+ b) '(+ ~a ~b))
+
+(3 + 2) ; Will be transformed to 
+(`&__PHRASE__` 3 + 2) ; because 3 can not be applied to (+ 2)
+```
+
+## Do Object-Oriented Programming
+Signal-based oop could be achieved by polymorphic-function.
+For your information, you can see `oop.lisa`.
+```scheme
+(define (Person 'is-person? p (when? (&true (p 'person?)))) true)
+(define (Person 'is-person? _) false)
+(define (Person name age (when (and (string? name) (and (number? age) (> age 0))))) ; They are defined in prelude.lisa.
+    (define-mutable! age)
+    (define (age-guard age) (and (number? age) (> age 0)))
+    (define (self 'name) name)
+    (define (self 'age) age)
+    (define (self 'age new-age (when (age-guard new-age))) (set! age new-age))
+    (define (self 'setted-age new-age (when (age-guard new-age)))
+        (&self (self 'age new-age)))
+    (define (self 'person?) true)
+    (define (self 'elder-than? other (when (Person 'is-person? other))) (> age (other 'age)))
+    self)
+```
+With pipeline function `|>` with phrase definition in prelude, calling by chain can be achieved.
+```scheme
+(define-phrase (symbol (... args) (? (quoted? symbol))) '&(# ~symbol ~args)); This is defined in prelude.
+(|> (Person "Elder" 91)
+    ('setted-age 92)
+    ('elder-than? (Person "Senpai" 24))) ; ==> true
+```
 
 ## Great! How to use it?
 

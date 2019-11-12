@@ -52,6 +52,7 @@ object Evaluator {
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
     case SUnQuote(q) => UnQuote(compile(q))
+    case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value(value) => {
       if(value.matches("-?\\d+"))
         value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
@@ -162,12 +163,12 @@ object Evaluator {
                 env.withValue(sym, PolymorphicExpression.create(closure, sym).withExpression(c))
               case _ => env.withValue(sym, PolymorphicExpression.create(c, sym))
             }
-          } else {
+          } else if(c.freeVariables contains sym) {
             val recursiveFrame = capturedEnv.newMutableFrame
             val recursiveClosure = c.copy(capturedEnv=recursiveFrame)
             recursiveFrame.addValue(sym, recursiveClosure)
             unit(env.withValue(sym, recursiveClosure))
-          }
+          } else unit(env.withValue(sym, c))
         case mac: SimpleMacro if env.directHas(sym) =>
           unit {
             env.getValueOption(sym).get match {
@@ -229,6 +230,14 @@ object Evaluator {
         }
         case proc => evalList(args, env).fold(EvalFailure(_),
           evaledArguments => apply(proc, evaledArguments.toList).fold(EvalFailure(_), EvalSuccess(_, env)))
+      } match {
+        case success@EvalSuccess(_, _) => success
+        case _ if func != Symbol(PHRASE_VAR) && env
+          .getValueOption(PHRASE_VAR)
+          .filter(_.isInstanceOf[MayBeDefined])
+          .exists(_.asInstanceOf[MayBeDefined].isDefinedAt(func :: args, env)) =>
+          eval(Apply(Symbol(PHRASE_VAR), func :: args), env)
+        case f => f
       }
       case SIfElse(predicate, consequence, alternative) =>
         eval(predicate, env) match {
@@ -390,6 +399,13 @@ object Evaluator {
         case _::ys => matchArgument(xs, ys, matchResult, inEnv)
         case Nil => None
       }
+      case GraveAccentSymbol(sym)::xs
+        if inEnv.has(sym) && !matchResult.contains(sym) =>
+        val contextValue = inEnv.getValueOption(sym).get
+        arguments match {
+          case `contextValue`::ys => matchArgument(xs, ys, matchResult, inEnv)
+          case _ => None
+        }
       case Symbol(sym)::xs => arguments match {
         case exp::ys =>
           if(matchResult.contains(sym)) {

@@ -28,7 +28,9 @@ object Environments {
     def isEmpty: Boolean = this == EmptyEnv
     def collectDefinedValues: Set[String] = Set.empty
     def flatten: Environment = {
-      val values = collectDefinedValues
+      collectValues(collectDefinedValues.toSeq)
+    }
+    def collectValues(values: Seq[String]): Environment = {
       if(values.isEmpty) EmptyEnv
       else {
         val (mutable, immutable) = values.partition(isMutable)

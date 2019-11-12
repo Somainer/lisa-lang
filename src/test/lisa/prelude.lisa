@@ -127,6 +127,9 @@
 (define (quoted? x (when? ((constant true) ~x))) true)
 (define (quoted? _) false)
 
+(define (nil? ()) true)
+(define (nil? _) false)
+
 (define (curried-2 fn) ; For procedures with no arity.
     (lambda (x)
         (lambda (y) (fn x y))))
@@ -158,6 +161,7 @@
         (apply-seq (h a) t))
     (apply-seq x fs))
 
+(define-phrase (symbol (... args) (? (quoted? symbol))) '&(# ~symbol ~args))
 ; (define limit-arity (curried limit-arity))
 (define (copied-docstring f1 f2)
     (set-doc f1 (get-doc f2)))
@@ -172,8 +176,9 @@
 
 (import-env! scala-root scala)
 (define (none 'option? ) true)
-(define (none 'map ) none)
-(define (none 'filter ) none)
+(define (none 'defined?) false)
+(define (none 'map _) none)
+(define (none 'filter _) none)
 (define (none 'get-or-else x) x)
 (define (none 'or-else x) x)
 (define (none 'to-scala ) scala.None)
@@ -181,6 +186,7 @@
     (define (some-impl 'option? ) true)
     (define (some-impl 'map fn)
         (some (fn x)))
+    (define (some-impl 'defined?) true)
     (define (some-impl 'filter fn (? (fn x))) some-impl)
     (define (some-impl 'filter _) none)
     (define (some-impl 'get ) x)
@@ -189,10 +195,18 @@
     (define (some-impl 'to-scala) (scala.Some x))
     some-impl)
 
+(define-macro (option-from x)
+    '(block
+        (define (receive y (when? (&true (.get y)))) (some (.get y)))
+        (define (receive _) none)
+        (receive (try-option ~x))))
 
 (define-macro (method-caller method (... args))
     '(lambda (object) (object '~method ~args)))
 
-(define-macro (current-env)
-    (.parent (.capturedEnv (wrap &#))))
+(define (env-of fn)
+    (.capturedEnv (wrap fn)))
 (define identity &#)
+
+(define (current-env)
+    (|> &# wrap .capturedEnv))
