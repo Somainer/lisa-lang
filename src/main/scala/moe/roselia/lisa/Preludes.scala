@@ -6,7 +6,6 @@ import moe.roselia.lisa.LispExp._
 import moe.roselia.lisa.Reflect.{PackageAccessor, ToolboxDotAccessor}
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
 
-import scala.collection.immutable.Vector
 import scala.util.Try
 
 object Preludes extends LispExp.Implicits {
@@ -112,6 +111,7 @@ object Preludes extends LispExp.Implicits {
           case SInteger(x) => x
           case SFloat(f) => f.toInt
           case SBool(b) => if(b) 1 else 0
+          case num: SNumber[_] => num.toIntNumber.number
         }
       }
     }.withArity(1),

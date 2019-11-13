@@ -79,7 +79,8 @@ object LispExp {
   import Ordering.Implicits._
   import Rational.Implicits._
 
-  class SNumber[T](val number: T)(implicit evidence: scala.math.Numeric[T]) extends Expression with Ordered[SNumber[T]] {
+  class SNumber[T](val number: T)(implicit evidence: scala.math.Numeric[T])
+    extends Expression with Ordered[SNumber[T]] with NoExternalDependency {
     override def toString: String = number.toString
     def mapTo[U : Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
     def toIntNumber: SNumber[Int] = number.toInt
@@ -112,11 +113,18 @@ object LispExp {
     def max(that: SNumber[T]): SNumber[T] = number max that.number
     def min(that: SNumber[T]): SNumber[T] = number min that.number
     def equalsTo(that: SNumber[T]): Boolean = number equiv that.number
+
+    override def equals(obj: Any): Boolean = obj match {
+//      case num: SNumber[T] => equalsTo(num)
+      case that: SNumber[_] => SNumber.performComputation(_ equalsTo _)(this, that)
+      case other => super.equals(other)
+    }
   }
 
   object SNumber {
     implicit def wrapToSNumber[T : Numeric](t: T): SNumber[T] = apply(t)
     def apply[T : Numeric](number: T): SNumber[T] = new SNumber(number)
+
     implicit def convertNumberTypes[T, U : Numeric](number: SNumber[T])(implicit transform: T => U): SNumber[U] =
       number.mapTo[U]
     def performComputation[T](f: (SNumber[Any], SNumber[Any]) => T)(a: SNumber[_], b: SNumber[_]): T = {
@@ -152,11 +160,11 @@ object LispExp {
     }
   }
 
-  case class SInteger(value: Int) extends SNumber(value) with NoExternalDependency
+  case class SInteger(value: Int) extends SNumber(value)
 
-  case class SFloat(value: Double) extends SNumber(value) with NoExternalDependency
+  case class SFloat(value: Double) extends SNumber(value)
 
-  case class SRational(value: Rational[Int]) extends SNumber(value) with NoExternalDependency
+  case class SRational(value: Rational[Int]) extends SNumber(value)
 
   case class SBool(value: Boolean) extends Expression with NoExternalDependency {
     override def toString: String = value.toString
@@ -402,7 +410,7 @@ object LispExp {
             case Closure(_, _, capturedEnv, _) => capturedEnv
             case _ => inEnv
           }
-          Evaluator.matchArgument(mat, args, inEnv = env) match {
+          Evaluator.matchArgument(mat.toList, args.toList, inEnv = env) match {
             case Some(x) => Some((exp, x))
             case _ => find(xs)
           }

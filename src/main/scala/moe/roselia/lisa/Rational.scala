@@ -9,34 +9,31 @@ case class Rational[T: Integral](numerator: T, denominator: T) extends Ordered[R
   def doubleValue = numerator.toDouble / denominator.toDouble
   def flatMap(f: (T, T) => Rational[T]) = f(numerator, denominator)
   def map(f: (T, T) => (T, T)) =
-    flatMap {
-      case (x, y) =>
+    flatMap { (x, y) =>
         val (a, b) = f(x, y)
         Rational(a, b)
     }
 
-  private def transform(that: Rational[T])(f: (T, T, T, T) => (T, T)) =
+  def map2(that: Rational[T])(f: (T, T, T, T) => (T, T)) =
     flatMap((x, y) => that.map(f(x, y, _, _)))
 
-  def reciprocal = map {
-    case (a, b) => (b, a)
-  }
+  def reciprocal = map { (a, b) => (b, a) }
 
-  def +(that: Rational[T]) = transform(that) {
-    case (x, y, a, b) => (x * b + a * y, y * b)
+  def +(that: Rational[T]) = map2(that) {
+    (x, y, a, b) => (x * b + a * y, y * b)
   }
-  def -(that: Rational[T]) = transform(that) {
-    case (x, y, a, b) => (x * b - a * y, y * b)
+  def -(that: Rational[T]) = map2(that) {
+    (x, y, a, b) => (x * b - a * y, y * b)
   }
-  def *(that: Rational[T]) = transform(that) {
-    case (x, y, a, b) => (x * a, y * b)
+  def *(that: Rational[T]) = map2(that) {
+    (x, y, a, b) => (x * a, y * b)
   }
   def /(that: Rational[T]) = this * that.reciprocal
   def abs = map {
-    case (a, b) => (a.abs, b.abs)
+    (a, b) => (a.abs, b.abs)
   }
   def unary_- = map {
-    case (a, b) => (-a, b)
+    (a, b) => (-a, b)
   }
 
   def sign = (numerator.sign * denominator.sign).sign
@@ -120,8 +117,8 @@ object Rational {
     override def integralEvidence: Integral[T] = implicitly
   }
 
-  implicit val RationalOfIntIsNumeric: RationalIsNumeric[Int] = RationalIsNumericEvidenceMaker[Int]
-  implicit val RationalOfBigIntIsNumeric: RationalIsNumeric[BigInt] = RationalIsNumericEvidenceMaker[BigInt]
+  implicit val RationalOfIntIsNumeric: RationalIsNumeric[Int] = RationalIsNumericEvidenceMaker
+  implicit val RationalOfBigIntIsNumeric: RationalIsNumeric[BigInt] = RationalIsNumericEvidenceMaker
 
   trait Implicits {
     implicit def integralToSRational[T](t: T)(implicit isIntegral: Integral[T]): Rational[T] =

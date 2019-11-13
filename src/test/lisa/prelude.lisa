@@ -13,23 +13,6 @@
         (define __a ~a)
         (if (truthy? __a) ~b __a)))
 
-(define (< a b)
-    "Return true if a < b. This function will invoke native java method."
-    (define java-cmp (.compareTo a b))
-    (cond ((= java-cmp -1) true)
-          ((= java-cmp 0) false)
-          ((= java-cmp 1) false)
-          (else (< java-cmp 0))))
-
-(define (<= a b)
-    (or (= a b) (< a b)))
-
-(define (> a b)
-    (< b a))
-
-(define (>= a b)
-    (or (= a b) (> a b)))
-
 (define (Y fn)
     "Y combinator, nothing interesting."
     ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s))))))

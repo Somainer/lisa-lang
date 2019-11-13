@@ -56,7 +56,8 @@ object Evaluator {
     case Value(value) => {
       if(value.matches("-?\\d+"))
         value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
-      else value.toDoubleOption.map(SFloat).getOrElse(Symbol(value))
+      else if(value.matches("""([0-9]*\.)?[0-9]+([eE][-+]?[0-9]+)?""")) SFloat(value.toDouble)
+      else Symbol(value)
     }
     case StringLiteral(value) => SString(value)
     case SList(ls) => ls match {
@@ -156,7 +157,10 @@ object Evaluator {
       case o@WrappedScalaObject(_) => pureValue(o)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
         case c@Closure(_, _, capturedEnv, _) =>
-          if(env.directHas(sym)) unit {
+          val notFound = (c.freeVariables - sym).filterNot(capturedEnv.has)
+          if(notFound.nonEmpty) {
+            EvalFailure(s"Symbol not found: ${notFound.mkString(", ")}")
+          } else if(env.directHas(sym)) unit {
             env.getValueOption(sym).get match {
               case p: PolymorphicExpression => env.withValue(sym, p.withExpression(c))
               case closure: Closure =>
@@ -370,7 +374,7 @@ object Evaluator {
       }
     }
     val SimpleMacro(paramsPattern, body, defines) = m
-    val evalResult = matchArgument(paramsPattern, args, inEnv = env).map(Env(_, env)).map(newEnv => {
+    val evalResult = matchArgument(paramsPattern.toList, args.toList, inEnv = env).map(Env(_, env)).map(newEnv => {
       defines.foldLeft[EvalResult](EvalSuccess(NilObj, newEnv)) {
         case (accumulator, define) => accumulator flatMapWithEnv {
           case (_, e) => eval(define, e)
@@ -395,8 +399,8 @@ object Evaluator {
     result
   }
 
-  def matchArgument(pattern: Seq[Expression],
-                    arguments: Seq[Expression],
+  def matchArgument(pattern: List[Expression],
+                    arguments: List[Expression],
                     matchResult: collection.mutable.Map[String, Expression] = collection.mutable.Map.empty,
                     inEnv: Environment = EmptyEnv): Option[Map[String, Expression]] =
     pattern match {
