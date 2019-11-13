@@ -19,13 +19,14 @@ object ScalaBridge {
 
   def toScalaNative(exp: Expression): Any = exp match {
     case SBool(b) => b
-    case SInteger(i) => i
+    case SInteger(i) => i.toInt
     case SString(s) => s
     case WrappedScalaObject(obj) => obj
     case Symbol(sym) => scala.Symbol(sym)
-    case SFloat(fl) => fl
+    case SFloat(fl) => fl.toDouble
     case NilObj => ()
-    case SRational(rat) => rat.doubleValue
+    case SRational(rat) =>
+      if(rat.isIntegral) rat.integralValue.toInt else rat.doubleValue.toDouble
     case PrimitiveFunction(fn) => (xs: Any) => fn(ensureSeq(xs).map(fromScalaNative).toList)
     case c@Closure(_, _, _, _) =>
       evalClosure(c)(_)
@@ -37,7 +38,7 @@ object ScalaBridge {
     case i: Int => SInteger(i)
     case i: java.lang.Integer => SInteger(i.intValue())
     case d: Double => SFloat(d)
-    case f: Float => SFloat(f)
+    case f: Float => SFloat(f.toDouble)
     case s: String => SString(s)
     case scala.Symbol(sym) => Symbol(sym)
     case () => NilObj

@@ -79,18 +79,27 @@ object LispExp {
   import Ordering.Implicits._
   import Rational.Implicits._
 
+  type LisaInteger = BigInt
+  val LisaInteger = BigInt
+
+  type LisaDecimal = BigDecimal
+  val LisaDecimal = BigDecimal
+
+  import LisaInteger.int2bigInt
+  import LisaDecimal.double2bigDecimal
+
   class SNumber[T](val number: T)(implicit evidence: scala.math.Numeric[T])
     extends Expression with Ordered[SNumber[T]] with NoExternalDependency {
     override def toString: String = number.toString
     def mapTo[U : Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
-    def toIntNumber: SNumber[Int] = number.toInt
-    def toDoubleNumber: SNumber[Double] = number.toDouble
-    def toRationalNumber: SNumber[Rational[Int]] = {
+    def toIntNumber: SNumber[LisaInteger] = SNumber(toRationalNumber.number.integralValue)
+    def toDoubleNumber: SNumber[LisaDecimal] = SNumber(number.toDouble)
+    def toRationalNumber: SNumber[Rational[LisaInteger]] = {
       import SNumber.NumberTypes._
       getTypeOrder(number) match {
-        case TypeFlags.Integer => SRational(number.toInt)
-        case TypeFlags.Rational => this.asInstanceOf[SNumber[Rational[Int]]]
-        case _ => Rational.fromDouble[Int](number.toDouble)
+        case TypeFlags.Integer => SRational(number.asInstanceOf[LisaInteger])
+        case TypeFlags.Rational => this.asInstanceOf[SNumber[Rational[LisaInteger]]]
+        case _ => Rational.fromDouble[LisaInteger](number.toDouble)
       }
     }
     def +(that: SNumber[T]): SNumber[T] = number + that.number
@@ -138,9 +147,10 @@ object LispExp {
         val Double = 3
       }
       def getTypeOrder(obj: Any) = obj match {
-        case _: Int | _: Integer => TypeFlags.Integer
+        case _: Int | _: Integer | _: LisaInteger => TypeFlags.Integer
         case _: Rational[_] => TypeFlags.Rational
-        case _: Float | _: Double | _: java.lang.Double | _: java.lang.Float => TypeFlags.Double
+        case _: Float | _: Double | _: java.lang.Double | _: java.lang.Float | _: LisaDecimal =>
+          TypeFlags.Double
       }
       def castToType(flag: Int)(obj: SNumber[_]): SNumber[_] = {
         flag match {
@@ -160,11 +170,11 @@ object LispExp {
     }
   }
 
-  case class SInteger(value: Int) extends SNumber(value)
+  case class SInteger(value: LisaInteger) extends SNumber(value)
 
-  case class SFloat(value: Double) extends SNumber(value)
+  case class SFloat(value: BigDecimal) extends SNumber(value)
 
-  case class SRational(value: Rational[Int]) extends SNumber(value)
+  case class SRational(value: Rational[LisaInteger]) extends SNumber(value)
 
   case class SBool(value: Boolean) extends Expression with NoExternalDependency {
     override def toString: String = value.toString

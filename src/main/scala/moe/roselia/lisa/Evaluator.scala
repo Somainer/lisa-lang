@@ -55,11 +55,14 @@ object Evaluator {
     case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value(value) => {
       if(value.matches("-?\\d+"))
-        value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
-      else if(value.matches("""([0-9]*\.)?[0-9]+([eE][-+]?[0-9]+)?""")) SFloat(value.toDouble)
+        SInteger(LisaInteger(value))
+//        value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
+      else if(value.matches("""([0-9]*\.)?[0-9]+([eE][-+]?[0-9]+)?"""))
+        SFloat(LisaDecimal(value))
       else Symbol(value)
     }
-    case StringLiteral(value) => SString(value)
+    case StringLiteral(value) =>
+      SString(value)
     case SList(ls) => ls match {
       case Value("quote" | "'")::xs => xs match {
         case expr::Nil => Quote(compile(expr))

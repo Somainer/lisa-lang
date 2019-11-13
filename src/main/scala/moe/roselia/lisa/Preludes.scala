@@ -288,7 +288,7 @@ object Preludes extends LispExp.Implicits {
     }.withArity(2),
     "limit-arity" -> PrimitiveFunction {
       case SInteger(n)::fn::Nil =>
-        val argList = 0.until(n).map(i => s"arg$i").map(PlainSymbol).toList
+        val argList = 0.until(n.toInt).map(i => s"arg$i").map(PlainSymbol).toList
         Closure(argList, Apply(fn, argList), EmptyEnv).copyDocString(fn)
     }.withArity(2).withDocString("Limit va-arg function to accept n arguments"),
     "get-doc" -> PrimitiveFunction {
