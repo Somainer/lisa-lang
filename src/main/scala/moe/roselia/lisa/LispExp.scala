@@ -92,7 +92,7 @@ object LispExp {
     extends Expression with Ordered[SNumber[T]] with NoExternalDependency {
     override def toString: String = number.toString
     def mapTo[U : Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
-    def toIntNumber: SNumber[LisaInteger] = SNumber(toRationalNumber.number.integralValue)
+    def toIntNumber: SNumber[LisaInteger] = SNumber(toRationalNumber.number.toIntegral)
     def toDoubleNumber: SNumber[LisaDecimal] = SNumber(number.toDouble)
     def toRationalNumber: SNumber[Rational[LisaInteger]] = {
       import SNumber.NumberTypes._
@@ -132,7 +132,12 @@ object LispExp {
 
   object SNumber {
     implicit def wrapToSNumber[T : Numeric](t: T): SNumber[T] = apply(t)
-    def apply[T : Numeric](number: T): SNumber[T] = new SNumber(number)
+    def apply[T : Numeric](number: T): SNumber[T] = number match {
+      case s: LisaInteger => SInteger(s).asInstanceOf[SNumber[T]]
+      case s: LisaDecimal => SFloat(s).asInstanceOf[SNumber[T]]
+      case s: Rational[LisaInteger] => SRational(s).asInstanceOf[SNumber[T]]
+      case s => new SNumber(s)
+    }
 
     implicit def convertNumberTypes[T, U : Numeric](number: SNumber[T])(implicit transform: T => U): SNumber[U] =
       number.mapTo[U]
@@ -172,7 +177,7 @@ object LispExp {
 
   case class SInteger(value: LisaInteger) extends SNumber(value)
 
-  case class SFloat(value: BigDecimal) extends SNumber(value)
+  case class SFloat(value: LisaDecimal) extends SNumber(value)
 
   case class SRational(value: Rational[LisaInteger]) extends SNumber(value)
 

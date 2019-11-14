@@ -42,7 +42,7 @@ object Main {
     if (!isMac && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
     val s = scala.io.StdIn
       .readLine(if(lastInput.isEmpty) "lisa>" else s"....>${tabs}")
-    val concatInput = s"${lastInput}\n$s"
+    val concatInput = s"${lastInput}\n$s".trim
     if (concatInput.nonEmpty) {
       //      println(s"Input: $s")
       if (!concatInput.replace(" ", "").endsWith("\n\n") && needMoreInput(concatInput)) prompt(env, concatInput)

@@ -319,6 +319,10 @@ object Preludes extends LispExp.Implicits {
         case _ => WrappedScalaObject(None) -> e
       }
       case (_, e) => Failure("Arity Error", "try-option only accepts one argument.") -> e
+    }.withArity(1),
+    "string->symbol" -> PrimitiveFunction {
+      case SString(sym)::Nil => Symbol(sym)
+      case _ => Failure("Arity Error", "only accept a string")
     }.withArity(1)
   ))
 

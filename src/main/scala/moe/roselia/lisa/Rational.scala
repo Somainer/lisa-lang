@@ -4,9 +4,9 @@ import scala.annotation.tailrec
 import languageFeature.implicitConversions
 import Integral.Implicits._
 
-case class Rational[T: Integral](numerator: T, denominator: T) extends Ordered[Rational[T]] {
+case class Rational[T: Integral] private (numerator: T, denominator: T) extends Ordered[Rational[T]] {
   private[this] def evidence: Integral[T] = implicitly
-  def doubleValue = numerator.toDouble / denominator.toDouble
+  def toDouble = numerator.toDouble / denominator.toDouble
   def flatMap(f: (T, T) => Rational[T]) = f(numerator, denominator)
   def map(f: (T, T) => (T, T)) =
     flatMap { (x, y) =>
@@ -41,7 +41,7 @@ case class Rational[T: Integral](numerator: T, denominator: T) extends Ordered[R
   override def compare(that: Rational[T]): Int =
     (this - that).sign.toInt
 
-  def integralValue = numerator / denominator
+  def toIntegral = numerator / denominator
 
   def isIntegral = {
     evidence.equiv(denominator, evidence.one)
@@ -94,10 +94,10 @@ object Rational {
       Rational(integralEvidence.fromInt(x), integralEvidence.one)
     }
 
-    override def toInt(x: Rational[T]): Int = integralEvidence.toInt(x.integralValue)
-    override def toLong(x: Rational[T]): Long = integralEvidence.toLong(x.integralValue)
+    override def toInt(x: Rational[T]): Int = integralEvidence.toInt(x.toIntegral)
+    override def toLong(x: Rational[T]): Long = integralEvidence.toLong(x.toIntegral)
     override def toFloat(x: Rational[T]): Float = toDouble(x).toFloat
-    override def toDouble(x: Rational[T]): Double = x.doubleValue
+    override def toDouble(x: Rational[T]): Double = x.toDouble
 
     override def compare(x: Rational[T], y: Rational[T]): Int = x.compare(y)
 
@@ -124,7 +124,7 @@ object Rational {
     implicit def integralToSRational[T](t: T)(implicit isIntegral: Integral[T]): Rational[T] =
       Rational(t, isIntegral.one)
 
-    implicit def sRationalToDouble(r: Rational[_]): Double = r.doubleValue
+    implicit def sRationalToDouble(r: Rational[_]): Double = r.toDouble
   }
   object Implicits extends Implicits
   import Implicits._

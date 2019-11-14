@@ -26,7 +26,8 @@ object ScalaBridge {
     case SFloat(fl) => fl.toDouble
     case NilObj => ()
     case SRational(rat) =>
-      if(rat.isIntegral) rat.integralValue.toInt else rat.doubleValue.toDouble
+      if(rat.isIntegral) rat.toIntegral.toInt else rat.toDouble.toDouble
+    case sNumber: SNumber[_] => sNumber
     case PrimitiveFunction(fn) => (xs: Any) => fn(ensureSeq(xs).map(fromScalaNative).toList)
     case c@Closure(_, _, _, _) =>
       evalClosure(c)(_)

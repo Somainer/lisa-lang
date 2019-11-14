@@ -160,10 +160,11 @@ object Evaluator {
       case o@WrappedScalaObject(_) => pureValue(o)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
         case c@Closure(_, _, capturedEnv, _) =>
-          val notFound = (c.freeVariables - sym).filterNot(capturedEnv.has)
-          if(notFound.nonEmpty) {
-            EvalFailure(s"Symbol not found: ${notFound.mkString(", ")}")
-          } else if(env.directHas(sym)) unit {
+//          val notFound = (c.freeVariables - sym).filterNot(capturedEnv.has)
+//          if(notFound.nonEmpty) {
+//            EvalFailure(s"Symbol not found: ${notFound.mkString(", ")}")
+//          } else
+          if(env.directHas(sym)) unit {
             env.getValueOption(sym).get match {
               case p: PolymorphicExpression => env.withValue(sym, p.withExpression(c))
               case closure: Closure =>
