@@ -13,23 +13,6 @@
         (define __a ~a)
         (if (truthy? __a) ~b __a)))
 
-(define (< a b)
-    "Return true if a < b. This function will invoke native java method."
-    (define java-cmp (.compareTo a b))
-    (cond ((= java-cmp -1) true)
-          ((= java-cmp 0) false)
-          ((= java-cmp 1) false)
-          (else (< java-cmp 0))))
-
-(define (<= a b)
-    (or (= a b) (< a b)))
-
-(define (> a b)
-    (< b a))
-
-(define (>= a b)
-    (or (= a b) (> a b)))
-
 (define (Y fn)
     "Y combinator, nothing interesting."
     ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s))))))
@@ -124,6 +107,16 @@
 (define (polymorphic? m (when? (.startsWith (.toString (wrap m)) "#Polymorph"))) true)
 (define (polymorphic? _) false)
 
+(define (native-function? fn (when? (.startsWith (.toString (wrap fn)) "#[Native Code]"))) true)
+(define (native-function? _) false)
+
+(define (callable? fn)
+    (or
+        (native-function? fn)
+        (or
+            (closure? fn)
+            (macro? fn))))
+
 (define (quoted? x (when? ((constant true) ~x))) true)
 (define (quoted? _) false)
 
@@ -145,7 +138,7 @@
     (set-doc func (+ "Curried: " (get-doc fn)))) ; Ensure curried returns a closure when encounters 0-arity functions.
 
 (define (flip-closure fn)
-    "filp-closure :: (a -> b -> c) -> b -> a -> c"
+    "flip-closure :: (a -> b -> c) -> b -> a -> c"
     (lambda (x y) (fn y x)))
 
 (define falsy? (compose truthy? not))
@@ -166,13 +159,24 @@
 (define (copied-docstring f1 f2)
     (set-doc f1 (get-doc f2)))
 
-(define (polymorph-lambda (... fs))
+(define (polymorphic-lambda (... fs))
     (define-mutable! fs)
     (while (> (length fs) 0)
         (group!
             (define self (.head fs))
             (set! fs (.tail fs))))
     self)
+
+(define-macro (define-polymorphic self '=> (... fs))
+    '(group!
+        (define ~self ())
+        (define-mutable! fs)
+        (set! fs (list ~fs))
+        (while (> (length fs) 0)
+            (group!
+                (define ~self (.head fs))
+                (set! fs (.tail fs))))
+        ~self))
 
 (import-env! scala-root scala)
 (define (none 'option? ) true)

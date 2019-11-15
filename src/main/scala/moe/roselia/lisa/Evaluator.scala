@@ -55,10 +55,14 @@ object Evaluator {
     case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value(value) => {
       if(value.matches("-?\\d+"))
-        value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
+        SInteger(LisaInteger(value))
+//        value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
+      else if(value.matches("""([0-9]*\.)?[0-9]+([eE][-+]?[0-9]+)?"""))
+        SFloat(LisaDecimal(value))
       else Symbol(value)
     }
-    case StringLiteral(value) => SString(value)
+    case StringLiteral(value) =>
+      SString(value)
     case SList(ls) => ls match {
       case Value("quote" | "'")::xs => xs match {
         case expr::Nil => Quote(compile(expr))
@@ -156,6 +160,10 @@ object Evaluator {
       case o@WrappedScalaObject(_) => pureValue(o)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
         case c@Closure(_, _, capturedEnv, _) =>
+//          val notFound = (c.freeVariables - sym).filterNot(capturedEnv.has)
+//          if(notFound.nonEmpty) {
+//            EvalFailure(s"Symbol not found: ${notFound.mkString(", ")}")
+//          } else
           if(env.directHas(sym)) unit {
             env.getValueOption(sym).get match {
               case p: PolymorphicExpression => env.withValue(sym, p.withExpression(c))
@@ -298,7 +306,13 @@ object Evaluator {
       }
 
       case PrimitiveFunction(fn) =>
-        Try(fn(arguments)).fold(ex => Left(ex.toString), Right(_))
+        Try(fn(arguments)).fold(ex => {
+          val cause = ex.getCause
+          val sb = new StringBuilder
+          sb.append(ex.toString)
+          if (cause ne null) sb.append(s"(Caused by $cause)")
+          Left(sb.toString())
+        }, Right(_))
       case WrappedScalaObject(obj) =>
         Try{
           obj.asInstanceOf[Function[Seq[Any], Any]](arguments)
@@ -364,7 +378,7 @@ object Evaluator {
       }
     }
     val SimpleMacro(paramsPattern, body, defines) = m
-    val evalResult = matchArgument(paramsPattern, args, inEnv = env).map(Env(_, env)).map(newEnv => {
+    val evalResult = matchArgument(paramsPattern.toList, args.toList, inEnv = env).map(Env(_, env)).map(newEnv => {
       defines.foldLeft[EvalResult](EvalSuccess(NilObj, newEnv)) {
         case (accumulator, define) => accumulator flatMapWithEnv {
           case (_, e) => eval(define, e)
@@ -389,8 +403,8 @@ object Evaluator {
     result
   }
 
-  def matchArgument(pattern: Seq[Expression],
-                    arguments: Seq[Expression],
+  def matchArgument(pattern: List[Expression],
+                    arguments: List[Expression],
                     matchResult: collection.mutable.Map[String, Expression] = collection.mutable.Map.empty,
                     inEnv: Environment = EmptyEnv): Option[Map[String, Expression]] =
     pattern match {

@@ -6,7 +6,6 @@ import moe.roselia.lisa.LispExp._
 import moe.roselia.lisa.Reflect.{PackageAccessor, ToolboxDotAccessor}
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
 
-import scala.collection.immutable.Vector
 import scala.util.Try
 
 object Preludes extends LispExp.Implicits {
@@ -35,18 +34,56 @@ object Preludes extends LispExp.Implicits {
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
     "+" -> PrimitiveFunction {
-      case ls@x::_ if x.isInstanceOf[SInteger] =>
-        SInteger(ls.asInstanceOf[List[SInteger]].map(_.value).sum)
+      case ls@x :: _ if x.isInstanceOf[SNumber[_]] =>
+        ls.asInstanceOf[List[SNumber[_]]].reduce(SNumber.performComputation(_ + _))
       case xs: List[SString] => SString(xs.map(_.value).reduce(_ + _))
     },
     "-" -> PrimitiveFunction {
-      case SInteger(x)::Nil => -x
-      case xs: List[SInteger] => SInteger(xs.map(_.value).reduce(_ - _))
+      case (x: SNumber[_])::Nil => -x
+      case xs: List[SNumber[_]] => xs.reduce(SNumber.performComputation(_ - _))
     },
     "*" -> PrimitiveFunction {
-      case xs: List[SInteger] => SInteger(xs.map(_.value).product)
+      case xs: List[SNumber[_]] => xs.reduce(SNumber.performComputation(_ * _))
+    },
+    "/" -> PrimitiveFunction {
+      case (lhs: SNumber[_]) :: (rhs: SNumber[_]) :: Nil =>
+        SNumber.performComputation(_ / _)(lhs, rhs)
+    },
+    "<" -> PrimitiveFunction {
+      case xs@head::_::_ if head.isInstanceOf[SNumber[_]] =>
+        val ls = xs.asInstanceOf[List[SNumber[_]]]
+        SBool(ls.zip(ls.tail).view.map(Function.tupled(SNumber.performComputation(_ < _))).forall(identity))
+      case xs@head::_::_ if head.isInstanceOf[Comparable[_]] =>
+        val ls = xs.asInstanceOf[List[Comparable[Any]]]
+        ls.zip(ls.tail).view.map(Function.tupled(_ compareTo _)).forall(_ < 0)
+    },
+    "<=" -> PrimitiveFunction {
+      case xs@head::_::_ if head.isInstanceOf[SNumber[_]] =>
+        val ls = xs.asInstanceOf[List[SNumber[_]]]
+        SBool(ls.zip(ls.tail).view.map(Function.tupled(SNumber.performComputation(_ <= _))).forall(identity))
+      case xs@head::_::_ if head.isInstanceOf[Comparable[_]] =>
+        val ls = xs.asInstanceOf[List[Comparable[Any]]]
+        ls.zip(ls.tail).view.map(Function.tupled(_ compareTo _)).forall(_ <= 0)
+    },
+    ">" -> PrimitiveFunction {
+      case xs@head::_::_ if head.isInstanceOf[SNumber[_]] =>
+        val ls = xs.asInstanceOf[List[SNumber[_]]]
+        SBool(ls.zip(ls.tail).view.map(Function.tupled(SNumber.performComputation(_ > _))).forall(identity))
+      case xs@head::_::_ if head.isInstanceOf[Comparable[_]] =>
+        val ls = xs.asInstanceOf[List[Comparable[Any]]]
+        ls.zip(ls.tail).view.map(Function.tupled(_ compareTo _)).forall(_ > 0)
+    },
+    ">=" -> PrimitiveFunction {
+      case xs@head::_::_ if head.isInstanceOf[SNumber[_]] =>
+        val ls = xs.asInstanceOf[List[SNumber[_]]]
+        SBool(ls.zip(ls.tail).view.map(Function.tupled(SNumber.performComputation(_ >= _))).forall(identity))
+      case xs@head::_::_ if head.isInstanceOf[Comparable[_]] =>
+        val ls = xs.asInstanceOf[List[Comparable[Any]]]
+        ls.zip(ls.tail).view.map(Function.tupled(_ compareTo _)).forall(_ >= 0)
     },
     "=" -> PrimitiveFunction {
+      case (lhs: SNumber[_]) :: (rhs: SNumber[_]) :: Nil =>
+        SNumber.performComputation(_ equalsTo _)(lhs, rhs)
       case lhs::rhs::Nil => lhs == rhs
     }.withArity(2),
     "print!" -> PrimitiveFunction {
@@ -74,11 +111,15 @@ object Preludes extends LispExp.Implicits {
           case SInteger(x) => x
           case SFloat(f) => f.toInt
           case SBool(b) => if(b) 1 else 0
+          case num: SNumber[_] => num.toIntNumber.number
         }
       }
     }.withArity(1),
-    "eval" -> PrimitiveFunction {
-      case x::Nil => Evaluator.eval(x, primitiveEnvironment).asInstanceOf[Evaluator.EvalSuccess].expression
+    "eval" -> SideEffectFunction {
+      case (x::Nil, env) => Evaluator.eval(x, env) match {
+        case EvalSuccess(expression, newEnv) => expression -> newEnv
+        case EvalFailure(msg) => Failure("Eval Failure", msg) -> env
+      }
     },
     "truthy?" -> PrimitiveFunction {
       case ex::Nil => LispExp.SBool {
@@ -250,7 +291,7 @@ object Preludes extends LispExp.Implicits {
     }.withArity(2),
     "limit-arity" -> PrimitiveFunction {
       case SInteger(n)::fn::Nil =>
-        val argList = 0.until(n).map(i => s"arg$i").map(PlainSymbol).toList
+        val argList = 0.until(n.toInt).map(i => s"arg$i").map(PlainSymbol).toList
         Closure(argList, Apply(fn, argList), EmptyEnv).copyDocString(fn)
     }.withArity(2).withDocString("Limit va-arg function to accept n arguments"),
     "get-doc" -> PrimitiveFunction {
@@ -281,6 +322,10 @@ object Preludes extends LispExp.Implicits {
         case _ => WrappedScalaObject(None) -> e
       }
       case (_, e) => Failure("Arity Error", "try-option only accepts one argument.") -> e
+    }.withArity(1),
+    "string->symbol" -> PrimitiveFunction {
+      case SString(sym)::Nil => Symbol(sym)
+      case _ => Failure("Arity Error", "only accept a string")
     }.withArity(1)
   ))
 

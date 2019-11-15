@@ -75,26 +75,125 @@ object LispExp {
   case class PlainSymbol(value: String) extends Symbol
   case class GraveAccentSymbol(value: String) extends Symbol
 
-  class SNumber[T](number: T)(implicit evidence: scala.math.Numeric[T]) extends Expression with NoExternalDependency {
+  import Numeric.Implicits._
+  import Ordering.Implicits._
+  import Rational.Implicits._
+
+  type LisaInteger = BigInt
+  val LisaInteger = BigInt
+
+  type LisaDecimal = BigDecimal
+  val LisaDecimal = BigDecimal
+
+  import LisaInteger.int2bigInt
+  import LisaDecimal.double2bigDecimal
+
+  class SNumber[T](val number: T)(implicit evidence: scala.math.Numeric[T])
+    extends Expression with Ordered[SNumber[T]] with NoExternalDependency {
     override def toString: String = number.toString
-    def ops = evidence
+    def mapTo[U : Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
+    def toIntNumber: SNumber[LisaInteger] = SNumber(toRationalNumber.number.toIntegral)
+    def toDoubleNumber: SNumber[LisaDecimal] = SNumber(number.toDouble)
+    def toRationalNumber: SNumber[Rational[LisaInteger]] = {
+      import SNumber.NumberTypes._
+      getTypeOrder(number) match {
+        case TypeFlags.Integer => SRational(number.asInstanceOf[LisaInteger])
+        case TypeFlags.Rational => this.asInstanceOf[SNumber[Rational[LisaInteger]]]
+        case _ => Rational.fromDouble[LisaInteger](number.toDouble)
+      }
+    }
+    def +(that: SNumber[T]): SNumber[T] = number + that.number
+    def -(that: SNumber[T]): SNumber[T] = number - that.number
+    def *(that: SNumber[T]): SNumber[T] = number * that.number
+    def /(that: SNumber[T]): SNumber[Any] = {
+      import SNumber.NumberTypes._
+      val flag = commonLargestType(this, that)
+      if (flag <= TypeFlags.Rational) {
+        val a = toRationalNumber.number
+        val b = that.toRationalNumber.number
+        val result = a / b
+        if (result.isIntegral) SNumber(result.toInt).asInstanceOf[SNumber[Any]]
+        else SNumber(result).asInstanceOf[SNumber[Any]]
+      }
+      else SNumber(number.toDouble / that.number.toDouble).asInstanceOf[SNumber[Any]]
+    }
+    def unary_- : SNumber[T] = -number
+    override def compare(that: SNumber[T]): Int = implicitly[Ordering[T]].compare(number, that.number)
+    def max(that: SNumber[T]): SNumber[T] = number max that.number
+    def min(that: SNumber[T]): SNumber[T] = number min that.number
+    def equalsTo(that: SNumber[T]): Boolean = number equiv that.number
+
+    override def equals(obj: Any): Boolean = obj match {
+//      case num: SNumber[T] => equalsTo(num)
+      case that: SNumber[_] => SNumber.performComputation(_ equalsTo _)(this, that)
+      case other => super.equals(other)
+    }
   }
 
-  case class SInteger(value: Int) extends SNumber(value) with NoExternalDependency
+  object SNumber {
+    implicit def wrapToSNumber[T : Numeric](t: T): SNumber[T] = apply(t)
+    def apply[T : Numeric](number: T): SNumber[T] = number match {
+      case s: LisaInteger => SInteger(s).asInstanceOf[SNumber[T]]
+      case s: LisaDecimal => SFloat(s).asInstanceOf[SNumber[T]]
+      case s: Rational[LisaInteger] => SRational(s).asInstanceOf[SNumber[T]]
+      case s => new SNumber(s)
+    }
 
-  case class SFloat(value: Double) extends SNumber(value) with NoExternalDependency
+    implicit def convertNumberTypes[T, U : Numeric](number: SNumber[T])(implicit transform: T => U): SNumber[U] =
+      number.mapTo[U]
+    def performComputation[T](f: (SNumber[Any], SNumber[Any]) => T)(a: SNumber[_], b: SNumber[_]): T = {
+      val (x, y) = NumberTypes.handleCommonLargestType(a, b)
+      f(x, y)
+    }
+    object NumberTypes {
+      object TypeFlags {
+        val Integer = 1
+        val Rational = 2
+        val Double = 3
+      }
+      def getTypeOrder(obj: Any) = obj match {
+        case _: Int | _: Integer | _: LisaInteger => TypeFlags.Integer
+        case _: Rational[_] => TypeFlags.Rational
+        case _: Float | _: Double | _: java.lang.Double | _: java.lang.Float | _: LisaDecimal =>
+          TypeFlags.Double
+      }
+      def castToType(flag: Int)(obj: SNumber[_]): SNumber[_] = {
+        flag match {
+          case TypeFlags.Integer => obj.toIntNumber
+          case TypeFlags.Rational => obj.toRationalNumber
+          case TypeFlags.Double => obj.toDoubleNumber
+        }
+      }
+
+      def commonLargestType[T, U](a: SNumber[T], b: SNumber[U]) =
+        getTypeOrder(a.number) max getTypeOrder(b.number)
+
+      def handleCommonLargestType[T, U](a: SNumber[T], b: SNumber[U]) = {
+        val flag = commonLargestType(a, b)
+        castToType(flag)(a).asInstanceOf[SNumber[Any]] -> castToType(flag)(b).asInstanceOf[SNumber[Any]]
+      }
+    }
+  }
+
+  case class SInteger(value: LisaInteger) extends SNumber(value)
+
+  case class SFloat(value: LisaDecimal) extends SNumber(value)
+
+  case class SRational(value: Rational[LisaInteger]) extends SNumber(value)
 
   case class SBool(value: Boolean) extends Expression with NoExternalDependency {
     override def toString: String = value.toString
   }
 
-  case class SString(value: String) extends Expression with NoExternalDependency {
+  case class SString(value: String) extends Expression with NoExternalDependency with Ordered[SString] {
     override def toString: String = value.toString
 
     override def code: String = {
       import scala.reflect.runtime.universe._
       Literal(Constant(value)).toString()
     }
+
+    override def compare(that: SString): Int = value compare that.value
   }
 
   case object NilObj extends Expression with NoExternalDependency {
@@ -326,7 +425,7 @@ object LispExp {
             case Closure(_, _, capturedEnv, _) => capturedEnv
             case _ => inEnv
           }
-          Evaluator.matchArgument(mat, args, inEnv = env) match {
+          Evaluator.matchArgument(mat.toList, args.toList, inEnv = env) match {
             case Some(x) => Some((exp, x))
             case _ => find(xs)
           }

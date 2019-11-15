@@ -4,9 +4,16 @@ object Environments {
   private val MutableMap = collection.mutable.Map
   private type MutableMap[K, V] = collection.mutable.Map[K, V]
   sealed trait Identifiable {
-    var identify: String = java.util.UUID.randomUUID().toString
+    private var _identify: String = _
+    def identify: String = {
+      if (_identify ne null) _identify
+      else synchronized {
+        _identify = java.util.UUID.randomUUID().toString
+        _identify
+      }
+    }
     def withIdentify(id: String): this.type = {
-      identify = id
+      _identify = id
       this
     }
     @`inline` def =:=(that: Identifiable): Boolean = identify == that.identify
