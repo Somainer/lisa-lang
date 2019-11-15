@@ -107,6 +107,16 @@
 (define (polymorphic? m (when? (.startsWith (.toString (wrap m)) "#Polymorph"))) true)
 (define (polymorphic? _) false)
 
+(define (native-function? fn (when? (.startsWith (.toString (wrap fn)) "#[Native Code]"))) true)
+(define (native-function? _) false)
+
+(define (callable? fn)
+    (or
+        (native-function? fn)
+        (or
+            (closure? fn)
+            (macro? fn))))
+
 (define (quoted? x (when? ((constant true) ~x))) true)
 (define (quoted? _) false)
 
@@ -128,7 +138,7 @@
     (set-doc func (+ "Curried: " (get-doc fn)))) ; Ensure curried returns a closure when encounters 0-arity functions.
 
 (define (flip-closure fn)
-    "filp-closure :: (a -> b -> c) -> b -> a -> c"
+    "flip-closure :: (a -> b -> c) -> b -> a -> c"
     (lambda (x y) (fn y x)))
 
 (define falsy? (compose truthy? not))
@@ -149,13 +159,24 @@
 (define (copied-docstring f1 f2)
     (set-doc f1 (get-doc f2)))
 
-(define (polymorph-lambda (... fs))
+(define (polymorphic-lambda (... fs))
     (define-mutable! fs)
     (while (> (length fs) 0)
         (group!
             (define self (.head fs))
             (set! fs (.tail fs))))
     self)
+
+(define-macro (define-polymorphic self '=> (... fs))
+    '(group!
+        (define ~self ())
+        (define-mutable! fs)
+        (set! fs (list ~fs))
+        (while (> (length fs) 0)
+            (group!
+                (define ~self (.head fs))
+                (set! fs (.tail fs))))
+        ~self))
 
 (import-env! scala-root scala)
 (define (none 'option? ) true)

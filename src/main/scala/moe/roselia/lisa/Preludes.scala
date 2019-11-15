@@ -115,8 +115,11 @@ object Preludes extends LispExp.Implicits {
         }
       }
     }.withArity(1),
-    "eval" -> PrimitiveFunction {
-      case x::Nil => Evaluator.eval(x, primitiveEnvironment).asInstanceOf[Evaluator.EvalSuccess].expression
+    "eval" -> SideEffectFunction {
+      case (x::Nil, env) => Evaluator.eval(x, env) match {
+        case EvalSuccess(expression, newEnv) => expression -> newEnv
+        case EvalFailure(msg) => Failure("Eval Failure", msg) -> env
+      }
     },
     "truthy?" -> PrimitiveFunction {
       case ex::Nil => LispExp.SBool {

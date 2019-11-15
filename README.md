@@ -14,6 +14,7 @@ Designed to be interactive with Scala/Java.
 
 ## Primitive Types
 * 1 => Int
+* 2.3 => Float
 * "s" => String
 * false => Bool
 * () => Nil
@@ -64,6 +65,25 @@ go ; Error: Symbol go not found.
 (map (list 1 2 3) (lambda (i) (+ i 1)))
 
 
+```
+
+## Start Playing as A Calculator
+Lisa is a good calculator because Integers are implemented in BigInt, and Floats are implemented in BigDecimal.
+Also, Lisa supports Rational value calculation.
+
+```scheme
+(/ 2 3) ; => 2/3
+(* (/ 1 2) (/ 3 4) (/ 5 6)); => 5/16
+(* (/ 5 16) 0.1) ; => 0.03125
+(+ (/ 1 2) (/ 3 4)); => 5/4
+(int (/ 5 4)); => 1
+
+; Calculate factorial of 100 using fact procedure defined above.
+(fact 100) ; => 93326215443944152681699238856266700490715968264381621468592963895217599993229915608941463976156518286253697920827223758251185210916864000000000000000000000000
+
+(< 2 3 4) ;=> true
+(< 2 4 3) ;=> false, because 4 is greater than 3
+(<= 1 1 1 1) ; => true
 ```
 
 ## Interact with JavaScript
@@ -254,6 +274,40 @@ it will be possible to get function arity via `length` primitive procedure.
 **Note** that an anonymous function with no bound arguments will be treated as a constant function, which receives arbitrary arguments
 and returns a constant value. E.g. `&1` is equivalent to `(lambda ((... _)) 1)`.
 
+### Macros
+Defining a macro in Lisa is similar to defining a closure.
+`(define-macro (name args*) body*)` 
+Macros are dynamic scoped. Every argument are passed without any calculation. 
+Macros should eventually return a quoted expression which will be expanded where invoked.
+To quote an expression, use syntax sugar `'<expression>`. `~<expression>` is the syntax sugar for unquoting an expression.
+
+```scheme
+(define-macro (unless predicate consequence alternative)
+    '(if ~predicate ~alternative ~consequence))
+
+; It is also possible to define a polymorphic macro using pattern matching.
+
+(define-macro (reversed-apply (f x y))
+    '(~f ~y ~x))
+(define-macro (reversed-apply (f x))
+    '(~f ~x))
+
+(reversed-apply (- 2 3)) ; => (- 3 2) => 1
+(reversed-apply (- 2)) ; => -2
+
+; And because of pattern matching, a literal symbol in argument can be treated as a keyword.
+(define-macro (is a 'equals 'to b) '(= ~a ~b))
+(define-macro (is a 'not 'equals 'to b) '(if (is ~a equals to ~b) false true)) 
+
+(is 1 equals to 1) ;=> (= 1 1) => true
+(is 1 not equals to 2) ;=> (if (is 1 equals to 2) false true) => true
+```
+
+Notice that though guards are also available in macros, you can not get
+real values because they care not computed, it is possible to use `eval` to actually calculate
+the parameters, but duplicate calculations may occur since they must be calculated again
+after the macro expansion. 
+ 
 ### Phrase Definition
 ```scheme
 (define-phrase (args*) body*)
@@ -280,6 +334,12 @@ and it will create a new polymorphic variant.
 
 (3 + 2) ; Will be transformed to 
 (`&__PHRASE__` 3 + 2) ; because 3 can not be applied to (+ 2)
+
+; The more general version:
+(define-phrase (a f b (when (callable? f))) '(~f ~a ~b))
+; callable? is defined in prelude.lisa.
+
+("hello" .startsWith "h") ; => (.startsWith "hello" "h") => true
 ```
 
 ## Do Object-Oriented Programming
