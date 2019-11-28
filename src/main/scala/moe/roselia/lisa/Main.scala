@@ -36,7 +36,7 @@ object Main {
   private def sendSpace(spaceNum: Int): Unit =
     1 to spaceNum foreach (_ => sendKey(java.awt.event.KeyEvent.VK_SPACE))
 
-  @annotation.tailrec def prompt(env: Environments.Environment, lastInput: String = ""): Unit = {
+  @annotation.tailrec def prompt(env: Environments.Environment, lastInput: String = "", resultIndex: Int = 0): Unit = {
     val lastIndentLevel = indentLevel(lastInput)
     val tabs = if (isMac && lastIndentLevel > 0) " ".repeat(lastIndentLevel << 2) else ""
     if (!isMac && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
@@ -45,7 +45,8 @@ object Main {
     val concatInput = s"${lastInput}\n$s".trim
     if (concatInput.nonEmpty) {
       //      println(s"Input: $s")
-      if (!concatInput.replace(" ", "").endsWith("\n\n") && needMoreInput(concatInput)) prompt(env, concatInput)
+      if (!concatInput.replace(" ", "").endsWith("\n\n") && needMoreInput(concatInput))
+        prompt(env, concatInput, resultIndex)
       else {
         val exp = parseAll(sExpression, concatInput)
         exp match {
@@ -62,22 +63,28 @@ object Main {
                     case LispExp.Failure(typ, msg) =>
                       printlnErr(s"$typ: $msg")
                     case NilObj =>
-                    case s => println(s)
+                    case s =>
+                      println(s"[$resultIndex]: ${s.getClass.getSimpleName} = $s")
                   }
-                  prompt(newEnv)
+                  result match {
+                    case NilObj | LispExp.Failure(_, _) =>
+                      prompt(newEnv, resultIndex = resultIndex)
+                    case s =>
+                      prompt(newEnv.withValue(s"[$resultIndex]", s), resultIndex = resultIndex + 1)
+                  }
                 case f =>
                   printlnErr(s"Runtime Error: $f")
-                  prompt(env)
+                  prompt(env, resultIndex = resultIndex)
               }
           }
           case f =>
             printlnErr("Parse Error")
             printlnErr(f)
-            prompt(env)
+            prompt(env, resultIndex = resultIndex)
         }
       }
 
-    } else prompt(env)
+    } else prompt(env, resultIndex = resultIndex)
   }
 
   @throws[java.io.FileNotFoundException]()
