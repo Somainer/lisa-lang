@@ -43,5 +43,8 @@ object PackageAccessor {
       }.toOption
   }
 
+  object ObjectEnv {
+    def cachedOf[T : ClassTag](obj: T) = SpecialEnv.cached(ObjectEnv(obj))
+  }
 
 }

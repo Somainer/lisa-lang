@@ -8,3 +8,6 @@ out/*
 **/.js/*
 **/.jvm/*
 **/.DS_Store
+
+.bloop
+.metals

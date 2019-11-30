@@ -6,6 +6,12 @@ import scala.annotation.tailrec
 
 object LispExp {
 
+  trait LisaType {
+    def name: String
+  }
+
+  case class NameOnlyType(name: String) extends LisaType
+
   trait DocumentAble {
     var document = ""
     def withDocString(string: String): this.type = {
@@ -54,6 +60,8 @@ object LispExp {
     def valid = true
 
     def code: String = toString
+
+    def tpe: LisaType = NameOnlyType(getClass.getSimpleName)
   }
 
   trait Symbol extends Expression {
@@ -112,7 +120,7 @@ object LispExp {
         val a = toRationalNumber.number
         val b = that.toRationalNumber.number
         val result = a / b
-        if (result.isIntegral) SNumber(result.toInt).asInstanceOf[SNumber[Any]]
+        if (result.isIntegral) SNumber(result.toIntegral).asInstanceOf[SNumber[Any]]
         else SNumber(result).asInstanceOf[SNumber[Any]]
       }
       else SNumber(number.toDouble / that.number.toDouble).asInstanceOf[SNumber[Any]]
@@ -127,6 +135,15 @@ object LispExp {
 //      case num: SNumber[T] => equalsTo(num)
       case that: SNumber[_] => SNumber.performComputation(_ equalsTo _)(this, that)
       case other => super.equals(other)
+    }
+
+    override def tpe: LisaType = NameOnlyType {
+      import SNumber.NumberTypes._
+      getTypeOrder(number) match {
+        case TypeFlags.Integer => "Integer"
+        case TypeFlags.Rational => "Rational"
+        case TypeFlags.Double => "Decimal"
+      }
     }
   }
 
@@ -183,6 +200,8 @@ object LispExp {
 
   case class SBool(value: Boolean) extends Expression with NoExternalDependency {
     override def toString: String = value.toString
+
+    override def tpe: LisaType = NameOnlyType("Boolean")
   }
 
   case class SString(value: String) extends Expression with NoExternalDependency with Ordered[SString] {
@@ -471,18 +490,37 @@ object LispExp {
       if (variants.length == 1) ""
       else if (byName) "Macro" else "Closure"
 
-    override def toString: String =
-      s"#Polymorph$polymorphicType(${variants.length} overloads)(${variants.map(_._2).mkString("|")})"
+    def verboseString = s"#Polymorph$polymorphicType(${variants.length} overloads)(${variants.map(_._2).mkString("|")})"
+
+    override def toString: String = {
+      val arguments = Symbol("to-string") :: Nil
+      findMatch(arguments).flatMap {
+        case (exp, _) => Evaluator.apply(exp, arguments).map(_.toString).toOption
+      }.getOrElse(verboseString)
+//      if (isDefinedAt(Symbol("to-string")::Nil, EmptyEnv))
+//        Evaluator.apply(this, Symbol("to-string") :: Nil).toOption.map(_.toString).getOrElse(verboseString)
+//      else verboseString
+    }
 
     override lazy val arity: Option[Int] =
       if (variants.length == 1) getArityOfPattern(variants.head._2.toList)
-      else None
+      else {
+        val patternArity = variants.map(_._2).map(_.toList).map(getArityOfPattern(_))
+        patternArity.distinct.toList match {
+          case x :: Nil => x
+          case _ => None
+        }
+      }
 
     override def isDefinedAt(input: List[Expression], env: Environment): Boolean = findMatch(input, env).isDefined
 
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
       accumulateDependencies(variants.map(_._1).toList, defined + name)
     }
+
+    override def tpe: LisaType =
+      if (variants.length == 1) variants.head._1.tpe
+      else NameOnlyType(s"Polymorphic$polymorphicType")
   }
 
   object PolymorphicExpression {

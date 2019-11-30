@@ -17,11 +17,19 @@
     "Y combinator, nothing interesting."
     ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s))))))
 
+(define (to-string x (when? (&true (.toString x))))
+    (.toString x))
+
+(define (to-string x)
+    (.toString (wrap x)))
+
 (define (cons x y)
     "Construct a pair, use car to fetch the first and cdr to fetch the second."
     (define (pair 0) x)
     (define (pair 1) y)
     (define (pair 'pair? ) true)
+    (define (pair 'to-string)
+        (+ "[" (to-string x) " " (to-string y) "]"))
     pair)
 
 (define (pair? pair (when? (pair 'pair? ))) true)
@@ -98,13 +106,15 @@
 
 (define (closure? c (when? (.startsWith (.toString (wrap c)) "#Closure"))) true)
 (define (closure? c (when? (.startsWith (.toString (wrap c)) "#PolymorphClosure"))) true)
+(define (closure? c (when? (.startsWith (.verboseString (wrap c)) "#PolymorphClosure"))) true)
 (define (closure? _) false)
 
 (define (macro? m (when? (.startsWith (.toString (wrap m)) "#Macro"))) true)
-(define (macro? m (when? (.startsWith (.toString (wrap m)) "#PolymorphMacro"))) true)
+(define (macro? m (when? (.startsWith (.verboseString (wrap m)) "#PolymorphMacro"))) true)
 (define (macro? _) false)
 
 (define (polymorphic? m (when? (.startsWith (.toString (wrap m)) "#Polymorph"))) true)
+(define (polymorphic? m (when? (.startsWith (.verboseString (wrap m)) "#Polymorph"))) true)
 (define (polymorphic? _) false)
 
 (define (native-function? fn (when? (.startsWith (.toString (wrap fn)) "#[Native Code]"))) true)
@@ -180,23 +190,28 @@
 
 (import-env! scala-root scala)
 (define (none 'option? ) true)
+(define (none 'has-next? ) false)
 (define (none 'defined?) false)
 (define (none 'map _) none)
 (define (none 'filter _) none)
 (define (none 'get-or-else x) x)
 (define (none 'or-else x) x)
 (define (none 'to-scala ) scala.None)
+(define (none 'to-string) "none")
 (define (some x)
     (define (some-impl 'option? ) true)
     (define (some-impl 'map fn)
         (some (fn x)))
     (define (some-impl 'defined?) true)
+    (define (some-impl 'has-next?) true)
+    (define (some-impl 'next) (seq x none))
     (define (some-impl 'filter fn (? (fn x))) some-impl)
     (define (some-impl 'filter _) none)
     (define (some-impl 'get ) x)
     (define (some-impl 'get-or-else _) x)
     (define (some-impl 'or-else _) some-impl)
     (define (some-impl 'to-scala) (scala.Some x))
+    (define (some-impl 'to-string) (+ "(some " (to-string x) ")"))
     some-impl)
 
 (define-macro (option-from x)

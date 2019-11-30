@@ -20,9 +20,10 @@ object DotAccessor {
   @throws[ScalaReflectionException]("If no such field or 0-arity method")
   def accessDot[A : ClassTag](acc: String)(obj: A) = {
     val classObj = getClassObject(obj)
-    val decl = classObj.symbol.toType.decl(TermName(acc))
-    if(decl.isTerm) {
-      decl.asTerm.alternatives
+    val decl = lookUpForTerm(classObj.symbol, acc)
+//    val decl = classObj.symbol.toType.decl(TermName(acc))
+    if(decl.isDefined) {
+      decl.get.alternatives
         .filter(_.isMethod)
         .map(_.asMethod)
         .find(_.paramLists match {
@@ -33,7 +34,7 @@ object DotAccessor {
         .map(_.asMethod)
         .map(classObj.reflectMethod)
         .map(_.apply())
-        .getOrElse(classObj.reflectField(decl.asTerm.accessed.asTerm).get)
+        .getOrElse(classObj.reflectField(decl.get.accessed.asTerm).get)
     } else throw ScalaReflectionException(s"Field or 0-arity method $acc for $obj not found")
   }
 
@@ -63,17 +64,27 @@ object DotAccessor {
     }
   }
 
+  def lookUpForTerm(symbol: ClassSymbol, accessName: String) = {
+    (symbol :: symbol.baseClasses).view
+      .map(_.asClass)
+      .map(_.toType)
+      .map(_.decl(TermName(accessName)))
+      .find(_.isTerm)
+      .map(_.asTerm)
+  }
+
   @throws[ScalaReflectionException]("When no underlying method")
   def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
     val classObj = getClassObject(obj)
-    val decl = classObj.symbol.toType.decl(TermName(acc))
-    if(!decl.isTerm) throw ScalaReflectionException(s"No such method $acc in $obj to apply")
-    val overloads = decl.asTerm.alternatives
+//    val decl = classObj.symbol.toType.decl(TermName(acc))
+    val decl = lookUpForTerm(classObj.symbol, acc)
+    if(decl.isEmpty) throw ScalaReflectionException(s"No such method $acc in $obj to apply")
+    val overloads = decl.get.alternatives
       .filter(_.isMethod)
       .map(_.asMethod)
-      .filter(_.paramLists.head.length == args.length) match {
+      .filter(_.paramLists.flatten.length == args.length) match {
         case xs@_::Nil => xs
-        case xs => xs.filter(sig => checkTypeFits(sig.paramLists.head)(args.toSeq))
+        case xs => xs.filter(sig => checkTypeFits(sig.paramLists.flatten)(args.toSeq))
       }
 
 //    println(decl.asTerm.alternatives.filter(_.isMethod).map(_.asMethod)
@@ -88,7 +99,7 @@ object DotAccessor {
     classObj.reflectMethod(overloads.head).apply(args: _*)
   }
 
-  lazy val accessEnv: SpecialEnv = new SpecialEnv {
+  lazy val accessEnv: SpecialEnv = SpecialEnv.cached(new SpecialEnv {
     override def has(key: String): Boolean = key.startsWith(".")
 
     override def getValueOption(key: String): Option[LispExp.Expression] = Some(LispExp.PrimitiveFunction {
@@ -105,5 +116,5 @@ object DotAccessor {
         fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative): _*))
     }.withDocString(s"$key: Access ${key substring 1} attribute or method of a scala object. " +
       s"If you do not care about performance, use box$key"))
-  }
+  })
 }

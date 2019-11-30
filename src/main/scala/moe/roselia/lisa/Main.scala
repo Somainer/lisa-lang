@@ -64,7 +64,7 @@ object Main {
                       printlnErr(s"$typ: $msg")
                     case NilObj =>
                     case s =>
-                      println(s"[$resultIndex]: ${s.getClass.getSimpleName} = $s")
+                      println(s"[$resultIndex]: ${s.tpe.name} = $s")
                   }
                   result match {
                     case NilObj | LispExp.Failure(_, _) =>

@@ -125,6 +125,23 @@ object Environments {
 
   abstract class SpecialEnv extends Environment
 
+  object SpecialEnv {
+    def cached(env: Environment): SpecialEnv = new SpecialEnv {
+      val cache: MutableMap[String, LispExp.Expression] = MutableMap.empty
+
+      override def getValueOption(key: String): Option[LispExp.Expression] =
+        if (cache contains key) cache.get(key)
+        else {
+          val result = env.getValueOption(key)
+          result.foreach(cache.update(key, _))
+          result
+        }
+
+      override def has(key: String): Boolean =
+        cache.contains(key) || env.has(key)
+    }
+  }
+
   case class MutableEnv(private val env: MutableMap[String, LispExp.Expression],
                         parent: Environment) extends Environment {
     override def has(key: String): Boolean = directHas(key) || parent.has(key)
