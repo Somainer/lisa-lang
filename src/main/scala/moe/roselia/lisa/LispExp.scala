@@ -493,10 +493,14 @@ object LispExp {
     def verboseString = s"#Polymorph$polymorphicType(${variants.length} overloads)(${variants.map(_._2).mkString("|")})"
 
     override def toString: String = {
-      val arguments = Symbol("to-string") :: Nil
-      findMatch(arguments).flatMap {
-        case (exp, _) => Evaluator.apply(exp, arguments).map(_.toString).toOption
-      }.getOrElse(verboseString)
+      val toStringSymbol = Symbol("to-string")
+      val arguments = toStringSymbol :: Nil
+      val alternativeArguments = Quote(toStringSymbol) :: Nil
+      findMatch(arguments)
+        .filter(exp => variants.find(_._1 eq exp._1).exists(v => v._2 == arguments || v._2 == alternativeArguments))
+        .flatMap {
+          case (exp, _) => Evaluator.apply(exp, arguments).map(_.toString).toOption
+        }.getOrElse(verboseString)
 //      if (isDefinedAt(Symbol("to-string")::Nil, EmptyEnv))
 //        Evaluator.apply(this, Symbol("to-string") :: Nil).toOption.map(_.toString).getOrElse(verboseString)
 //      else verboseString
