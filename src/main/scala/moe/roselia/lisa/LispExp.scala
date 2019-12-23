@@ -105,13 +105,13 @@ object LispExp {
     def mapTo[U : Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
     def toIntNumber: SNumber[LisaInteger] = number match {
       case _: LisaInteger => this.asInstanceOf[SNumber[LisaInteger]]
-      case _ => SNumber(toRationalNumber.number.toIntegral)
+      case _ => SInteger(toRationalNumber.number.toIntegral)
     }
     def toDoubleNumber: SNumber[LisaDecimal] = number match {
       case _: LisaDecimal => this.asInstanceOf[SNumber[LisaDecimal]]
       case num: Rational[LisaInteger] => LisaDecimal(num.numerator) / LisaDecimal(num.denominator)
       case n: LisaInteger => LisaDecimal(n)
-      case _ => SNumber(number.toDouble)
+      case _ => SFloat(number.toDouble)
     }
     def toRationalNumber: SNumber[Rational[LisaInteger]] = {
       import SNumber.NumberTypes._

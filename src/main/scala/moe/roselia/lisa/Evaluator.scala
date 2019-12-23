@@ -129,10 +129,10 @@ object Evaluator {
         case SList(bounds)::sExpr =>
           @annotation.tailrec
           def compileBounds(sList: Seq[SimpleLispTree],
-                            acc: Option[List[(Symbol, Expression)]] = Some(Nil)): Option[List[(Symbol, Expression)]] =
+                            acc: Option[List[(Expression, Expression)]] = Some(Nil)): Option[List[(Expression, Expression)]] =
             sList match {
               case Nil => acc.map(_.reverse)
-              case SList(Value(sym)::x::Nil)::xs => compileBounds(xs, acc.map((Symbol(sym), compile(x))::_))
+              case SList(pattern::x::Nil)::xs => compileBounds(xs, acc.map((compile(pattern), compile(x))::_))
               case _ => None
             }
           compileBounds(bounds).map(cBounds => {
@@ -395,6 +395,11 @@ object Evaluator {
         case WrappedScalaObject(seq: Seq[Expression]) => seq
         case e => Seq(e)
       }
+      def flattenSeqAndApply(ex: Seq[Expression]) = ex flatMap {
+        case WrappedScalaObject(seq: Seq[Expression]) => seq
+        case Apply(head, tail) => head :: tail
+        case e => Seq(e)
+      }
       expression match {
         case Quote(s) => u(s).map(Quote)
         case UnQuote(Symbol(sym)) => env.getValueOption(sym)
@@ -409,7 +414,10 @@ object Evaluator {
             b <- u(body)
             bv <- liftOption(boundVariable.map(u))
             ne <- liftOption(nestedExpressions.map(u))
-          } yield LambdaExpression(b, flattenSeq(bv).toList, flattenSeq(ne).toList)
+          } yield {
+            val realBody = flattenSeq(b :: Nil) ++ flattenSeq(ne)
+            LambdaExpression(realBody.last, flattenSeqAndApply(bv).toList, realBody.init.toList)
+          }
 
         case SIfElse(predicate, consequence, alternative) =>
           for {
