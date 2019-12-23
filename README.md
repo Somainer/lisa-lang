@@ -19,6 +19,28 @@ Designed to be interactive with Scala/Java.
 * false => Bool
 * () => Nil
 
+## Composite Types
+
+### Seq, List
+Sequences and Lists can be constructed by primitive function `seq` and `list`.
+
+* `list`: Construct a `scala.collection.immutable.List`
+* `seq`: Construct a `scala.collection.immutable.Vector`
+
+`(seq 1 2 3)` => `#Scala(Vector(1, 2, 3))`
+
+`(.[0] s)` => Access `[0]` element in a sequence.
+
+### Record
+Record is a map-like data structure.
+
+Construct by `record` function.
+`(record 'a 1 'b 2)` => Record with key a to 1 and key b to 2.
+The `a` attribute of record `s` can be accessed via:
+
+* (.a s) in Java/Scala object style.
+* (s 'a) in Lisa method calling style.
+
 ## Syntax
 
 ```scheme

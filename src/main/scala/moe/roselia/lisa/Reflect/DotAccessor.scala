@@ -17,8 +17,16 @@ object DotAccessor {
     mirror.reflect(obj)
   }
 
+  def accessDotDynamic(acc: String)(dyn: Dynamic): Any = {
+    import scala.language.reflectiveCalls
+
+    dyn.asInstanceOf[{
+      def selectDynamic(key: Any): Any
+    }].selectDynamic(acc)
+  }
+
   @throws[ScalaReflectionException]("If no such field or 0-arity method")
-  def accessDot[A : ClassTag](acc: String)(obj: A) = {
+  def accessDotOfPlainObject[A : ClassTag](acc: String)(obj: A) = {
     val classObj = getClassObject(obj)
     val decl = lookUpForTerm(classObj.symbol, acc)
 //    val decl = classObj.symbol.toType.decl(TermName(acc))
@@ -35,7 +43,19 @@ object DotAccessor {
         .map(classObj.reflectMethod)
         .map(_.apply())
         .getOrElse(classObj.reflectField(decl.get.accessed.asTerm).get)
-    } else throw ScalaReflectionException(s"Field or 0-arity method $acc for $obj not found")
+    } else throw ScalaReflectionException(s"Field or 0-arity method $acc for $obj: ${classObj.symbol.fullName} not found")
+  }
+
+  @throws[ScalaReflectionException]("If no such field or 0-arity method")
+  def accessDot[A : ClassTag](acc: String)(obj: A) = {
+    obj match {
+      case dynamic: Dynamic =>
+        util.Try {
+          accessDotDynamic(acc)(dynamic)
+        }.getOrElse(accessDotOfPlainObject(acc)(obj))
+      case _ =>
+        accessDotOfPlainObject(acc)(obj)
+    }
   }
 
   def checkTypeFits(sym: List[Symbol])(args: Seq[Any]): Boolean = {
@@ -73,12 +93,20 @@ object DotAccessor {
       .map(_.asTerm)
   }
 
+  def applyDotDynamic(acc: String)(dyn: Dynamic)(args: Any*) = {
+    import scala.language.reflectiveCalls
+
+    dyn.asInstanceOf[{
+      def applyDynamic(key: Any)(args: Any*): Any
+    }].applyDynamic(acc)(args: _*)
+  }
+
   @throws[ScalaReflectionException]("When no underlying method")
-  def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
+  def applyDotOfPlainObject[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
     val classObj = getClassObject(obj)
 //    val decl = classObj.symbol.toType.decl(TermName(acc))
     val decl = lookUpForTerm(classObj.symbol, acc)
-    if(decl.isEmpty) throw ScalaReflectionException(s"No such method $acc in $obj to apply")
+    if(decl.isEmpty) throw ScalaReflectionException(s"No such method $acc in $obj: ${classObj.symbol.fullName} to apply")
     val overloads = decl.get.alternatives
       .filter(_.isMethod)
       .map(_.asMethod)
@@ -97,6 +125,17 @@ object DotAccessor {
 //    println(overloads)
     if (overloads.isEmpty) throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
     classObj.reflectMethod(overloads.head).apply(args: _*)
+  }
+
+  @throws[ScalaReflectionException]("When no underlying method")
+  def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
+    obj match {
+      case dynamic: Dynamic => util.Try {
+        applyDotDynamic(acc)(dynamic)(args: _*)
+      }.getOrElse(applyDotOfPlainObject(acc)(obj)(args: _*))
+      case _ =>
+        applyDotOfPlainObject(acc)(obj)(args: _*)
+    }
   }
 
   lazy val accessEnv: SpecialEnv = SpecialEnv.cached(new SpecialEnv {
