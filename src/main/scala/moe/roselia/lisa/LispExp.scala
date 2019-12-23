@@ -221,7 +221,6 @@ object LispExp {
   }
 
   case class WrappedScalaObject[+T](obj: T) extends Expression with NoExternalDependency {
-    require(!obj.isInstanceOf[Failure], "Cannot wrap a failure")
     def get: T = obj
 
     override def toString: String = s"#Scala($obj)"
@@ -230,7 +229,12 @@ object LispExp {
   }
 
   object WrappedScalaObject {
-    def apply[T](obj: T): WrappedScalaObject[T] = new WrappedScalaObject(obj)
+    def apply[T](obj: T): WrappedScalaObject[T] = obj match {
+      case scala.util.Failure(ex) =>
+        throw new IllegalArgumentException(s"Cannot wrap a failure", ex)
+      case _ =>
+        new WrappedScalaObject(obj)
+    }
   }
 
   trait Procedure extends Expression
@@ -566,6 +570,7 @@ object LispExp {
         case Nil => acc
         case Symbol(sym)::exp::xs => recurHelper(xs, acc.updated(sym, exp))
         case Quote(Symbol(sym))::exp::xs => recurHelper(xs, acc.updated(sym, exp))
+        case LisaMapRecord(r, _)::xs => recurHelper(xs, acc ++ r)
         case x:: _ ::_ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
         case x::_ => throw new IllegalArgumentException(s"No matching value for $x")
       }
