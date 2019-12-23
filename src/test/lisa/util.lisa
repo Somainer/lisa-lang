@@ -1,4 +1,4 @@
-(define-macro (any+ (... xs)) (.mkString xs ""))
+(define (any+ (... xs)) (.mkString xs ""))
 
 (define-macro (spy x)
     (define code (.code (wrap x)))
@@ -11,5 +11,5 @@
         (define (ref 'get) ~x)
         (define (ref 'is-ref?) true)
         (define (ref 'set new-val) (set! ~x new-val))
-        (define (ref 'to-string) (+ "Ref(" (string ~x) ")"))
+        (define (ref 'to-string) (any+ "Ref(" ~x ")"))
         ref))

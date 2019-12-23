@@ -165,6 +165,14 @@
     (apply-seq x fs))
 
 (define-phrase (symbol (... args) (? (quoted? symbol))) '&(# ~symbol ~args))
+
+(define-macro (called meth (... args) (when (quoted? meth)))
+    "Useful when chaining calls. Is equivalent to (block (obj 'f args) obj)."
+    '(lambda (self) (&self (self ~meth ~args))))
+(define-macro (called meth (... args))
+    "Call method on an object then returns itself."
+    '(lambda (self) (&self (~meth self ~args))))
+
 ; (define limit-arity (curried limit-arity))
 (define (copied-docstring f1 f2)
     (set-doc f1 (get-doc f2)))

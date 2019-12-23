@@ -327,8 +327,8 @@ object Preludes extends LispExp.Implicits {
       case SString(sym)::Nil => Symbol(sym)
       case _ => Failure("Arity Error", "only accept a string")
     }.withArity(1),
-    "string" -> PrimitiveFunction {
-      case x :: Nil => x.toString
+    "string" -> PrimitiveFunction { xs =>
+      xs.mkString
     }.withArity(1)
   ))
 

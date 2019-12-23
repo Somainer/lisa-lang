@@ -3,6 +3,8 @@ package moe.roselia.lisa
 import scala.annotation.tailrec
 import scala.util.Try
 
+import Util.ReflectionHelpers.{ collectException, tryApplyOnObjectReflective, tryToEither }
+
 object Evaluator {
   import Environments._
   import LispExp._
@@ -158,6 +160,7 @@ object Evaluator {
       case sf: SFloat => pureValue(sf)
       case p: PolymorphicExpression => pureValue(p)
       case o@WrappedScalaObject(_) => pureValue(o)
+      case r: LisaRecord[_] => pureValue(r)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap {
         case c@Closure(_, _, capturedEnv, _) =>
 //          val notFound = (c.freeVariables - sym).filterNot(capturedEnv.has)
@@ -306,29 +309,15 @@ object Evaluator {
       }
 
       case PrimitiveFunction(fn) =>
-        Try(fn(arguments)).fold(ex => {
-          val cause = ex.getCause
-          val sb = new StringBuilder
-          sb.append(ex.toString)
-          if (cause ne null) sb.append(s"(Caused by $cause)")
-          Left(sb.toString())
-        }, Right(_))
+        tryToEither(fn(arguments))
       case WrappedScalaObject(obj) =>
-        Try{
-          obj.asInstanceOf[Function[Seq[Any], Any]](arguments)
-        }.orElse(
-          Try {
-            obj.asInstanceOf[{def apply(any: Any*): Any}].apply(arguments: _*)
-          }
-        ).orElse{
-          Try {
-            arguments match {
-              case x::Nil => obj.asInstanceOf[{def apply(any: Any): Any}].apply(x)
-              case x::y::Nil => obj.asInstanceOf[{def apply(a1: Any, a2: Any): Any}].apply(x, y)
-              case x::y::z::Nil => obj.asInstanceOf[{def apply(a1: Any, a2: Any, a3: Any)}].apply(x, y, z)
-            }
-          }
-        }.map(Reflect.ScalaBridge.fromScalaNative).fold(ex => Left(ex.toString), Right(_))
+        tryToEither(tryApplyOnObjectReflective(obj, arguments))
+          .map(Reflect.ScalaBridge.fromScalaNative)
+      case record: LisaRecord[_] =>
+        tryToEither(arguments match {
+          case Quote(sym @ Symbol(_)) :: Nil => record.apply(sym)
+          case (sym@Symbol(_)) :: Nil => record.apply(sym)
+        })
       case _ => Left(s"Cannot apply $procedure to $arguments.")
     }
   }
@@ -373,7 +362,16 @@ object Evaluator {
         case Define(sym, value) => for {
           s <- u(sym)
           v <- u(value)
-        } yield Define(s.asInstanceOf[Symbol], v)
+        } yield s match {
+          case s@Symbol(_) => Define(s, v)
+          case Apply(name, arguments) =>
+            val unquotedSeq = flattenSeq(v :: Nil)
+            Define(name, LambdaExpression(
+              unquotedSeq.last,
+              arguments,
+              unquotedSeq.init.toList
+            ))
+        }
         case otherwise => Some(otherwise)
       }
     }

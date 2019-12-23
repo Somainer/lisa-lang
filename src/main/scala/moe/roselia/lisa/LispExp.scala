@@ -1,6 +1,7 @@
 package moe.roselia.lisa
 
 import Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv}
+import RecordType.{MapRecord, Record}
 
 import scala.annotation.tailrec
 
@@ -220,9 +221,16 @@ object LispExp {
   }
 
   case class WrappedScalaObject[+T](obj: T) extends Expression with NoExternalDependency {
+    require(!obj.isInstanceOf[Failure], "Cannot wrap a failure")
     def get: T = obj
 
     override def toString: String = s"#Scala($obj)"
+
+    override def tpe: LisaType = NameOnlyType(s"${getClass.getSimpleName}[${obj.getClass.getSimpleName}]")
+  }
+
+  object WrappedScalaObject {
+    def apply[T](obj: T): WrappedScalaObject[T] = new WrappedScalaObject(obj)
   }
 
   trait Procedure extends Expression
@@ -545,6 +553,45 @@ object LispExp {
       sharedEnv.addValue(name, polymorphicExpression)
       polymorphicExpression
     }
+  }
+
+  trait LisaRecord[V <: Expression] extends Record[String, V] with Expression with NoExternalDependency {
+    def apply(sym: Symbol) = selectDynamic(sym.value)
+  }
+
+  object LisaRecord {
+    def recordMaker(rec: List[Expression], name: String = "") = {
+      @scala.annotation.tailrec
+      def recurHelper(rec: List[Expression], acc: Map[String, Expression]): Map[String, Expression] = rec match {
+        case Nil => acc
+        case Symbol(sym)::exp::xs => recurHelper(xs, acc.updated(sym, exp))
+        case Quote(Symbol(sym))::exp::xs => recurHelper(xs, acc.updated(sym, exp))
+        case x:: _ ::_ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
+        case x::_ => throw new IllegalArgumentException(s"No matching value for $x")
+      }
+      LisaMapRecord(recurHelper(rec, Map.empty), name)
+    }
+
+    lazy val RecordHelperEnv = Environments.Env(Map(
+      "record" -> PrimitiveFunction {
+        case SString(name)::xs =>
+          recordMaker(xs, name)
+        case xs =>
+          recordMaker(xs)
+      }
+    ), EmptyEnv)
+  }
+
+  case class LisaMapRecord[V <: Expression](record: Map[String, V], recordTypeName: String = "")
+    extends LisaRecord[V] with MapRecord[String, V] {
+    override def toString: String = {
+      val body = record.map {
+        case (k, v) => s"'$k $v"
+      }.mkString(" ")
+      s"$recordTypeName {$body}".stripLeading
+    }
+
+    def updated(key: String, value: V) = copy(record.updated(key, value))
   }
 
   trait Implicits {

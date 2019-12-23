@@ -174,6 +174,7 @@ object Main {
     val preludeEnv =
       CombineEnv(
         Seq(
+          LispExp.LisaRecord.RecordHelperEnv,
           Reflect.DotAccessor.accessEnv,
           Preludes.preludeEnvironment,
           NameSpacedEnv("box", Reflect.ToolboxDotAccessor.accessEnv, "")))
