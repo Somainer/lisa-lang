@@ -1,7 +1,7 @@
 package moe.roselia.lisa
 
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv, NameSpacedEnv, SpecialEnv, TransparentLayer}
-import moe.roselia.lisa.Evaluator.{EvalFailure, EvalResult, EvalSuccess}
+import moe.roselia.lisa.Evaluator.{EvalFailure, EvalFailureMessage, EvalResult, EvalSuccess}
 import moe.roselia.lisa.LispExp._
 import moe.roselia.lisa.Reflect.{PackageAccessor, ToolboxDotAccessor}
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
@@ -118,7 +118,7 @@ object Preludes extends LispExp.Implicits {
     "eval" -> SideEffectFunction {
       case (x::Nil, env) => Evaluator.eval(x, env) match {
         case EvalSuccess(expression, newEnv) => expression -> newEnv
-        case EvalFailure(msg) => Failure("Eval Failure", msg) -> env
+        case EvalFailureMessage(msg) => Failure("Eval Failure", msg) -> env
       }
     },
     "truthy?" -> PrimitiveFunction {
@@ -154,7 +154,7 @@ object Preludes extends LispExp.Implicits {
     "map" -> PrimitiveFunction {
       case WrappedScalaObject(ls: Iterable[Any])::fn::Nil => fn match {
         case c: Closure =>
-          val newList = ls.map(x => Evaluator.apply(c, List(fromScalaNative(x))))
+          val newList = ls.map(x => Evaluator.applyToEither(c, List(fromScalaNative(x))))
           if(newList forall (_.isRight))
             WrappedScalaObject(newList.map(_.toOption.get))
           else newList.find(_.isLeft).get.left.toOption.map(Failure("map Error", _)).get
@@ -179,7 +179,7 @@ object Preludes extends LispExp.Implicits {
         }
         fn match {
           case c: Closure =>
-            val newList = ls.map(x => Evaluator.apply(c, List(fromScalaNative(x))))
+            val newList = ls.map(x => Evaluator.applyToEither(c, List(fromScalaNative(x))))
             if(newList forall (_.isRight))
               WrappedScalaObject(newList.map(_.toOption.get).zip(ls).filter(x => ensureBool(x._1)).map(_._2))
             else newList.find(_.isLeft).get.left.toOption.map(Failure("filter Error", _)).get
@@ -217,7 +217,7 @@ object Preludes extends LispExp.Implicits {
         if (e.isMutable(x))
           Evaluator.eval(va, e) match {
             case EvalSuccess(expression, _) => (NilObj, e.forceUpdated(x, expression))
-            case EvalFailure(message) => (Failure("Eval Failure", message), e)
+            case EvalFailureMessage(message) => (Failure("Eval Failure", message), e)
           }
         else (Failure("set! Error", s"Can not assign an immutable value $x."), e)
       case (other, e) => (Failure("Arity Error", s"set! only accepts a symbol and an expression, but $other found."), e)
@@ -245,7 +245,7 @@ object Preludes extends LispExp.Implicits {
         case (f, _) => f
       } match {
         case EvalSuccess(expression, env) => expression -> env
-        case EvalFailure(msg) => Failure("Group Code Execution Failure", msg) -> e
+        case EvalFailureMessage(msg) => Failure("Group Code Execution Failure", msg) -> e
       }
     },
     "block" -> PrimitiveMacro {
@@ -254,7 +254,7 @@ object Preludes extends LispExp.Implicits {
         case (f, _) => f
       } match {
         case EvalSuccess(expression, _) => expression -> e
-        case EvalFailure(msg) => Failure("Block Code Execution Failure", msg) -> e
+        case EvalFailureMessage(msg) => Failure("Block Code Execution Failure", msg) -> e
       }
     },
     "while" -> PrimitiveMacro {
@@ -272,7 +272,7 @@ object Preludes extends LispExp.Implicits {
         }
         repeat(e) match {
           case EvalSuccess(_, en) => (NilObj, en)
-          case EvalFailure(msg) => Failure("While execution failure", msg) -> e
+          case EvalFailureMessage(msg) => Failure("While execution failure", msg) -> e
         }
     }.withArity(2),
     "help" -> PrimitiveFunction {
@@ -286,7 +286,7 @@ object Preludes extends LispExp.Implicits {
     },
     "apply" -> PrimitiveFunction {
       case fn::WrappedScalaObject(s: Seq[Expression])::Nil =>
-        Evaluator.apply(fn, s.toList).fold(Failure("Apply Failure", _), x => x)
+        Evaluator.applyToEither(fn, s.toList).fold(Failure("Apply Failure", _), x => x)
       case _ => Failure("Apply Failure", "Apply expects 2 arguments.")
     }.withArity(2),
     "limit-arity" -> PrimitiveFunction {

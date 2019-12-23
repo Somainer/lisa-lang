@@ -55,7 +55,7 @@ The `a` attribute of record `s` can be accessed via:
     (define (go n x) ; Defining a function inside a function will not affact outer scope.
         (println! "Computing:" n) ; Use println! to display a string, separated by a space.
         (if (= n 0) x (go (- n 1) (* n x)))); The last expression is the return value.
-    (go n 1)); Call an inner function, no tail-recursive optmize anyway.
+    (go n 1)); Call an inner function, optmize tail-recursive.
 
 go ; Error: Symbol go not found.
 

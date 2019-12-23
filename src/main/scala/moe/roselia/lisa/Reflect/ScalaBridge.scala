@@ -1,14 +1,14 @@
 package moe.roselia.lisa.Reflect
 
 import moe.roselia.lisa.LispExp._
-import moe.roselia.lisa.Evaluator.apply
+import moe.roselia.lisa.Evaluator.applyToEither
 
 object ScalaBridge {
   private def evalClosure(c: Closure)(xOrxs: Any) = {
 //    println(s"Received $c $xs -> ${xs.map(fromScalaNative).toList}")
 //    println(s"-> ${apply(c, xs.map(fromScalaNative).toList)}")
     val xs = ensureSeq(xOrxs)
-    apply(c, xs.map(fromScalaNative).toList)
+    applyToEither(c, xs.map(fromScalaNative).toList)
       .fold(ex => Failure("Scala Bridge Eval Error", ex), toScalaNative)
   }
 
