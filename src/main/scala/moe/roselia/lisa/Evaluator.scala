@@ -9,43 +9,63 @@ object Evaluator {
   import Environments._
   import LispExp._
   import SimpleLispTree._
-  trait EvalResult {
-    def flatMap(fn: Expression => EvalResult): EvalResult
-    def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult
+  trait InterpreterControlFlow {
+    def appendTrace(msg: => String): InterpreterControlFlow
+  }
+  trait EvalResult extends InterpreterControlFlow {
+    @`inline` def flatMap[T <: InterpreterControlFlow](fn: Expression => T): T
+    @`inline` def flatMapWithEnv[T <: InterpreterControlFlow](fn: (Expression, Environment) => T): T
     def isSuccess: Boolean
-    def appendTrace(msg: => String): EvalResult
   }
   case class EvalSuccess(expression: Expression, env: Environment) extends EvalResult {
-    override def flatMap(fn: Expression => EvalResult): EvalResult = fn(expression)
+    override def flatMap[T <: InterpreterControlFlow](fn: Expression => T): T = fn(expression)
 
-    override def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult =
+    override def flatMapWithEnv[T <: InterpreterControlFlow](fn: (Expression, Environment) => T): T =
       fn(expression, env)
 
     override def isSuccess: Boolean = true
 
     override def appendTrace(msg: => String): EvalSuccess = this
+
   }
-  case class EvalFailure(message: String) extends EvalResult {
-    override def flatMap(fn: Expression => EvalResult): EvalResult = this
+  case class EvalFailure(message: String, jvmTrace: List[String] = Nil, lisaTrace: List[String] = Nil) extends EvalResult {
+    override def flatMap[T <: InterpreterControlFlow](fn: Expression => T): T = this.asInstanceOf[T]
 
-    override def flatMapWithEnv(fn: (Expression, Environment) => EvalResult): EvalResult = this
+    override def flatMapWithEnv[T <: InterpreterControlFlow](fn: (Expression, Environment) => T): T =
+      this.asInstanceOf[T]
 
-    override def appendTrace(msg: => String): EvalFailure = copy(s"$message\n\t$msg")
+    override def appendTrace(msg: => String): EvalFailure =
+      copy(lisaTrace = msg :: lisaTrace)
 
     override def isSuccess: Boolean = false
 
-    override def toString: String = s"Failure: $message"
+    override def toString: String = {
+      val sb = new StringBuilder(s"Failure: $message\n")
+      if (jvmTrace.nonEmpty) {
+        val jvmTraceMessage = jvmTrace.map(x => s"\t$x").mkString("\n")
+        sb.append("JVM Trace:\n").append(jvmTraceMessage).append("\n")
+      }
+      if (lisaTrace.nonEmpty) {
+        val lisaTraceMessage = lisaTrace.reverse.map(x => s"\t$x").mkString("\n")
+        sb.append("Lisa Trace:\n").append(lisaTraceMessage)
+      }
+      sb.result()
+    }
   }
 
   object EvalFailure {
     def fromThrowable(throwable: Throwable): EvalFailure = {
-      throwable.printStackTrace()
-      EvalFailure(throwable.toString)
+      // throwable.printStackTrace()
+      EvalFailure(throwable.toString, throwable.getStackTrace.map(_.toString).toList)
     }
+  }
 
-    def apply(message: String): EvalFailure = new EvalFailure(message)
+  object EvalFailureMessage {
+    def unapply(arg: EvalFailure): Option[String] = Some(arg.message)
+  }
 
-    def apply(throwable: Throwable): EvalFailure = fromThrowable(throwable)
+  case class ReplaceStack(expression: Expression, environment: Environment) extends InterpreterControlFlow {
+    override def appendTrace(msg: => String) = this
   }
 
   def compile(tree: SimpleLispTree): Expression = tree match {
@@ -109,10 +129,10 @@ object Evaluator {
         case SList(bounds)::sExpr =>
           @annotation.tailrec
           def compileBounds(sList: Seq[SimpleLispTree],
-                            acc: Option[List[(Symbol, Expression)]] = Some(Nil)): Option[List[(Symbol, Expression)]] =
+                            acc: Option[List[(Expression, Expression)]] = Some(Nil)): Option[List[(Expression, Expression)]] =
             sList match {
               case Nil => acc.map(_.reverse)
-              case SList(Value(sym)::x::Nil)::xs => compileBounds(xs, acc.map((Symbol(sym), compile(x))::_))
+              case SList(pattern::x::Nil)::xs => compileBounds(xs, acc.map((compile(pattern), compile(x))::_))
               case _ => None
             }
           compileBounds(bounds).map(cBounds => {
@@ -141,13 +161,17 @@ object Evaluator {
     }
     case _ => Failure("Compile Error", s"Error compiling: $tree")
   }
-  def eval(exp: Expression, env: Environment): EvalResult = {
+  def evaluate(exp: Expression, env: Environment): InterpreterControlFlow = {
     def pureValue(expression: Expression) = EvalSuccess(expression, env)
     def pure(evalResult: EvalResult) = evalResult flatMap pureValue
     def unit(newEnv: Environment) = EvalSuccess(NilObj, newEnv)
     def sideEffect(evalResult: EvalResult): EvalResult = evalResult match {
       case EvalSuccess(_, newEnvironment) => unit(newEnvironment)
       case f => f
+    }
+    @`inline` def fillEnv(result: InterpreterControlFlow, env: Environment = env) = result match {
+      case EvalSuccess(exp, _) => EvalSuccess(exp, env)
+      case e => e
     }
 
 //    println(s"Evaluating: $exp")
@@ -224,7 +248,7 @@ object Evaluator {
           Try {
             val (result, newEnv) = m(args, env)
             eval(result, newEnv)
-          }.fold(EvalFailure(_), x => x)
+          }.fold(EvalFailure.fromThrowable, x => x)
         case pe: PolymorphicExpression => {
           def executeArgs(args: List[Expression]) =
             pe.findMatch(args, env).map {
@@ -233,38 +257,46 @@ object Evaluator {
                 case PrimitiveMacro(fn) => fn(args, env) match {
                   case (exp, env) => eval(exp, env)
                 }
-                case els => apply(els, args).fold(EvalFailure(_), EvalSuccess(_, env))
+                case els => apply(els, args) match {
+                  case ev: EvalResult => fillEnv(ev, env)
+                  case ReplaceStack(expression, _) =>
+                    ReplaceStack(expression, env)
+                }
               }
             }.getOrElse(EvalFailure("No matching procedure to apply"))
           if(pe.byName) executeArgs(args)
           else evalList(args, env).map(_.toList).fold(EvalFailure(_), executeArgs)
         }
         case proc => evalList(args, env).fold(EvalFailure(_),
-          evaledArguments => apply(proc, evaledArguments.toList).fold(EvalFailure(_), EvalSuccess(_, env)))
+          evaledArguments => apply(proc, evaledArguments.toList) match {
+            case er: EvalResult => fillEnv(er, env)
+            case ReplaceStack(expression, _) =>
+              ReplaceStack(expression, env)
+          })
       } match {
         case success@EvalSuccess(_, _) => success
         case _ if func != Symbol(PHRASE_VAR) && env
           .getValueOption(PHRASE_VAR)
           .filter(_.isInstanceOf[MayBeDefined])
           .exists(_.asInstanceOf[MayBeDefined].isDefinedAt(func :: args, env)) =>
-          eval(Apply(Symbol(PHRASE_VAR), func :: args), env)
+          evaluate(Apply(Symbol(PHRASE_VAR), func :: args), env)
         case f => f
       }
       case SIfElse(predicate, consequence, alternative) =>
-        eval(predicate, env) match {
-          case EvalSuccess(SBool(b), _) => eval(if(b) consequence else alternative, env)
+        evaluate(predicate, env) match {
+          case EvalSuccess(SBool(b), _) => evaluate(if(b) consequence else alternative, env)
           case f: EvalFailure => f
           case other => EvalFailure(s"Unexpected if predicate value: $other")
         }
 
       case SCond(conditions) =>
         @tailrec
-        def evCond(cond: List[(Expression, Expression)]): EvalResult = cond match {
+        def evCond(cond: List[(Expression, Expression)]): InterpreterControlFlow = cond match {
           case Nil => EvalFailure(s"No matching case")
           case (pred, conseq)::xs =>
-            eval(pred, env) match { // Not using flatMap for tailrec
+            evaluate(pred, env) match { // Not using flatMap for tailrec
               case EvalSuccess(res, _) => res match {
-                case SBool(true) => eval(conseq, env)
+                case SBool(true) => evaluate(conseq, env)
                 case SBool(false) => evCond(xs)
                 case other => EvalFailure(s"Can not tell $other is true or false.")
               }
@@ -278,6 +310,21 @@ object Evaluator {
     evalResult.appendTrace(s"at ${exp.code}")
   }
 
+//  @scala.annotation.tailrec
+  def eval(exp: Expression, env: Environment): EvalResult = {
+    evaluate(exp, env) match {
+      case result: EvalResult => result
+      case ReplaceStack(expression, environment) =>
+        eval(expression, environment)
+    }
+  }
+
+  def applyToEither(procedure: Expression, arguments: List[Expression]): Either[String, Expression] =
+    eval(Apply(procedure, arguments), EmptyEnv) match {
+      case EvalSuccess(exp, _) => Right(exp)
+      case EvalFailureMessage(message) => Left(message)
+    }
+
   def evalList(exps: Seq[Expression], env: Environment): Either[String, Seq[Expression]] = {
     val evaledExpr = exps.map(eval(_, env))
     if(evaledExpr.forall(_.isSuccess))
@@ -285,11 +332,15 @@ object Evaluator {
     else Left(evaledExpr.find(!_.isSuccess).get.asInstanceOf[EvalFailure].message)
   }
 
-  def apply(procedure: Expression, arguments: List[Expression]): Either[String, Expression] = {
+  def apply(procedure: Expression, arguments: List[Expression]): InterpreterControlFlow = {
+    def reportError(err: Throwable) = EvalFailure.fromThrowable(err)
+    def reportErrorOfString(err: String) = EvalFailure(err)
+    def success(exp: Expression) = EvalSuccess(exp, EmptyEnv)
+    def tried(exp: => Expression): EvalResult = Try { exp } fold (reportError, success)
 //    println(s"Apply $procedure($arguments)")
 //    println(s"EVAL: $procedure => ${eval(procedure, env)}")
     procedure match {
-      case Closure(boundVariable, body, capturedEnv, sideEffects) => {
+      case closure@Closure(boundVariable, body, capturedEnv, sideEffects) => {
 //          val boundEnv = capturedEnv.newFrame
 //            .withValues(boundVariable.map(_.asInstanceOf[Symbol].value).zip(arguments))
         val boundEnv = matchArgument(boundVariable, arguments, inEnv = capturedEnv).map(Env(_, capturedEnv))
@@ -298,27 +349,39 @@ object Evaluator {
             (accumulator, sideEffect) => accumulator flatMapWithEnv {
               (_, env) => eval(sideEffect, env)
             }
-          } flatMapWithEnv {
-            (_, env) => eval(body, env)
+          } flatMapWithEnv[InterpreterControlFlow] {
+            (_, env) =>
+              body match {
+                case Apply(fun, arguments) =>
+                 eval(fun, env) flatMap { e =>
+                   evalList(arguments, env).map(seq => Apply(e, seq.toList)).map(ReplaceStack(_, env)) match {
+                     case Left(_) => evaluate(body, env)
+                     case Right(value) => value
+                   }
+                 }
+                case _ => evaluate(body, env)
+              }
           } match {
-            case EvalSuccess(result, _) => Right(result)
-            case f@EvalFailure(_) =>
-              Left(f.appendTrace(s"at ${procedure.code}").message)
+            case EvalSuccess(result, _) => success(result)
+            case f@EvalFailureMessage(_) =>
+              f.appendTrace(s"at ${procedure.code}")
+            case f => f
           }
-        } else Left(s"Match Error, ${genHead(arguments)} does not match ${genHead(boundVariable)}.")
+        } else reportErrorOfString(s"Match Error, ${genHead(arguments)} does not match ${genHead(boundVariable)}.")
       }
 
       case PrimitiveFunction(fn) =>
-        tryToEither(fn(arguments))
+        tried(fn(arguments))
       case WrappedScalaObject(obj) =>
-        tryToEither(tryApplyOnObjectReflective(obj, arguments))
+        tryApplyOnObjectReflective(obj, arguments)
           .map(Reflect.ScalaBridge.fromScalaNative)
+          .fold(reportError, success)
       case record: LisaRecord[_] =>
-        tryToEither(arguments match {
+        tried(arguments match {
           case Quote(sym @ Symbol(_)) :: Nil => record.apply(sym)
           case (sym@Symbol(_)) :: Nil => record.apply(sym)
         })
-      case _ => Left(s"Cannot apply $procedure to $arguments.")
+      case _ => reportErrorOfString(s"Cannot apply $procedure to $arguments.")
     }
   }
 
@@ -330,6 +393,11 @@ object Evaluator {
         else None
       def flattenSeq(ex: Seq[Expression]) = ex flatMap {
         case WrappedScalaObject(seq: Seq[Expression]) => seq
+        case e => Seq(e)
+      }
+      def flattenSeqAndApply(ex: Seq[Expression]) = ex flatMap {
+        case WrappedScalaObject(seq: Seq[Expression]) => seq
+        case Apply(head, tail) => head :: tail
         case e => Seq(e)
       }
       expression match {
@@ -346,7 +414,10 @@ object Evaluator {
             b <- u(body)
             bv <- liftOption(boundVariable.map(u))
             ne <- liftOption(nestedExpressions.map(u))
-          } yield LambdaExpression(b, flattenSeq(bv).toList, flattenSeq(ne).toList)
+          } yield {
+            val realBody = flattenSeq(b :: Nil) ++ flattenSeq(ne)
+            LambdaExpression(realBody.last, flattenSeqAndApply(bv).toList, realBody.init.toList)
+          }
 
         case SIfElse(predicate, consequence, alternative) =>
           for {
@@ -392,7 +463,7 @@ object Evaluator {
     })
 
     val result = evalResult match {
-      case Some(f@EvalFailure(_)) => Failure("Macro Expansion Error", f.appendTrace(s"in expanding: ${m.code}").message)
+      case Some(f@EvalFailureMessage(_)) => Failure("Macro Expansion Error", f.appendTrace(s"in expanding: ${m.code}").message)
       case Some(EvalSuccess(exp, _)) => exp
       case None =>
         Failure("Macro Expansion Error", s"Error expanding ${m.code}.")
@@ -442,7 +513,7 @@ object Evaluator {
         case Nil => eval(arg, MutableEnv(matchResult, inEnv)) match {
           case EvalSuccess(SBool(b), _) => if (b) Some(matchResult.toMap) else None
           case EvalSuccess(_, _) => throw new IllegalArgumentException("Matching guard must returns a boolean")
-          case EvalFailure(msg) if ctrl != "when?" => throw new ArithmeticException(s"Error in pattern matching: $msg")
+          case EvalFailureMessage(msg) if ctrl != "when?" => throw new ArithmeticException(s"Error in pattern matching: $msg")
           case _ => None // when? means treat exceptions as none.
         }
         case _ => None

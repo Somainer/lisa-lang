@@ -55,7 +55,7 @@ The `a` attribute of record `s` can be accessed via:
     (define (go n x) ; Defining a function inside a function will not affact outer scope.
         (println! "Computing:" n) ; Use println! to display a string, separated by a space.
         (if (= n 0) x (go (- n 1) (* n x)))); The last expression is the return value.
-    (go n 1)); Call an inner function, no tail-recursive optmize anyway.
+    (go n 1)); Call an inner function.
 
 go ; Error: Symbol go not found.
 
@@ -73,7 +73,7 @@ go ; Error: Symbol go not found.
     (cond ((= a b) false)
           ((= a 0) true)
           ((= b 0) false)
-          (else (< (- a 1) (- b 1)))))
+          (else (stupid-< (- a 1) (- b 1)))))
 
 (.length "hello!"); <=> "hello!".length => 6
 
@@ -127,7 +127,7 @@ The javascript engine will NOT be initialized until you import it.
 (set-js! a 1) ; a becomes 1 now.
 
 ;If you want mix js in current environment
-(import-env! 'javascript-cross)
+(import-env! javascript-cross)
 
 a ; => 1
 b ; => "3"
@@ -165,6 +165,31 @@ case, the latter will never be matched.
 (my-f 5) ; => 120
 ```
 
+### Match Value Already Exists
+Like `Scala`, matching a value that already exists in the environment could be achieved by
+using ``` `<Symbol>` ```.
+```scheme
+(define x 1)
+(define (is-one? `x`) true) ; Will match only when 1 is passed.
+(define (is-one? _) false)
+```
+Note that it is an undefined behavior to mix use same symbol in plain and back-quoted.
+```scheme
+(define x 1)
+(define (evil `x` x) x)
+(evil 1 2) ; => 2
+(evil 2 3) ; Match Error, (2 3) does not match (x x)
+```
+It sounds weird because such pattern will **not** introduce a new bound in
+function environment. So please DO NOT mix use same symbol in ``` `x` ``` and `x`.
+
+But when back-quoted symbol does not exist on the environment, it will treated same as
+plain symbol. 
+```scheme
+(define (add-one `the argument`) (+ `the argument` 1)) 
+```
+This could be used to naming a symbol with illegal characters.
+
 ### Match a List
 Pattern `(seq <h1> <h2>)` matches a list or a vector.
 `(... args)` matches the rest of the list.
@@ -195,6 +220,33 @@ And the guard *MUST* returns a Bool, otherwise will result in an `EvalFailure`.
 ; Note that lisa has not defined > yet. You can define it as (define (> a b) (= 1 (.compareTo a b)))
 (fact 5) ; => 120
 (fact -5) ; => EvalFailure(No matching procedure to apply)
+```
+
+## Tail-call Optimization
+
+Lisa has tail-call optimization. When the last statement of a procedure is exactly an application, such tail call will be optimized.
+
+**Notice** that different from most tco-optimize languages, invoking `if` as last statement will not be regarded as
+a tail call because `if` is not a control statement but an expression in lisa.
+
+```scheme
+(define (overflow-fact n)
+    (define (f n x) 
+        (if (= n 0) x (f (- n 1) (* n x)))) ; Won't be optimized here.
+    (f n 1))
+
+(overflow-fact 1000) ; => Boom!
+```
+
+Luckily, in most cases, you won't miss `if` and `cond` in lisa because of pattern matching.
+
+```scheme
+(define (fact n)
+    (define (f 0 x) x)
+    (define (f n x) (f (- n 1) (* x n)))
+    (f n 1))
+
+(fact 1000) ; => Can get correct result.
 ```
 
 ## Let's solve a problem!
@@ -404,3 +456,7 @@ In target/pack/bin
 Also, there are some examples in `src/test/lisa/`
 
 If you are using VSCode, I hope you will be happy with vscode-scheme and Bracket Pair Colorizer.
+
+## Awesome! How can I use it in production?
+
+You won't.

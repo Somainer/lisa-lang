@@ -65,7 +65,9 @@ object LispExp {
     def tpe: LisaType = NameOnlyType(getClass.getSimpleName)
   }
 
-  trait Symbol extends Expression {
+  trait LisaValue
+
+  trait Symbol extends Expression with LisaValue {
     def value: String
 
     override def toString: String = value
@@ -98,11 +100,19 @@ object LispExp {
   import LisaDecimal.double2bigDecimal
 
   class SNumber[T](val number: T)(implicit evidence: scala.math.Numeric[T])
-    extends Expression with Ordered[SNumber[T]] with NoExternalDependency {
+    extends Expression with Ordered[SNumber[T]] with NoExternalDependency with LisaValue {
     override def toString: String = number.toString
     def mapTo[U : Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
-    def toIntNumber: SNumber[LisaInteger] = SNumber(toRationalNumber.number.toIntegral)
-    def toDoubleNumber: SNumber[LisaDecimal] = SNumber(number.toDouble)
+    def toIntNumber: SNumber[LisaInteger] = number match {
+      case _: LisaInteger => this.asInstanceOf[SNumber[LisaInteger]]
+      case _ => SInteger(toRationalNumber.number.toIntegral)
+    }
+    def toDoubleNumber: SNumber[LisaDecimal] = number match {
+      case _: LisaDecimal => this.asInstanceOf[SNumber[LisaDecimal]]
+      case num: Rational[LisaInteger] => LisaDecimal(num.numerator) / LisaDecimal(num.denominator)
+      case n: LisaInteger => LisaDecimal(n)
+      case _ => SFloat(number.toDouble)
+    }
     def toRationalNumber: SNumber[Rational[LisaInteger]] = {
       import SNumber.NumberTypes._
       getTypeOrder(number) match {
@@ -124,7 +134,11 @@ object LispExp {
         if (result.isIntegral) SNumber(result.toIntegral).asInstanceOf[SNumber[Any]]
         else SNumber(result).asInstanceOf[SNumber[Any]]
       }
-      else SNumber(number.toDouble / that.number.toDouble).asInstanceOf[SNumber[Any]]
+      else {
+        val thisDecimal = toDoubleNumber.number
+        val thatDecimal = that.toDoubleNumber.number
+        SNumber(thisDecimal / thatDecimal).asInstanceOf[SNumber[Any]]
+      }
     }
     def unary_- : SNumber[T] = -number
     override def compare(that: SNumber[T]): Int = implicitly[Ordering[T]].compare(number, that.number)
@@ -195,17 +209,25 @@ object LispExp {
 
   case class SInteger(value: LisaInteger) extends SNumber(value)
 
+  object SInteger {
+    private val integerCache = (-127 to 128).map(LisaInteger(_)).map(new SInteger(_))
+    def apply(value: LisaInteger): SInteger = value match {
+      case v if v >= -127 && v <= 128 => integerCache(v.toInt + 127)
+      case v => new SInteger(v)
+    }
+  }
+
   case class SFloat(value: LisaDecimal) extends SNumber(value)
 
   case class SRational(value: Rational[LisaInteger]) extends SNumber(value)
 
-  case class SBool(value: Boolean) extends Expression with NoExternalDependency {
+  case class SBool(value: Boolean) extends Expression with NoExternalDependency with LisaValue {
     override def toString: String = value.toString
 
     override def tpe: LisaType = NameOnlyType("Boolean")
   }
 
-  case class SString(value: String) extends Expression with NoExternalDependency with Ordered[SString] {
+  case class SString(value: String) extends Expression with NoExternalDependency with Ordered[SString] with LisaValue {
     override def toString: String = value.toString
 
     override def code: String = {
@@ -216,11 +238,11 @@ object LispExp {
     override def compare(that: SString): Int = value compare that.value
   }
 
-  case object NilObj extends Expression with NoExternalDependency {
+  case object NilObj extends Expression with NoExternalDependency with LisaValue {
     override def toString: String = "( )"
   }
 
-  case class WrappedScalaObject[+T](obj: T) extends Expression with NoExternalDependency {
+  case class WrappedScalaObject[+T](obj: T) extends Expression with NoExternalDependency with LisaValue {
     def get: T = obj
 
     override def toString: String = s"#Scala($obj)"
@@ -274,10 +296,19 @@ object LispExp {
     }
   }
 
+  trait SelfReferencable { this: Expression =>
+    var selfReference: Expression = this
+    def withSelf(self: Expression): this.type = {
+      selfReference = self
+      this
+    }
+  }
+
   case class Closure(boundVariable: List[Expression],
                      body: Expression,
                      capturedEnv: Environments.Environment,
-                     sideEffects: List[Expression] = List.empty) extends Procedure with MayHaveArity with MayBeDefined {
+                     sideEffects: List[Expression] = List.empty)
+    extends Procedure with MayHaveArity with MayBeDefined with SelfReferencable {
     override def valid: Boolean = body.valid
 
     override def toString: String = s"#Closure[${genHead(boundVariable)}]"
@@ -472,6 +503,7 @@ object LispExp {
           if(c.freeVariables.contains(name)) c.copy(capturedEnv=CombineEnv.of(innerEnvironment, capturedEnv))
           else c
         val newPolymorphic = copy(variants=variants.appended((nc, nc.boundVariable)))
+        nc.withSelf(newPolymorphic)
         innerEnvironment.addValue(name, newPolymorphic)
         newPolymorphic
     }
@@ -511,7 +543,7 @@ object LispExp {
       findMatch(arguments)
         .filter(exp => variants.find(_._1 eq exp._1).exists(v => v._2 == arguments || v._2 == alternativeArguments))
         .flatMap {
-          case (exp, _) => Evaluator.apply(exp, arguments).map(_.toString).toOption
+          case (exp, _) => Evaluator.applyToEither(exp, arguments).map(_.toString).toOption
         }.getOrElse(verboseString)
 //      if (isDefinedAt(Symbol("to-string")::Nil, EmptyEnv))
 //        Evaluator.apply(this, Symbol("to-string") :: Nil).toOption.map(_.toString).getOrElse(verboseString)
@@ -537,6 +569,8 @@ object LispExp {
     override def tpe: LisaType =
       if (variants.length == 1) variants.head._1.tpe
       else NameOnlyType(s"Polymorphic$polymorphicType")
+
+    override def code: String = name
   }
 
   object PolymorphicExpression {
@@ -546,6 +580,7 @@ object LispExp {
         Environments.CombineEnv.of(sharedEnv, closure.capturedEnv))
       val polymorphic =
         PolymorphicExpression(name, Seq((recursiveClosure, recursiveClosure.boundVariable)), sharedEnv)
+      recursiveClosure.withSelf(polymorphic)
       sharedEnv.addValue(name, polymorphic)
       polymorphic
     }
