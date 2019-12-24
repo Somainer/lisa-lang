@@ -569,6 +569,8 @@ object LispExp {
     override def tpe: LisaType =
       if (variants.length == 1) variants.head._1.tpe
       else NameOnlyType(s"Polymorphic$polymorphicType")
+
+    override def code: String = name
   }
 
   object PolymorphicExpression {

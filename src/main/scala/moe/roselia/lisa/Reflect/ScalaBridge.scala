@@ -42,6 +42,8 @@ object ScalaBridge {
     case d: Double => SFloat(d)
     case f: Float => SFloat(f.toDouble)
     case s: String => SString(s)
+    case bi: LisaInteger => SInteger(bi)
+    case di: LisaDecimal => SFloat(di)
     case scala.Symbol(sym) => Symbol(sym)
     case () => NilObj
     case ls: List[Any] => WrappedScalaObject(ls)
