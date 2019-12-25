@@ -8,6 +8,7 @@ import moe.roselia.lisa.LispExp.{NilObj, SString, SideEffectFunction, WrappedSca
 
 import scala.util.Try
 import scala.util.control.NonFatal
+import scala.util.parsing.input.CharSequenceReader
 
 object Main {
   import SimpleLispTree._
@@ -111,7 +112,12 @@ object Main {
         } else innerEnv
     }
     scala.util.Using(scala.io.Source.fromFile(fileName)) {source => {
-      val reader = parse(success(NilObj), source.reader()).next
+      val fileContent = source.mkString
+      val fileReader = new CharSequenceReader(fileContent match {
+        case s if s.startsWith("#!") => s.dropWhile(_ != '\n')
+        case s => s
+      })
+      val reader = parse(success(NilObj), fileReader).next
       doSeq(reader, env.newFrame).newFrame
     }}.get
   }
@@ -123,7 +129,7 @@ object Main {
     @annotation.tailrec
     def compileChain(source: scala.util.parsing.input.Reader[Char],
                      acc: List[LispExp.Expression] = Nil): List[LispExp.Expression] = {
-      if (!source.atEnd)
+      if (!source.atEnd) {
         parse(sExpression, source) match {
           case Success(sExpr, next) =>
             Evaluator.compile(sExpr) match {
@@ -137,7 +143,7 @@ object Main {
             printlnErr(s"Fatal: $msg")
             Nil
         }
-      else acc.reverse
+      } else acc.reverse
     }
     val compiled = compileChain(reader)
     fromSource.close()
@@ -209,7 +215,8 @@ object Main {
     else {
       args match {
         case Array(fileName) =>
-          executeFile(fileName, preludeEnv.withValue("__PATH__", SString(fileName)))
+          executeFile(fileName,
+            preludeEnv.withValue("__PATH__", SString(fileName)).withValue("args", WrappedScalaObject(args.toSeq)))
         case Array("repl", fileName) =>
           prompt(executeFile(
             fileName, preludeEnv.withValue("__PATH__", SString(fileName))

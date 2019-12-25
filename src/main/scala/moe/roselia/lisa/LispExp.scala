@@ -594,7 +594,7 @@ object LispExp {
     }
   }
 
-  trait LisaRecord[V <: Expression] extends Record[String, V] with Expression with NoExternalDependency {
+  trait LisaRecord[+V <: Expression] extends Record[String, V] with Expression with NoExternalDependency {
     def apply(sym: Symbol) = selectDynamic(sym.value)
   }
 
@@ -605,11 +605,26 @@ object LispExp {
         case Nil => acc
         case Symbol(sym)::exp::xs => recurHelper(xs, acc.updated(sym, exp))
         case Quote(Symbol(sym))::exp::xs => recurHelper(xs, acc.updated(sym, exp))
-        case LisaMapRecord(r, _)::xs => recurHelper(xs, acc ++ r)
+        case (r: LisaRecordWithMap[_])::xs => recurHelper(xs, acc ++ r.record)
         case x:: _ ::_ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
         case x::_ => throw new IllegalArgumentException(s"No matching value for $x")
       }
       LisaMapRecord(recurHelper(rec, Map.empty), name)
+    }
+
+    def recordUpdater(rec: LisaRecordWithMap[Expression], arguments: List[Expression]) = {
+      type V = Expression
+      @annotation.tailrec
+      def update(args: List[Expression], acc: LisaRecordWithMap[V]): LisaRecordWithMap[V] = args match {
+        case Nil => acc
+        case Symbol(sym)::exp::xs => update(xs, acc.updated(sym, exp))
+        case Quote(Symbol(sym))::exp::xs => update(xs, acc.updated(sym, exp))
+        case (r: LisaRecordWithMap[_])::xs =>
+          update(xs, r.record.foldLeft(acc) { case (acc, (k, v)) => acc.updated(k, v) })
+        case x:: _ ::_ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
+        case x::_ => throw new IllegalArgumentException(s"No matching value for $x")
+      }
+      update(arguments, rec)
     }
 
     lazy val RecordHelperEnv = Environments.Env(Map(
@@ -618,29 +633,87 @@ object LispExp {
           recordMaker(xs, name)
         case xs =>
           recordMaker(xs)
+      },
+      "record-updated" -> PrimitiveFunction {
+        case (r: LisaRecordWithMap[_]) :: xs => recordUpdater(r, xs)
+        case _ =>
+          throw new IllegalArgumentException(s"Expected a record")
+      },
+      "get-record-or-else" -> PrimitiveFunction {
+        case (r: LisaRecord[_]) :: SString(key) :: alter :: Nil =>
+          r.getOrElse(key, alter)
+        case (r: LisaRecord[_]) :: Symbol(key) :: alter :: Nil =>
+          r.getOrElse(key, alter)
+        case (r: LisaRecord[_]) :: Quote(Symbol(key)) :: alter :: Nil =>
+          r.getOrElse(key, alter)
+        case _ =>
+          throw new IllegalArgumentException()
+      }.withArity(3),
+      "define-record" -> PrimitiveMacro {
+        case (Symbol(recordName) :: xs, env) =>
+          import Implicits._
+          val members = xs.map(_.asInstanceOf[Symbol])
+          val membersString = members.map(_.value)
+          val recordType = NameOnlyType(recordName)
+          val constructor = PrimitiveFunction {
+            case ls if ls.length == members.length =>
+              TypedLisaRecord(membersString.zip(ls).toMap, recordType)
+          }.withArity(members.length)
+          val tester = PrimitiveFunction {
+            case TypedLisaRecord(_, tpe) :: Nil if tpe eq recordType => true
+            case _ :: Nil => false
+            case _ => throw new IllegalArgumentException(s"Only accept on argument.")
+          }.withArity(1)
+
+          val duckTypeTester = PrimitiveFunction {
+            case (r: LisaRecord[_]) :: Nil =>
+              membersString.forall(r.containsKey)
+            case _ :: Nil => false
+            case _ => throw new IllegalArgumentException(s"Only accept on argument.")
+          }.withArity(1)
+
+          NilObj -> env.withValues(
+            Seq(recordName -> constructor, s"$recordName?" -> tester, s"$recordName??" -> duckTypeTester)
+          )
+        case _ =>
+          throw new RuntimeException("Can not define a record like that.")
       }
     ), EmptyEnv)
   }
-
-  case class LisaMapRecord[V <: Expression](record: Map[String, V], recordTypeName: String = "")
-    extends LisaRecord[V] with MapRecord[String, V] {
+  trait LisaRecordWithMap[+V <: Expression] extends LisaRecord[V] with MapRecord[String, V] {
     override def toString: String = {
       val body = record.map {
         case (k, v) => s"'$k $v"
       }.mkString(" ")
       s"$recordTypeName {$body}".stripLeading
     }
+    def updated[B >: V <: Expression](key: String, value: B): LisaRecordWithMap[B]
+  }
 
-    def updated(key: String, value: V) = copy(record.updated(key, value))
+  case class LisaMapRecord[+V <: Expression](record: Map[String, V], recordTypeName: String = "")
+    extends LisaRecordWithMap[V] {
+    override def updated[B >: V <: Expression](key: String, value: B): LisaMapRecord[B] = copy(record.updated(key, value))
+  }
+
+  case class TypedLisaRecord[+V <: Expression](record: Map[String, V], recordType: LisaType)
+    extends LisaRecordWithMap[V] {
+    override def recordTypeName: String = recordType.name
+    override def updated[B >: V <: Expression](key: String, value: B): TypedLisaRecord[B] =
+      if (record.contains(key)) copy(record.updated(key, value))
+      else throw new IllegalArgumentException(s"Attribute $key does not exist on type $recordTypeName")
+
+    override def tpe: LisaType = recordType
   }
 
   trait Implicits {
     import scala.language.implicitConversions
     implicit def fromInt(i: Int): SInteger = SInteger(i)
+    implicit def fromBigInt(i: LisaInteger): SInteger = SInteger(i)
     implicit def fromString(s: String): SString = SString(s)
     implicit def fromSymbol(sym: scala.Symbol):Symbol = Symbol(sym.name)
-    implicit def fromFloat(f: Float): SFloat = SFloat(f)
-    implicit def fromDouble(d: Double): SFloat = SFloat(d)
+    implicit def fromFloat(f: Float): SFloat = SFloat(LisaDecimal(f))
+    implicit def fromDouble(f: Double): SFloat = SFloat(LisaDecimal(f))
+    implicit def fromDecimal(f: LisaDecimal): SFloat = SFloat(f)
     implicit def fromBool(b: Boolean): SBool = SBool(b)
     implicit def autoUnit(unit: Unit): NilObj.type = NilObj
   }

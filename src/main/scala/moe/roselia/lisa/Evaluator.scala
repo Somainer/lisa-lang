@@ -143,7 +143,9 @@ object Evaluator {
       case Value("if")::xs => xs match {
         case pred :: cons :: alt :: Nil =>
           SIfElse(compile(pred), compile(cons), compile(alt))
-        case _ => Failure("Syntax Error", "If else expect three expressions.")
+        case pred :: cons :: Nil =>
+          SIfElse(compile(pred), compile(cons), NilObj)
+        case _ => Failure("Syntax Error", "If else expect two or three expressions.")
       }
       case Value("cond")::xs =>
         @tailrec
