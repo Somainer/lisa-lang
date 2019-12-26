@@ -330,7 +330,33 @@ object Preludes extends LispExp.Implicits {
     }.withArity(1),
     "string" -> PrimitiveFunction { xs =>
       xs.mkString
-    }.withArity(1)
+    }.withArity(1),
+    "returnable" -> PrimitiveFunction {
+      case fn :: Nil =>
+        val returnable = new Util.ReturnControlFlow.Returns
+        val returnFn = PrimitiveFunction {
+          case x :: Nil => returnable.returns(x)
+          case Nil => returnable.returns(NilObj)
+          case _ => throw new IllegalArgumentException("Too many arguments.")
+        }
+        returnable.returnable {
+          Evaluator.eval(Apply(fn, returnFn :: Nil), EmptyEnv) match {
+            case EvalSuccess(exp, _) => exp
+            case EvalFailureMessage(message) => Failure("Returnable", message)
+          }
+        }
+    },
+    "expand-macro" -> SideEffectFunction {
+      case (Quote(Apply(m, args)) :: Nil, env) =>
+        Evaluator.eval(m, env) match {
+          case EvalSuccess(mac: SimpleMacro, _) =>
+            Quote(Evaluator.expandMacro(mac, args, env)) -> env
+        }
+    },
+    "gen-sym" -> PrimitiveFunction {
+      case Nil => Util.SymGenerator.nextSym
+      case _ => throw new IllegalArgumentException("gen-sym does not accept arguments.")
+    }
   ))
 
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")

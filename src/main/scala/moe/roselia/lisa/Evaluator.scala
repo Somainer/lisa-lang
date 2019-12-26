@@ -312,7 +312,7 @@ object Evaluator {
     evalResult.appendTrace(s"at ${exp.code}")
   }
 
-//  @scala.annotation.tailrec
+  @scala.annotation.tailrec
   def eval(exp: Expression, env: Environment): EvalResult = {
     evaluate(exp, env) match {
       case result: EvalResult => result

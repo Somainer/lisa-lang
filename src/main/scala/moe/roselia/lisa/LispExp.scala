@@ -627,6 +627,19 @@ object LispExp {
       update(arguments, rec)
     }
 
+    def withDefault[T <: Expression, Exp >: T <: Expression](record: LisaRecord[T], default: Exp): LisaRecord[Exp] =
+      new LisaRecord[Exp] {
+        override def selectDynamic(key: String): Exp = getOrElse(key, default)
+
+        override def containsKey(key: String): Boolean = record containsKey key
+
+        override def getOrElse[EV >: Exp](key: String, otherwise: => EV): EV = record.getOrElse(key, otherwise)
+
+        override def recordTypeName: String = record.recordTypeName
+
+        override def indented(bySpace: Int, level: Int): String = record.indented(bySpace, level)
+      }
+
     lazy val RecordHelperEnv = Environments.Env(Map(
       "record" -> PrimitiveFunction {
         case SString(name)::xs =>
@@ -677,6 +690,14 @@ object LispExp {
           )
         case _ =>
           throw new RuntimeException("Can not define a record like that.")
+      },
+      "record-with-default" -> PrimitiveFunction {
+        case (r: LisaRecord[_]) :: default :: Nil =>
+          LisaRecord.withDefault(r, default)
+        case (r: LisaRecord[_]) :: Nil =>
+          LisaRecord.withDefault(r, NilObj)
+        case _ =>
+          Failure("Arity Error", "record-with-default only accepts one or two arguments, first argument must me a record")
       }
     ), EmptyEnv)
   }
