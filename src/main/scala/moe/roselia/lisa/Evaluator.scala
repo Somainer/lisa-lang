@@ -355,11 +355,17 @@ object Evaluator {
             (_, env) =>
               body match {
                 case Apply(fun, arguments) =>
-                 eval(fun, env) flatMap { e =>
-                   evalList(arguments, env).map(seq => Apply(e, seq.toList)).map(ReplaceStack(_, env)) match {
-                     case Left(_) => evaluate(body, env)
-                     case Right(value) => value
-                   }
+                  eval(fun, env) flatMap { e =>
+                    def tailCallOptimized = 
+                      evalList(arguments, env).map(seq => Apply(e, seq.toList)).map(ReplaceStack(_, env)) match {
+                        case Left(_) => evaluate(body, env)
+                        case Right(value) => value
+                      }
+                    e match {
+                      case _: Closure => tailCallOptimized
+                      case poly: PolymorphicExpression if !poly.byName => tailCallOptimized
+                      case _ => evaluate(body, env)
+                    }
                  }
                 case _ => evaluate(body, env)
               }
@@ -417,7 +423,7 @@ object Evaluator {
             bv <- liftOption(boundVariable.map(u))
             ne <- liftOption(nestedExpressions.map(u))
           } yield {
-            val realBody = flattenSeq(b :: Nil) ++ flattenSeq(ne)
+            val realBody = flattenSeq(ne) ++ flattenSeq(b :: Nil)
             LambdaExpression(realBody.last, flattenSeqAndApply(bv).toList, realBody.init.toList)
           }
 

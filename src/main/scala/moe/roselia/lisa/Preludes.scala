@@ -342,7 +342,8 @@ object Preludes extends LispExp.Implicits {
         returnable.returnable {
           Evaluator.eval(Apply(fn, returnFn :: Nil), EmptyEnv) match {
             case EvalSuccess(exp, _) => exp
-            case EvalFailureMessage(message) => Failure("Returnable", message)
+            case EvalFailureMessage(message) => 
+              throw new RuntimeException(s"Returnable: $message")
           }
         }
     },
