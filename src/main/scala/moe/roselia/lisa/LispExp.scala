@@ -226,6 +226,12 @@ object LispExp {
 
     override def tpe: LisaType = NameOnlyType("Boolean")
   }
+  object SBool {
+    def apply(value: Boolean): SBool =
+      if (value) SBool.True else SBool.False
+    val True: SBool = new SBool(true)
+    val False: SBool = new SBool(false)
+  }
 
   case class SString(value: String) extends Expression with NoExternalDependency with Ordered[SString] with LisaValue {
     override def toString: String = value.toString

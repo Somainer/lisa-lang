@@ -31,7 +31,7 @@ object Main {
     robot.keyRelease(code)
   }
   lazy val isMac = {
-    System.getProperty("os.name").startsWith("Mac OS")
+    util.Properties.isMac
   }
 
   private def sendSpace(spaceNum: Int): Unit =
@@ -208,6 +208,9 @@ object Main {
         case ex: java.lang.StackOverflowError =>
           ex.printStackTrace()
           printlnErr("You input has caused a death loop. Recover you from prelude.")
+          main(args)
+        case Util.ReturnControlFlow.ReturnException(v, _) =>
+          printlnErr(s"Caught an unexpected return: $v")
           main(args)
       }
 

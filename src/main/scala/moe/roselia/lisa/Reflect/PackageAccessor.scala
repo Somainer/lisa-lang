@@ -45,6 +45,19 @@ object PackageAccessor {
 
   object ObjectEnv {
     def cachedOf[T : ClassTag](obj: T) = SpecialEnv.cached(ObjectEnv(obj))
+
+    def withKeyTransformer(env: Environment, transformer: String => String): SpecialEnv = new SpecialEnv {
+      override def getValueOption(key: String): Option[Expression] =
+        env.getValueOption(transformer(key))
+
+      override def has(key: String): Boolean = env.has(transformer(key))
+    }
+
+    def ofKebabCase[T : ClassTag](obj: T): SpecialEnv =
+      withKeyTransformer(ObjectEnv(obj), s => {
+        val splitByHyphen = s.split("-")
+        splitByHyphen.head + splitByHyphen.tail.map(_.capitalize).mkString
+      })
   }
 
 }

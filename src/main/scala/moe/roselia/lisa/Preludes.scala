@@ -30,7 +30,8 @@ object Preludes extends LispExp.Implicits {
     "scala-cross" -> scalaEnv,
     "scala-root" -> PackageAccessor.rootScalaEnv,
     "dot-accessor" -> ToolboxDotAccessor.accessEnv,
-    "system" -> Library.System.systemEnv
+    "system" -> Library.System.systemEnv,
+    "io-source" -> Library.IOSource.sourceLibrary
   ).view.mapValues(_.withIdentify("prelude"))
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(

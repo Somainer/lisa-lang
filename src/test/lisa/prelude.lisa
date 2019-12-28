@@ -237,3 +237,26 @@
 
 (define (current-env)
     (|> &# wrap .capturedEnv))
+
+(define-macro (for (var init) condition update (... body))
+    "for macro, usage: (for (loop-variable init) loop-condition next-loop-value ...body)
+    With break and continue support.
+    Example: (for (i 0) (< i 10) (+ i 1) (println! i) (if (> i 4) (break)))"
+    (define continue-sym (gen-sym))
+    (define break-sym (gen-sym))
+    '(returnable
+        (lambda (~break-sym)
+            (define (break) (~break-sym))
+            (define-mutable! ~var)
+            (set! ~var ~init)
+            (while ~condition
+                (group!
+                    (returnable
+                        (lambda (~continue-sym)
+                            (define (continue) (~continue-sym))
+                            ~body))
+                    (set! ~var ~update))))))
+
+(define-macro (. obj meth (... args))
+    (define sym (string->symbol (string "." meth)))
+    '(~sym ~obj ~args))
