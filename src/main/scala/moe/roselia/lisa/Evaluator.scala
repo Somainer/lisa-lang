@@ -71,10 +71,10 @@ object Evaluator {
   def compile(tree: SimpleLispTree): Expression = tree match {
     case PrecompiledSExpression(p) => p
     case SQuote(exp) => Quote(compile(exp))
+    case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
     case SUnQuote(q) => UnQuote(compile(q))
-    case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value(value) => {
       if(value.matches("-?\\d+"))
         SInteger(LisaInteger(value))

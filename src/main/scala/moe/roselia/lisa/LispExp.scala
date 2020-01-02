@@ -253,7 +253,8 @@ object LispExp {
 
     override def toString: String = s"#Scala($obj)"
 
-    override def tpe: LisaType = NameOnlyType(s"${getClass.getSimpleName}[${obj.getClass.getSimpleName}]")
+    override def tpe: LisaType =
+      NameOnlyType(s"${getClass.getSimpleName}[${reflect.NameTransformer.decode(obj.getClass.getSimpleName)}]")
   }
 
   object WrappedScalaObject {
