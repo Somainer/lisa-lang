@@ -60,4 +60,13 @@ object ScalaBridge {
     case map: java.util.Map[_, _] => map.asScala
     case _ => original
   }
+
+  def jsonLikeToLisa(jsonLike: Any): Expression = jsonLike match {
+    case m: Map[String, _] =>
+      LisaMapRecord(m.transform { (_, x) => jsonLikeToLisa(x) })
+    case l: Seq[_] => WrappedScalaObject(l.map(jsonLikeToLisa))
+    case d: Double =>
+      if (d.isValidInt) SInteger(d.toInt) else SFloat(d)
+    case o => fromScalaNative(o)
+  }
 }

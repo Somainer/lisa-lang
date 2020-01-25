@@ -321,6 +321,34 @@ You can even write a for-loop macro.
 
 (for i 0 (< i 100) (+ i 2) (prtinln! i))
 ```
+To implement `break` and `continue` capability, you need to use `returnable` function.
+`returnable` brings in return ability.
+```scheme
+(returnable
+    (lambda (return)
+        (return 2)
+        3)) ; => 2
+```
+But you **can not** use it outside returnable body.
+
+Here is an for-loop macro example inside `prelude.lisa`:
+```scheme
+(define-macro (for (var init) condition update (... body))
+    (define continue-sym (gen-sym))
+    (define break-sym (gen-sym))
+    '(returnable
+        (lambda (~break-sym)
+            (define (break) (~break-sym)) ; To make sure break does not accept any arguments.
+            (define-mutable! ~var)
+            (set! ~var ~init)
+            (while ~condition
+                (group!
+                    (returnable
+                        (lambda (~continue-sym)
+                            (define (continue) (~continue-sym))
+                            ~body))
+                    (set! ~var ~update))))))
+```
 
 ## Syntax Sugars
 ### Anonymous Function Literal

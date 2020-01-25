@@ -20,6 +20,22 @@ object System {
       case _ =>
         throw new IllegalArgumentException()
     },
-    "system-environment" -> LisaMapRecord(env.view.mapValues(SString).toMap, "System")
+    "system-environment" -> LisaMapRecord(env.view.mapValues(SString).toMap, "System"),
+    "get-prop" -> PrimitiveFunction {
+      case SString(name) :: Nil =>
+        Properties.propOrEmpty(name)
+      case SString(name) :: SString(alternative) :: Nil =>
+        Properties.propOrElse(name, alternative)
+      case _ =>
+        throw new IllegalArgumentException()
+    },
+    "get-scala-prop" -> PrimitiveFunction {
+      case SString(name) :: Nil =>
+        Properties.scalaPropOrEmpty(name)
+      case SString(name) :: SString(alternative) :: Nil =>
+        Properties.scalaPropOrElse(name, alternative)
+      case _ =>
+        throw new IllegalArgumentException()
+    }
   ), EmptyEnv)
 }

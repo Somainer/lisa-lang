@@ -30,7 +30,8 @@ object Preludes extends LispExp.Implicits {
     "scala-cross" -> scalaEnv,
     "scala-root" -> PackageAccessor.rootScalaEnv,
     "dot-accessor" -> ToolboxDotAccessor.accessEnv,
-    "system" -> Library.System.systemEnv
+    "system" -> Library.System.systemEnv,
+    "io-source" -> Library.IOSource.sourceLibrary
   ).view.mapValues(_.withIdentify("prelude"))
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
@@ -342,7 +343,8 @@ object Preludes extends LispExp.Implicits {
         returnable.returnable {
           Evaluator.eval(Apply(fn, returnFn :: Nil), EmptyEnv) match {
             case EvalSuccess(exp, _) => exp
-            case EvalFailureMessage(message) => Failure("Returnable", message)
+            case EvalFailureMessage(message) => 
+              throw new RuntimeException(s"Returnable: $message")
           }
         }
     },

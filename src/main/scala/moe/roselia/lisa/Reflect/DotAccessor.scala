@@ -88,9 +88,13 @@ object DotAccessor {
     (symbol :: symbol.baseClasses).view
       .map(_.asClass)
       .map(_.toType)
-      .map(_.decl(TermName(accessName)))
+      .map(_.decl(TermName(toJvmName(accessName))))
       .find(_.isTerm)
       .map(_.asTerm)
+  }
+
+  def toJvmName(name: String) = {
+    reflect.NameTransformer.encode(name)
   }
 
   def applyDotDynamic(acc: String)(dyn: Dynamic)(args: Any*) = {
