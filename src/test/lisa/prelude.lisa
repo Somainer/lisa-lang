@@ -23,20 +23,20 @@
 (define (to-string x)
     (.toString (wrap x)))
 
-(define (cons x y)
-    "Construct a pair, use car to fetch the first and cdr to fetch the second."
-    (define (pair 0) x)
-    (define (pair 1) y)
-    (define (pair 'pair? ) true)
-    (define (pair 'to-string)
-        (+ "[" (to-string x) " " (to-string y) "]"))
-    pair)
-
-(define (pair? pair (when? (pair 'pair? ))) true)
-(define (pair? _) false)
-
-(define (car p (when (pair? p))) (p 0))
-(define (cdr p (when (pair? p))) (p 1))
+# (define (cons x y)
+#     "Construct a pair, use car to fetch the first and cdr to fetch the second."
+#     (define (pair 0) x)
+#     (define (pair 1) y)
+#     (define (pair 'pair? ) true)
+#     (define (pair 'to-string)
+#         (+ "[" (to-string x) " " (to-string y) "]"))
+#     pair)
+#
+# (define (pair? pair (when? (pair 'pair? ))) true)
+# (define (pair? _) false)
+#
+# (define (car p (when (pair? p))) (p 0))
+# (define (cdr p (when (pair? p))) (p 1))
 
 (define-macro (delay e)
     "Construct a lazy value (named promise)."

@@ -19,22 +19,28 @@ object ScalaBridge {
 
   def toScalaNative(exp: Expression): Any = exp match {
     case SBool(b) => b
-    case SInteger(i) => i.toInt
+    case SInteger(i) => if(i.isValidInt) i.toInt else i
     case SString(s) => s
     case WrappedScalaObject(obj) => obj
     case Symbol(sym) => scala.Symbol(sym)
     case SFloat(fl) => fl.toDouble
-    case NilObj => ()
+//    case NilObj => ()
     case SRational(rat) =>
-      if(rat.isIntegral) rat.toIntegral.toInt else rat.toDouble.toDouble
+      if(rat.isIntegral) {
+        val integral = rat.toIntegral
+        if(integral.isValidInt) rat.toIntegral.toInt else integral
+      } else rat.toDouble
     case sNumber: SNumber[_] => sNumber
     case PrimitiveFunction(fn) => (xs: Any) => fn(ensureSeq(xs).map(fromScalaNative).toList)
     case c@Closure(_, _, _, _) =>
       evalClosure(c)(_)
     case r: LisaRecord[_] => r
+    case ll: LisaListLike[_] => ll
   }
 
   def fromScalaNative(any: Any): Expression = javaNativeToScala(any) match {
+    case list: List[_] =>
+      LisaList(list.map(fromScalaNative))
     case ex: Expression => ex
     case b: Boolean => SBool(b)
     case i: Int => SInteger(i)
@@ -46,7 +52,8 @@ object ScalaBridge {
     case di: LisaDecimal => SFloat(di)
     case scala.Symbol(sym) => Symbol(sym)
     case () => NilObj
-    case ls: List[Any] => WrappedScalaObject(ls)
+    // case ls: List[Any] => WrappedScalaObject(ls)
+//    case tuple: Product => LisaList(tuple.productIterator.map(fromScalaNative).toList)
 //    case fn: Function[Any, Any] =>
 //      PrimitiveFunction(xs => fromScalaNative(fn(xs.map(toScalaNative))))
     case Failure(tp, message) => throw new RuntimeException(s"$tp: $message")
@@ -64,7 +71,7 @@ object ScalaBridge {
   def jsonLikeToLisa(jsonLike: Any): Expression = jsonLike match {
     case m: Map[String, _] =>
       LisaMapRecord(m.transform { (_, x) => jsonLikeToLisa(x) })
-    case l: Seq[_] => WrappedScalaObject(l.map(jsonLikeToLisa))
+    case l: Seq[_] => LisaList(l.map(jsonLikeToLisa).toList)
     case d: Double =>
       if (d.isValidInt) SInteger(d.toInt) else SFloat(d)
     case o => fromScalaNative(o)

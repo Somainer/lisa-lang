@@ -68,26 +68,44 @@ object Evaluator {
     override def appendTrace(msg: => String) = this
   }
 
-  def compile(tree: SimpleLispTree): Expression = tree match {
+  private val compilePrimitives: PartialFunction[SimpleLispTree, Expression] = {
     case PrecompiledSExpression(p) => p
-    case SQuote(exp) => Quote(compile(exp))
+    case SQuote(exp) => Quote(compileToList(exp))
     case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
-    case SUnQuote(q) => UnQuote(compile(q))
+    case SUnQuote(q) => UnQuote(compileToList(q))
     case Value(value) => {
       if(value.matches("-?\\d+"))
         SInteger(LisaInteger(value))
-//        value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
+      //        value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
       else if(value.matches("""([0-9]*\.)?[0-9]+([eE][-+]?[0-9]+)?"""))
         SFloat(LisaDecimal(value))
       else Symbol(value)
     }
     case StringLiteral(value) =>
       SString(value)
+  }
+
+  def compileToList(tree: SimpleLispTree): Expression =
+    compilePrimitives.applyOrElse[SimpleLispTree, Expression](tree, {
+      case SList(ls) => LisaList(ls.map(compileToList).toList)
+    })
+
+  def unQuoteList(ll: Expression): Expression = {
+    def backToSimpleLispTree(ex: Expression): SimpleLispTree = ex match {
+      case Symbol(sym) => Value(sym)
+      case lll: LisaList[_] => SList(lll.map(backToSimpleLispTree))
+      case e => PrecompiledSExpression(e)
+    }
+    compile(backToSimpleLispTree(ll))
+  }
+
+  def compile(tree: SimpleLispTree): Expression = tree match {
+    case t if compilePrimitives.isDefinedAt(t) => compilePrimitives(t)
     case SList(ls) => ls match {
       case Value("quote" | "'")::xs => xs match {
-        case expr::Nil => Quote(compile(expr))
+        case expr::Nil => Quote(compileToList(expr))
         case _ => Failure("Syntax Error", "quote expect only one argument.")
       }
       case Value("unquote")::xs => xs match {
@@ -101,7 +119,7 @@ object Evaluator {
           params match {
             case list: List[Value] =>
               Define(compile(sym), LambdaExpression(compile(sExpr.last),
-                list.map(compile), sExpr.init.map(compile)))
+                list.map(compileToList), sExpr.init.map(compile)))
             case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
           }
         case _ => Failure("Syntax Error", "Cannot define a variable like that.")
@@ -110,7 +128,7 @@ object Evaluator {
         case SList(params)::sExpr => params match {
           case list: List[Value] =>
             LambdaExpression(compile(sExpr.last),
-              list.map(compile), sExpr.init.map(compile))
+              list.map(compileToList), sExpr.init.map(compile))
           case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
         }
         case _ => Failure("Syntax Error", "Error creating a closure.")
@@ -118,7 +136,7 @@ object Evaluator {
       case Value("define-macro")::xs => xs match {
         case SList(Value(name)::patterns)::sExpr =>
           val compiledChain = sExpr.map(compile)
-          val simpleMacro = SimpleMacro(patterns.map(compile), compiledChain.last, compiledChain.init)
+          val simpleMacro = SimpleMacro(patterns.map(compileToList), compiledChain.last, compiledChain.init)
           Define(Symbol(name), simpleMacro.defines match {
             case SString(document)::_ => simpleMacro.withDocString(document)
             case _ => simpleMacro
@@ -132,7 +150,7 @@ object Evaluator {
                             acc: Option[List[(Expression, Expression)]] = Some(Nil)): Option[List[(Expression, Expression)]] =
             sList match {
               case Nil => acc.map(_.reverse)
-              case SList(pattern::x::Nil)::xs => compileBounds(xs, acc.map((compile(pattern), compile(x))::_))
+              case SList(pattern::x::Nil)::xs => compileBounds(xs, acc.map((compileToList(pattern), compile(x))::_))
               case _ => None
             }
           compileBounds(bounds).map(cBounds => {
@@ -227,7 +245,9 @@ object Evaluator {
       case fn: PrimitiveFunction => pureValue(fn)
       case s: SString => pureValue(s)
       case i: SInteger => pureValue(i)
-      case q: Quote => pureValue(q)
+//      case q: Quote => pureValue(q)
+      case Quote(q) => pureValue(q)
+      case ll: LisaListLike[_] => pureValue(ll)
       case UnQuote(q) => eval(q, env) flatMap {
         case Quote(qt) => pureValue(qt)
         case _ => EvalFailure(s"Cannot unquote $q.")
@@ -395,62 +415,25 @@ object Evaluator {
 
   def expandMacro(m: SimpleMacro, args: Seq[Expression], env: Environment): Expression = {
     def unquote(expression: Expression, env: Environment): Option[Expression] = {
-      def u(e: Expression) = unquote(e, env)
+      @`inline` def u(e: Expression) = unquote(e, env)
       def liftOption[T](op: Seq[Option[T]]): Option[Seq[T]] =
         if(op.forall(_.isDefined)) Some(op.map(_.get))
         else None
+
       def flattenSeq(ex: Seq[Expression]) = ex flatMap {
         case WrappedScalaObject(seq: Seq[Expression]) => seq
+        case LisaList(ll) => ll
         case e => Seq(e)
       }
-      def flattenSeqAndApply(ex: Seq[Expression]) = ex flatMap {
-        case WrappedScalaObject(seq: Seq[Expression]) => seq
-        case Apply(head, tail) => head :: tail
-        case e => Seq(e)
-      }
+
       expression match {
+        case LisaList(ll) => liftOption(ll.map {
+            case sym@UnQuote(Symbol(_)) => u(sym)
+            case ex => u(ex).map(LisaList.from(_))
+          }).map(flattenSeq).map(_.toList).map(LisaList(_))
         case Quote(s) => u(s).map(Quote)
         case UnQuote(Symbol(sym)) => env.getValueOption(sym)
         case UnQuote(other) => u(other)
-        case Apply(head, args) =>
-          for {
-            h <- u(head)
-            x <- liftOption(args.map(u))
-          } yield Apply(h, flattenSeq(x).toList)
-        case LambdaExpression(body, boundVariable, nestedExpressions) =>
-          for {
-            b <- u(body)
-            bv <- liftOption(boundVariable.map(u))
-            ne <- liftOption(nestedExpressions.map(u))
-          } yield {
-            val realBody = flattenSeq(ne) ++ flattenSeq(b :: Nil)
-            LambdaExpression(realBody.last, flattenSeqAndApply(bv).toList, realBody.init.toList)
-          }
-
-        case SIfElse(predicate, consequence, alternative) =>
-          for {
-            p <- u(predicate)
-            c <- u(consequence)
-            a <- u(alternative)
-          } yield SIfElse(p, c, a)
-        case SCond(cond) =>
-          val o = cond.map {
-            case (x, y) => for {ux <- u(x); uy <- u(y)} yield (ux, uy)
-          }
-          liftOption(o).map(_.toList).map(SCond)
-        case Define(sym, value) => for {
-          s <- u(sym)
-          v <- u(value)
-        } yield s match {
-          case s@Symbol(_) => Define(s, v)
-          case Apply(name, arguments) =>
-            val unquotedSeq = flattenSeq(v :: Nil)
-            Define(name, LambdaExpression(
-              unquotedSeq.last,
-              arguments,
-              unquotedSeq.init.toList
-            ))
-        }
         case otherwise => Some(otherwise)
       }
     }
@@ -465,8 +448,8 @@ object Evaluator {
       }
     }).map(_.flatMapWithEnv {
       case (exp, env) => exp match {
-        case Quote(e) => unquote(e, env).map(EvalSuccess(_, env)).getOrElse(EvalFailure("Can not expand macro."))
-        case _ => EvalSuccess(exp, env)
+        case e => unquote(e, env).map(unQuoteList).map(EvalSuccess(_, env)).getOrElse(EvalFailure("Can not expand macro."))
+//        case _ => EvalSuccess(exp, env)
       }
     })
 
@@ -508,16 +491,23 @@ object Evaluator {
           }
         case _ => None
       }
-      case Apply(Symbol("seq"), args)::xs if arguments.headOption.exists(_.isInstanceOf[WrappedScalaObject[Seq[Any]]]) =>
+      case LisaList(Symbol("seq") :: args)::xs
+        if arguments.headOption.exists(l => l.isInstanceOf[WrappedScalaObject[Seq[Any]]] || l.isInstanceOf[LisaListLike[_]])
+      =>
         arguments match {
           case WrappedScalaObject(s: Seq[Any])::ys =>
             for {
               listMatch <- matchArgument(args, s.map(Reflect.ScalaBridge.fromScalaNative).toList, matchResult, inEnv)
               restMatch <- matchArgument(xs, ys, matchResult, inEnv)
             } yield listMatch ++ restMatch
+          case (ll: LisaListLike[Expression]) :: ys =>
+            for {
+              listMatch <- matchArgument(args, ll.list, matchResult, inEnv)
+              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
+            } yield listMatch ++ restMatch
           case _ => None
         }
-      case Apply(Symbol(ctrl@("?" | "when" | "when?")), arg::Nil)::Nil => arguments match {
+      case LisaList(Symbol(ctrl@("?" | "when" | "when?")) :: arg::Nil)::Nil => arguments match {
         case Nil => eval(arg, MutableEnv(matchResult, inEnv)) match {
           case EvalSuccess(SBool(b), _) => if (b) Some(matchResult.toMap) else None
           case EvalSuccess(_, _) => throw new IllegalArgumentException("Matching guard must returns a boolean")
@@ -526,25 +516,31 @@ object Evaluator {
         }
         case _ => None
       }
-      case Apply(Symbol("..."), Symbol(sym)::Nil)::xs => sym match {
+      case LisaList(Symbol("...") :: Symbol(sym)::Nil)::xs => sym match {
         case "_" => matchArgument(xs, Nil, matchResult, inEnv)
         case symbol if matchResult.contains(symbol) =>
           matchResult(symbol) match {
-            case WrappedScalaObject(`arguments`) => matchArgument(xs, Nil, matchResult, inEnv)
+            case WrappedScalaObject(`arguments`) | LisaList(`arguments`) => matchArgument(xs, Nil, matchResult, inEnv)
             case _ => None
           }
         case _ =>
-          matchResult.update(sym, WrappedScalaObject(arguments.toIndexedSeq))
+//          matchResult.update(sym, WrappedScalaObject(arguments.toIndexedSeq))
+          matchResult.update(sym, LisaList(arguments))
           matchArgument(xs, Nil, matchResult, inEnv)
       }
-      case Apply(head, args)::xs => arguments match {
-        case Apply(yHead, yArgs)::ys => for {
-          headMatch <- matchArgument(List(head), List(yHead), matchResult, inEnv)
-          argsMatch <- matchArgument(args, yArgs, matchResult, inEnv)
+      case LisaList(lls)::xs =>
+        @`inline`
+        def continueMatch(restArgs: List[Expression], ys: List[Expression]) =  for {
+          argsMatch <- matchArgument(lls, restArgs, matchResult, inEnv)
           rest <- matchArgument(xs, ys, matchResult, inEnv)
-        } yield headMatch ++ argsMatch ++ rest
-        case _ => None
-      }
+        } yield argsMatch ++ rest
+
+        arguments match {
+          case Apply(yHead, yArgs)::ys => continueMatch(yHead :: yArgs, ys)
+          case LisaList(llArg) :: ys => continueMatch(llArg, ys)
+          case WrappedScalaObject(seq: Seq[Expression]) :: ys => continueMatch(seq.toList, ys)
+          case _ => None
+        }
       case Quote(Symbol(sym))::xs => arguments match {
         case Symbol(`sym`)::ys => matchArgument(xs, ys, matchResult, inEnv)
         case Quote(Symbol(`sym`))::ys => matchArgument(xs, ys, matchResult, inEnv)

@@ -14,8 +14,8 @@ object ReturnControlFlow {
     def returns[U >: T](value: U) = throw ReturnException(value, returnFlag)
 
     def returnable[U >: T](op: => U): U = try op catch {
-      case ReturnException(result, `returnFlag`) =>
-        result.asInstanceOf[U]
+      case ReturnException(result: U, `returnFlag`) =>
+        result
     }
   }
 
