@@ -226,6 +226,8 @@ object Preludes extends LispExp.Implicits {
     "apply" -> PrimitiveFunction {
       case fn::WrappedScalaObject(s: Seq[Expression])::Nil =>
         Evaluator.applyToEither(fn, s.toList).fold(Failure("Apply Failure", _), x => x)
+      case fn :: LisaList(s) :: Nil =>
+        Evaluator.applyToEither(fn, s).fold(Failure("Apply Failure", _), x => x)
       case _ => Failure("Apply Failure", "Apply expects 2 arguments.")
     }.withArity(2),
     "limit-arity" -> PrimitiveFunction {
@@ -240,7 +242,7 @@ object Preludes extends LispExp.Implicits {
       case f1::SString(s)::Nil => f1.withDocString(s)
     }.withArity(2),
     "define-phrase" -> PrimitiveMacro {(x, e) =>
-      def defineHelper(toBeDefined: SimpleMacro) = {
+      def defineHelper(toBeDefined: SimpleMacroClosure) = {
         val previous = e.getValueOption(PHRASE_VAR)
         if (previous.exists(_.isInstanceOf[PolymorphicExpression]))
           NilObj -> e.withValue(PHRASE_VAR, previous.get.asInstanceOf[PolymorphicExpression].withExpression(toBeDefined))
@@ -248,11 +250,11 @@ object Preludes extends LispExp.Implicits {
       }
       (x, e) match {
         case (Apply(head, tail) :: body, _) =>
-          val toBeDefined = SimpleMacro(head :: tail, body.last, body.init)
+          val toBeDefined = SimpleMacroClosure(head :: tail, body.last, body.init, e)
           defineHelper(toBeDefined)
         case (Symbol(defined)::Nil, _)
-          if e.getValueOption(defined).exists(_.isInstanceOf[SimpleMacro]) =>
-          defineHelper(e.getValueOption(defined).get.asInstanceOf[SimpleMacro])
+          if e.getValueOption(defined).exists(_.isInstanceOf[SimpleMacroClosure]) =>
+          defineHelper(e.getValueOption(defined).get.asInstanceOf[SimpleMacroClosure])
       }
     },
     "try-option" -> PrimitiveMacro {
@@ -288,8 +290,13 @@ object Preludes extends LispExp.Implicits {
     "expand-macro" -> SideEffectFunction {
       case (LisaList(m :: args) :: Nil, env) =>
         Evaluator.eval(m, env) match {
-          case EvalSuccess(mac: SimpleMacro, _) =>
+          case EvalSuccess(mac: SimpleMacroClosure, _) =>
             Quote(Evaluator.expandMacro(mac, args, env)) -> env
+          case EvalSuccess(pm@PolymorphicExpression(_, _, _, true), _) =>
+            pm.findMatch(args, env).map {
+              case ((mac: SimpleMacroClosure), _) =>
+                Quote(Evaluator.expandMacro(mac, args, env)) -> env
+            }.get
         }
     },
     "gen-sym" -> PrimitiveFunction {
@@ -302,11 +309,30 @@ object Preludes extends LispExp.Implicits {
     "ast-of" -> PrimitiveFunction {
       case x :: Nil => Evaluator.unQuoteList(x)
     }.withArity(1),
-    "freeze-environment" -> SideEffectFunction {
-      case (Nil, env) =>
-        LisaMapRecord(env.collectDefinedValues.map(key => (key, env.getValueOption(key).get)).toMap) -> env
+    "prelude-environment" -> PrimitiveFunction.withArityChecked(0) {
       case _ =>
-        throw new IllegalArgumentException(s"freeze-environments do not expect arguments")
+        LisaMapRecord(preludeEnvironment.
+          collectDefinedValues.map(key => key -> preludeEnvironment.getValueOption(key).get).toMap)
+      case _ =>
+        throw new IllegalArgumentException(s"prelude-environment do not expect arguments")
+    },
+    "freeze-environment" -> SideEffectFunction { case (Nil, env) =>
+      new AbstractLisaRecord {
+        override def selectDynamic(key: String): Expression = env.getValueOption(key).getOrElse(throw new NoSuchElementException(key))
+
+        override def containsKey(key: String): Boolean = env.has(key)
+
+        override def getOrElse[EV >: Expression](key: String, otherwise: => EV): EV = env.getValueOption(key).getOrElse(otherwise)
+
+        override def recordTypeName: String = s"frozen-environment"
+
+        override def indented(bySpace: Int, level: Int): String = toString
+
+        override def toString: String = s"#$recordTypeName [not-computed]"
+
+        override def tpe: LisaType = NameOnlyType("LisaRecord")
+      } -> env
+      case  _ => throw new IllegalArgumentException(s"freeze-environment do not expect arguments")
     },
     "read-string" -> PrimitiveFunction.withArityChecked(1) {
       case SString(s) :: Nil =>
@@ -322,6 +348,15 @@ object Preludes extends LispExp.Implicits {
         case Success(result, _) => result
         case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
       }
+    },
+    "declare" -> PrimitiveMacro { case (declares, env) =>
+      val mutableEnv = env match {
+        case mutable: MutableEnv => mutable
+        case e => e.newMutableFrame
+      }
+      require(declares.forall(_.isInstanceOf[Symbol]))
+      declares.foreach(sym => mutableEnv.addValue(sym.asInstanceOf[Symbol].value, PlaceHolder))
+      NilObj -> mutableEnv
     }
   ))
 
@@ -507,7 +542,7 @@ object Preludes extends LispExp.Implicits {
       case _ => false
     },
     "macro?" -> PrimitiveFunction.withArityChecked(1) {
-      case (_: SimpleMacro | _: PrimitiveMacro | PolymorphicExpression(_, _, _, true)) :: Nil => true
+      case (_: SimpleMacro | _: PrimitiveMacro | PolymorphicExpression(_, _, _, true) | _: SimpleMacroClosure) :: Nil => true
       case _ => false
     },
     "callable?" -> PrimitiveFunction.withArityChecked(1) {
@@ -523,6 +558,10 @@ object Preludes extends LispExp.Implicits {
     },
     "iterable?" -> PrimitiveFunction.withArityChecked(1) {
       case (_: LisaRecord[_] | WrappedScalaObject(_: Iterable[_]) | SString(_)) :: Nil => true
+      case _ => false
+    },
+    "quoted?" -> PrimitiveFunction.withArityChecked(1) {
+      case Quote(_) :: Nil => true
       case _ => false
     },
     "same-reference?" -> PrimitiveFunction.withArityChecked(2) {

@@ -393,8 +393,11 @@ and returns a constant value. E.g. `&1` is equivalent to `(lambda ((... _)) 1)`.
 ### Macros
 Defining a macro in Lisa is similar to defining a closure.
 `(define-macro (name args*) body*)` 
-Macros are dynamic scoped. Every argument are passed without any calculation. 
-Macros should eventually return a expression which will be expanded where invoked.
+Macros are executed static scoped. Every argument are passed without any calculation.
+Macros should eventually return an expression which will be expanded where invoked.
+If you want to refer to a value dynamically, use `dynamic-resolve` macro which only works
+inside macros. This macro will lookup through calling chain to resolve the symbol in
+dynamic scope.
 Since code is data in Lisa, you can generate code by quote and unquote or returning an list.
 To quote an expression, use syntax sugar `'<expression>`. `~<expression>` is the syntax sugar for unquoting an expression.
 

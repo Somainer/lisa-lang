@@ -4,6 +4,7 @@ import scala.reflect.ClassTag
 import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
 import ScalaBridge._
+import moe.roselia.lisa.LispExp.{LisaList, WrappedScalaObject}
 import moe.roselia.lisa.Util.Extractors.NeedInt
 
 object DotAccessor {
@@ -148,8 +149,11 @@ object DotAccessor {
     override def getValueOption(key: String): Option[LispExp.Expression] = Some(LispExp.PrimitiveFunction {
       case x::Nil =>
         key.substring(1) match {
-          case s"[${NeedInt(index)}]" =>
-            fromScalaNative(toScalaNative(x).asInstanceOf[Seq[Any]](index))
+          case s"[${NeedInt(index)}]" => x match {
+            case LisaList(ll) => ll(index)
+            case WrappedScalaObject(seq: Seq[_]) => fromScalaNative(seq(index))
+            case _ => fromScalaNative(toScalaNative(x).asInstanceOf[Seq[Any]](index))
+          }
           case field =>
             val res = accessDot(field)(toScalaNative(x))
             fromScalaNative(res)

@@ -1,0 +1,79 @@
+(define (bool? true) true)
+(define (bool? false) true)
+(define (bool? _) false)
+
+(define (bind vars vals env)
+    (if (nil? vars) env
+        (bind (cdr vars) (cdr vals) (record-updated env (car vars) (car vals)))))
+(define apply-primitive apply)
+(declare eval apply evlist)
+(define (eval exp env)
+    (cond ((number? exp) exp)
+        ((nil? exp) ())
+        ((string? exp) exp)
+        ((bool? exp) exp)
+        ((symbol? exp) (env exp))
+        ((quoted? exp) (.exp (wrap exp)))
+        ((= (car exp) 'lambda)
+            (list 'closure (cdr exp) env))
+        ((= (car exp) 'if)
+            (if (eval (.[1] exp) env)
+                (eval (.[2] exp) env)
+                (eval (.[3] exp) env)))
+        ((= (car exp) 'closure) exp)
+        (else (apply
+                (eval (car exp) env)
+                (evlist (cdr exp) env)))))
+
+(define (apply proc args)
+    (cond
+        ((procedure? proc) (apply-primitive proc args))
+        ((= (car proc) 'closure)
+            (eval (.[1] (.[1] proc))
+                        (bind (car (.[1] proc))
+                                args
+                                (.[2] proc))))))
+
+(define (evlist exps env)
+    (if (nil? exps)
+        '()
+        (cons (eval (car exps) env) (evlist (cdr exps) env))))
+
+(define Y
+    (eval '(lambda (fn) ((lambda (u) (u u)) (lambda (f) (fn (lambda (s) ((f f) s)))))) (prelude-environment)))
+
+(define primitive
+    (record-updated (prelude-environment) 'Y Y))
+
+(define (make-evaluator)
+    (define-mutable! index)
+    (set! index 0)
+    (define-mutable! inner-env)
+    (set! inner-env primitive)
+    (lambda (exp)
+        (define result (eval exp inner-env))
+        (set! inner-env (record-updated inner-env (string "[" index "]") result))
+        (define return (cons result index))
+        (set! index (+ index 1))
+        return))
+
+(define (eval-lisa exp)
+    (eval exp primitive))
+
+(define (lisa-closure? ('closure (... _))) true)
+(define (lisa-closure? _) false)
+
+(define (display exp)
+    (cond ((lisa-closure? exp) "#<procedure>")
+            (else (string exp))))
+
+(define (interpreter)
+    (define evaluator (make-evaluator))
+    (define (iter)
+        (define raw-input (read "lambda>"))
+        (define result (evaluator raw-input))
+        (println! (string "[" (.[1] result) "]:") (display (car result)))
+        (iter))
+    (iter))
+
+(interpreter)

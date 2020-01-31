@@ -23,6 +23,11 @@ class MatchArgumentTests extends AsyncWordSpec with Matchers with ExpressionHelp
       matchArgument(pattern, Nil).value shouldEqual Map("ls" -> LisaList.empty)
       matchArgument(LisaList(pattern) :: Nil, Nil) shouldBe empty
     }
+
+    "match symbols" in {
+      val pattern = List(Quote("a".asSymbol))
+      matchArgument(pattern, "a".asSymbol :: Nil).value shouldBe empty
+    }
   }
 
 }
