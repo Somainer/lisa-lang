@@ -3,6 +3,7 @@ import scala.tools.reflect.ToolBox
 import moe.roselia.lisa.Environments._
 import moe.roselia.lisa.LispExp._
 import ScalaBridge._
+import moe.roselia.lisa.Annotation.RawLisa
 
 import scala.reflect.ClassTag
 import scala.util.Try
@@ -14,32 +15,32 @@ object PackageAccessor {
       Try {toolBox.eval(toolBox.parse(key))}.toOption.map(fromScalaNative)
   }
 
-  import scala.reflect.runtime.universe.{runtimeMirror, TermName}
   case class ObjectEnv[T : ClassTag](obj: T) extends SpecialEnv {
-    private lazy val toolBox = {
-      val cls = obj.getClass
-      val mirror = runtimeMirror(cls.getClassLoader)
-      val box = mirror.mkToolBox()
-      box
+    private lazy val classMirror = DotAccessor.getClassObject(obj)
+    private lazy val shouldPassRawExpression = DotAccessor.hasRawLisaAnnotation(classMirror.symbol)
+
+    private def mapRealArguments(xs: Seq[Expression]): Seq[Any] = {
+      if (shouldPassRawExpression) xs
+      else xs.map(toScalaNative)
     }
 
     override def getValueOption(key: String): Option[Expression] =
       Try[Expression] {
-        val clsObj = toolBox.mirror.reflect(obj)
-        val name = TermName(key)
-        val decl = clsObj.symbol.toType.decl(name)
-        if (decl.isTerm) {
-          val nilArityMethod = decl.asTerm.alternatives
+        val clsObj = classMirror
+//        val decl = clsObj.symbol.toType.decl(name)
+        val decl = DotAccessor.lookUpForTerm(clsObj.symbol, key)
+        if (decl.isDefined) {
+          val nilArityMethod = decl.get.alternatives
             .filter(_.isMethod)
             .map(_.asMethod)
             .find(_.paramLists == Nil)
             .map(clsObj.reflectMethod)
           if (nilArityMethod.isDefined) nilArityMethod.map(_.apply()).map(fromScalaNative).get
           else PrimitiveFunction {
-            xs => fromScalaNative(DotAccessor.applyDot(key)(obj)(xs.map(toScalaNative): _*))
+            xs => fromScalaNative(DotAccessor.applyDot(key)(obj)(mapRealArguments(xs): _*))
           }
         }
-        else throw ScalaReflectionException(s"$name is not a method")
+        else throw ScalaReflectionException(s"$key is not a method")
       }.toOption
   }
 
