@@ -640,9 +640,9 @@ object LispExp {
 
     def withExpression(closure: Closure): PolymorphicExpression = closure match {
       case c@Closure(_, _, capturedEnv, _) =>
-        val nc =
-          if (c.freeVariables.contains(name)) c.copy(capturedEnv = CombineEnv.of(innerEnvironment, capturedEnv))
-          else c
+        val nc = c.copy(capturedEnv = CombineEnv.of(innerEnvironment, capturedEnv))
+//          if (c.freeVariables.contains(name)) c.copy(capturedEnv = CombineEnv.of(innerEnvironment, capturedEnv))
+//          else c
         val newPolymorphic = copy(variants = variants.appended((nc, nc.boundVariable)))
         nc.withSelf(newPolymorphic)
         innerEnvironment.addValue(name, newPolymorphic)

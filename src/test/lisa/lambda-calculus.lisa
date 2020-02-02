@@ -5,6 +5,7 @@
 (define (bind vars vals env)
     (if (nil? vars) env
         (bind (cdr vars) (cdr vals) (record-updated env (car vars) (car vals)))))
+(define builtin-eval eval)
 (define apply-primitive apply)
 (declare eval apply evlist)
 (define (eval exp env)
@@ -67,13 +68,26 @@
     (cond ((lisa-closure? exp) "#<procedure>")
             (else (string exp))))
 
+(define (get-type-of exp)
+    (cond ((lisa-closure? exp) "Closure")
+            (else (typename-of exp))))
+
 (define (interpreter)
     (define evaluator (make-evaluator))
     (define (iter)
         (define raw-input (read "lambda>"))
         (define result (evaluator raw-input))
-        (println! (string "[" (.[1] result) "]:") (display (car result)))
+        (println! (string "[" (.[1] result) "]:") (get-type-of (car result)) "=" (display (car result)))
         (iter))
     (iter))
+
+(define (builtin-interpreter)
+    (define (def-clause? ('define (... _))) true)
+    (define (def-clause? _) false)
+    (while true
+        (group!
+            (define raw-input (read "lisa>"))
+            (if (def-clause? raw-input) (builtin-eval raw-input)
+                (println! (builtin-eval raw-input))))))
 
 (interpreter)

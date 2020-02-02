@@ -537,9 +537,10 @@ object Evaluator {
           case _ => None
         }
       case LisaList(Symbol(ctrl@("?" | "when" | "when?")) :: arg::Nil)::Nil => arguments match {
-        case Nil => eval(arg, MutableEnv(matchResult, inEnv)) match {
+        case Nil => eval(unQuoteList(arg), MutableEnv(matchResult, inEnv)) match {
           case EvalSuccess(SBool(b), _) => if (b) Some(matchResult.toMap) else None
-          case EvalSuccess(_, _) => throw new IllegalArgumentException("Matching guard must returns a boolean")
+          case EvalSuccess(exp, _) =>
+            throw new IllegalArgumentException(s"Matching guard must returns a boolean, but $exp: ${exp.tpe.name} found.")
           case EvalFailureMessage(msg) if ctrl != "when?" => throw new ArithmeticException(s"Error in pattern matching: $msg")
           case _ => None // when? means treat exceptions as none.
         }
