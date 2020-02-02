@@ -38,7 +38,7 @@ object ScalaBridge {
     case ll: LisaListLike[_] => ll
   }
 
-  def fromScalaNative(any: Any): Expression = javaNativeToScala(any) match {
+  def fromScalaNative(any: Any): Expression = any match {
     case list: List[_] =>
       LisaList(list.map(fromScalaNative))
     case ex: Expression => ex
@@ -51,7 +51,7 @@ object ScalaBridge {
     case bi: LisaInteger => SInteger(bi)
     case di: LisaDecimal => SFloat(di)
     case scala.Symbol(sym) => Symbol(sym)
-    case () => NilObj
+    case () | null => NilObj
     // case ls: List[Any] => WrappedScalaObject(ls)
 //    case tuple: Product => LisaList(tuple.productIterator.map(fromScalaNative).toList)
 //    case fn: Function[Any, Any] =>
@@ -59,6 +59,8 @@ object ScalaBridge {
     case Failure(tp, message) => throw new RuntimeException(s"$tp: $message")
     case otherwise => WrappedScalaObject(otherwise)
   }
+
+  def fromJVMNative(any: Any): Expression = fromScalaNative(javaNativeToScala(any))
 
   import scala.jdk.CollectionConverters._
   def javaNativeToScala(original: Any) = original match {

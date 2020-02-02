@@ -4,9 +4,9 @@ import scala.util.Using
 import java.net.{HttpURLConnection, URI, URL}
 
 import moe.roselia.lisa.Environments.{Environment, SpecialEnv}
-import moe.roselia.lisa.LispExp.{Expression, LisaRecord}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaRecordWithMap, NilObj}
 import moe.roselia.lisa.Reflect.PackageAccessor.ObjectEnv
-import moe.roselia.lisa.Reflect.ScalaBridge.jsonLikeToLisa
+import moe.roselia.lisa.Reflect.ScalaBridge.{jsonLikeToLisa, toScalaNative}
 
 object IOSource {
   object SourceLibraryImpl {
@@ -26,6 +26,18 @@ object IOSource {
 
     def parseJson(json: String): Expression = {
       parseJsonOption(json).getOrElse(throw new IllegalArgumentException("Input is not a valid json"))
+    }
+
+    @moe.roselia.lisa.Annotation.RawLisa
+    def toJsonString(ex: Expression): String = {
+      import util.parsing.json._
+      def transform(exp: Expression): Any = exp match {
+        case LisaList(ll) => JSONArray(ll.map(transform))
+        case rm: LisaRecordWithMap[_] => JSONObject(rm.record.transform((_, v) => transform(v)))
+        case nil if nil eq NilObj => null
+        case e => toScalaNative(e)
+      }
+      transform(ex).toString
     }
   }
 
