@@ -1,5 +1,6 @@
 package moe.roselia.lisa.Library
 import scala.io.Source
+import scala.util.Using
 import java.net.{HttpURLConnection, URI, URL}
 
 import moe.roselia.lisa.Environments.{Environment, SpecialEnv}
@@ -10,13 +11,13 @@ import moe.roselia.lisa.Reflect.ScalaBridge.jsonLikeToLisa
 object IOSource {
   object SourceLibraryImpl {
     def readFileContent(fileName: String): String = {
-      Source.fromFile(fileName).mkString
+      Using.resource(Source.fromFile(fileName))(_.mkString)
     }
     def readFromUri(uri: String): String = {
-      Source.fromURI(new URI(uri)).mkString
+      Using.resource(Source.fromURI(new URI(uri)))(_.mkString)
     }
     def readFromUrl(url: String): String = {
-      Source.fromURL(new URL(url)).mkString
+      Using.resource(Source.fromURL(new URL(url)))(_.mkString)
     }
 
     def parseJsonOption(json: String): Option[Expression] = {

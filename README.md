@@ -17,19 +17,30 @@ Designed to be interactive with Scala/Java.
 * 2.3 => Float
 * "s" => String
 * false => Bool
-* () => Nil
 
 ## Composite Types
 
 ### Seq, List
 Sequences and Lists can be constructed by primitive function `seq` and `list`.
 
-* `list`: Construct a `scala.collection.immutable.List`
+* `list`: Construct a `List`
 * `seq`: Construct a `scala.collection.immutable.Vector`
+* `cons` Construct a `List` like all lisp dialects do.
 
 `(seq 1 2 3)` => `#Scala(Vector(1, 2, 3))`
 
 `(.[0] s)` => Access `[0]` element in a sequence.
+Pairs are equivalent to Lists in Lisa.
+`(list 1 2)` = `(cons 1 2)` = `(cons 1 (cons 2 ()))`
+
+If you want to access element by index, use `nth`. 
+If index is out of bounds, throwing `IndexOutOfBoundsException`.
+`(nth s 1)` => Access `1` element in a sequence.
+Or using `get` which will return `()` when index being out of bounds.
+
+`()` equals to empty-list `'()` in most lisp dialects, so does lisa.
+In most cases, `()` will be treated as empty list, but `'()` is not the same reference
+as `()`. So you can still distinguish them via `same-reference?`.
 
 ### Record
 Record is a map-like data structure.
@@ -40,6 +51,9 @@ The `a` attribute of record `s` can be accessed via:
 
 * (.a s) in Java/Scala object style.
 * (s 'a) in Lisa method calling style.
+* (get s "a")
+
+get procedure can be called as `(get map key)` `(get map key not-found)`
 
 ## Syntax
 
@@ -379,8 +393,12 @@ and returns a constant value. E.g. `&1` is equivalent to `(lambda ((... _)) 1)`.
 ### Macros
 Defining a macro in Lisa is similar to defining a closure.
 `(define-macro (name args*) body*)` 
-Macros are dynamic scoped. Every argument are passed without any calculation. 
-Macros should eventually return a quoted expression which will be expanded where invoked.
+Macros are executed static scoped. Every argument are passed without any calculation.
+Macros should eventually return an expression which will be expanded where invoked.
+If you want to refer to a value dynamically, use `dynamic-resolve` macro which only works
+inside macros. This macro will lookup through calling chain to resolve the symbol in
+dynamic scope.
+Since code is data in Lisa, you can generate code by quote and unquote or returning an list.
 To quote an expression, use syntax sugar `'<expression>`. `~<expression>` is the syntax sugar for unquoting an expression.
 
 ```scheme
@@ -403,6 +421,16 @@ To quote an expression, use syntax sugar `'<expression>`. `~<expression>` is the
 
 (is 1 equals to 1) ;=> (= 1 1) => true
 (is 1 not equals to 2) ;=> (if (is 1 equals to 2) false true) => true
+
+(define-macro (unless pred conseq alter)
+    (list 'if pred alter conseq)) ; Can also be '(if ~pred ~alter ~conseq)
+(unless (< 3 2) (println! "3 > 2") (println! "Impossible"))
+
+(define-macro (dirty-nth ls n)
+    (list (string->symbol (string ".[" n "]")) ls))
+(dirty-nth '(1) 0) ; => 1
+(expand-macro '(dirty-nth s 0)); => Apply(.[0], List(s))
+(write (expand-macro '(dirty-nth s 0))) ; => '(.[0] s)
 ```
 
 Notice that though guards are also available in macros, you can not get

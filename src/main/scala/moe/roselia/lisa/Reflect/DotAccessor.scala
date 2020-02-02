@@ -4,6 +4,8 @@ import scala.reflect.ClassTag
 import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
 import ScalaBridge._
+import moe.roselia.lisa.Annotation.RawLisa
+import moe.roselia.lisa.LispExp.{LisaList, WrappedScalaObject}
 import moe.roselia.lisa.Util.Extractors.NeedInt
 
 object DotAccessor {
@@ -15,6 +17,10 @@ object DotAccessor {
     val cls = obj.getClass
     val mirror = runtimeMirror(cls.getClassLoader)
     mirror.reflect(obj)
+  }
+
+  def hasRawLisaAnnotation(symbol: Symbol): Boolean = {
+    symbol.annotations.view.map(_.tree.tpe).exists(_ <:< typeOf[RawLisa])
   }
 
   def accessDotDynamic(acc: String)(dyn: Dynamic): Any = {
@@ -85,10 +91,11 @@ object DotAccessor {
   }
 
   def lookUpForTerm(symbol: ClassSymbol, accessName: String) = {
+    val termName = TermName(toJvmName(accessName))
     (symbol :: symbol.baseClasses).view
       .map(_.asClass)
       .map(_.toType)
-      .map(_.decl(TermName(toJvmName(accessName))))
+      .map(_.decl(termName))
       .find(_.isTerm)
       .map(_.asTerm)
   }
@@ -148,8 +155,11 @@ object DotAccessor {
     override def getValueOption(key: String): Option[LispExp.Expression] = Some(LispExp.PrimitiveFunction {
       case x::Nil =>
         key.substring(1) match {
-          case s"[${NeedInt(index)}]" =>
-            fromScalaNative(toScalaNative(x).asInstanceOf[Seq[Any]](index))
+          case s"[${NeedInt(index)}]" => x match {
+            case LisaList(ll) => ll(index)
+            case WrappedScalaObject(seq: Seq[_]) => fromScalaNative(seq(index))
+            case _ => fromScalaNative(toScalaNative(x).asInstanceOf[Seq[Any]](index))
+          }
           case field =>
             val res = accessDot(field)(toScalaNative(x))
             fromScalaNative(res)

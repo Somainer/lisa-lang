@@ -23,20 +23,20 @@
 (define (to-string x)
     (.toString (wrap x)))
 
-(define (cons x y)
-    "Construct a pair, use car to fetch the first and cdr to fetch the second."
-    (define (pair 0) x)
-    (define (pair 1) y)
-    (define (pair 'pair? ) true)
-    (define (pair 'to-string)
-        (+ "[" (to-string x) " " (to-string y) "]"))
-    pair)
-
-(define (pair? pair (when? (pair 'pair? ))) true)
-(define (pair? _) false)
-
-(define (car p (when (pair? p))) (p 0))
-(define (cdr p (when (pair? p))) (p 1))
+; (define (cons x y)
+;     "Construct a pair, use car to fetch the first and cdr to fetch the second."
+;     (define (pair 0) x)
+;     (define (pair 1) y)
+;     (define (pair 'pair? ) true)
+;     (define (pair 'to-string)
+;         (+ "[" (to-string x) " " (to-string y) "]"))
+;     pair)
+;
+; (define (pair? pair (when? (pair 'pair? ))) true)
+; (define (pair? _) false)
+;
+; (define (car p (when (pair? p))) (p 0))
+; (define (cdr p (when (pair? p))) (p 1))
 
 (define-macro (delay e)
     "Construct a lazy value (named promise)."
@@ -97,41 +97,6 @@
 
 (define (bool? f (when? ((constant true) (not f)))) true)
 (define (bool? _) false)
-
-(define (number? n (when? ((constant true) (+ 0 n)))) true)
-(define (number? _) false)
-
-(define (string? n (when? ((constant true) (+ "" n)))) true)
-(define (string? _) false)
-
-(define (closure? c (when? (.startsWith (.toString (wrap c)) "#Closure"))) true)
-(define (closure? c (when? (.startsWith (.toString (wrap c)) "#PolymorphClosure"))) true)
-(define (closure? c (when? (.startsWith (.verboseString (wrap c)) "#PolymorphClosure"))) true)
-(define (closure? _) false)
-
-(define (macro? m (when? (.startsWith (.toString (wrap m)) "#Macro"))) true)
-(define (macro? m (when? (.startsWith (.verboseString (wrap m)) "#PolymorphMacro"))) true)
-(define (macro? _) false)
-
-(define (polymorphic? m (when? (.startsWith (.toString (wrap m)) "#Polymorph"))) true)
-(define (polymorphic? m (when? (.startsWith (.verboseString (wrap m)) "#Polymorph"))) true)
-(define (polymorphic? _) false)
-
-(define (native-function? fn (when? (.startsWith (.toString (wrap fn)) "#[Native Code]"))) true)
-(define (native-function? _) false)
-
-(define (callable? fn)
-    (or
-        (native-function? fn)
-        (or
-            (closure? fn)
-            (macro? fn))))
-
-(define (quoted? x (when? ((constant true) ~x))) true)
-(define (quoted? _) false)
-
-(define (nil? ()) true)
-(define (nil? _) false)
 
 (define (curried-2 fn) ; For procedures with no arity.
     (lambda (x)

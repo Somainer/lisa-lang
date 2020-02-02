@@ -31,4 +31,8 @@ trait ExpressionHelper extends Implicits {
     }
   }
 
+  implicit class AnyToLisa[T](value: T)(implicit lift: T => Expression) {
+    def asLisa: Expression = lift(value)
+  }
+
 }

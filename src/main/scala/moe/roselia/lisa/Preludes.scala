@@ -118,7 +118,7 @@ object Preludes extends LispExp.Implicits {
       }
     }.withArity(1),
     "eval" -> SideEffectFunction {
-      case (x::Nil, env) => Evaluator.eval(x, env) match {
+      case (x::Nil, env) => Evaluator.eval(Evaluator.unQuoteList(x), env) match {
         case EvalSuccess(expression, newEnv) => expression -> newEnv
         case EvalFailureMessage(msg) => Failure("Eval Failure", msg) -> env
       }
@@ -147,73 +147,10 @@ object Preludes extends LispExp.Implicits {
         else (Failure("Import Error", s"Environment $sym not found"), env)
       case s => (Failure("Import Error", s"Cannot import ${s._1}"), s._2)
     },
-    "list" -> PrimitiveFunction (xs => WrappedScalaObject(xs)),
-    "seq" -> PrimitiveFunction (xs => WrappedScalaObject(xs.toIndexedSeq)),
     "wrap-scala" -> PrimitiveFunction {
       x => WrappedScalaObject(toScalaNative(x(0)))
     }.withArity(1),
-    "wrap" -> PrimitiveFunction { x => WrappedScalaObject(x(0)) }.withArity(1),
-    "map" -> PrimitiveFunction {
-      case WrappedScalaObject(ls: Iterable[Any])::fn::Nil => fn match {
-        case c: Closure =>
-          val newList = ls.map(x => Evaluator.applyToEither(c, List(fromScalaNative(x))))
-          if(newList forall (_.isRight))
-            WrappedScalaObject(newList.map(_.toOption.get))
-          else newList.find(_.isLeft).get.left.toOption.map(Failure("map Error", _)).get
-        case PrimitiveFunction(fn) => WrappedScalaObject {
-          ls.map(x => fn(List(fromScalaNative(x))))
-        }
-        case WrappedScalaObject(obj) =>
-          WrappedScalaObject(ls.map(x =>
-            obj.asInstanceOf[{def apply(a: Any): Any}].apply(x)))
-        case _ => Failure("map Error", s"Cannot map $fn on $ls")
-      }
-      case WrappedScalaObject(els)::fn::Nil => fromScalaNative(els.asInstanceOf[{
-        def map(a: Any): Any
-      }].map(toScalaNative(fn)))
-      case _ => Failure("Arity Error", "map only accepts 2 arguments, a seq-like and a function-like.")
-    }.withArity(2),
-    "filter" -> PrimitiveFunction {
-      case WrappedScalaObject(ls: Iterable[Any])::fn::Nil => {
-        def ensureBool(e: Expression) = e match {
-          case SBool(b) => b
-          case _ => throw new IllegalArgumentException("Function should return a Bool.")
-        }
-        fn match {
-          case c: Closure =>
-            val newList = ls.map(x => Evaluator.applyToEither(c, List(fromScalaNative(x))))
-            if(newList forall (_.isRight))
-              WrappedScalaObject(newList.map(_.toOption.get).zip(ls).filter(x => ensureBool(x._1)).map(_._2))
-            else newList.find(_.isLeft).get.left.toOption.map(Failure("filter Error", _)).get
-          case PrimitiveFunction(fn) => WrappedScalaObject {
-            ls.filter(x => ensureBool(fn(List(fromScalaNative(x)))))
-          }
-          case WrappedScalaObject(obj) =>
-            WrappedScalaObject(ls.filter(x =>
-              obj.asInstanceOf[{def apply(a: Any): Boolean}].apply(x)))
-          case _ => Failure("filter Error", s"Cannot filter $fn on $ls")
-        }
-      }
-      case _ => Failure("Arity Error", "filter only accepts 2 arguments, a seq-like and a function-like.")
-    }.withArity(2),
-    "iter" -> PrimitiveFunction {
-      case x::Nil => x match {
-        case SString(s) => WrappedScalaObject(s.split("").toIndexedSeq)
-        case WrappedScalaObject(xs: Iterable[Any]) => WrappedScalaObject(xs)
-        case _ => Failure("iter Error", s"$x is not iterable.")
-      }
-      case _ => Failure("Arity Error", "iter only accepts 1 argument, an iterable.")
-    }.withArity(1),
-    "length" -> PrimitiveFunction {
-      case arg::Nil => arg match {
-        case mha: MayHaveArity if mha.arity.isDefined => mha.arity.get
-        case SString(s) => s.length
-        case WrappedScalaObject(ls: Seq[Any]) => ls.length
-        case WrappedScalaObject(other) => ToolboxDotAccessor.accessDot("length")(other).asInstanceOf[Int]
-        case other => Failure("Runtime Error", s"Can not get length for $other.")
-      }
-      case other => Failure("Arity Error", s"length only accepts one argument but ${other.length} found.")
-    }.withArity(1),
+    "wrap" -> PrimitiveFunction { x => WrappedScalaObject(x.head) }.withArity(1),
     "set!" -> new PrimitiveMacro({
       case (Symbol(x)::va::Nil, e) =>
         if (e.isMutable(x))
@@ -289,6 +226,8 @@ object Preludes extends LispExp.Implicits {
     "apply" -> PrimitiveFunction {
       case fn::WrappedScalaObject(s: Seq[Expression])::Nil =>
         Evaluator.applyToEither(fn, s.toList).fold(Failure("Apply Failure", _), x => x)
+      case fn :: LisaList(s) :: Nil =>
+        Evaluator.applyToEither(fn, s).fold(Failure("Apply Failure", _), x => x)
       case _ => Failure("Apply Failure", "Apply expects 2 arguments.")
     }.withArity(2),
     "limit-arity" -> PrimitiveFunction {
@@ -303,7 +242,7 @@ object Preludes extends LispExp.Implicits {
       case f1::SString(s)::Nil => f1.withDocString(s)
     }.withArity(2),
     "define-phrase" -> PrimitiveMacro {(x, e) =>
-      def defineHelper(toBeDefined: SimpleMacro) = {
+      def defineHelper(toBeDefined: SimpleMacroClosure) = {
         val previous = e.getValueOption(PHRASE_VAR)
         if (previous.exists(_.isInstanceOf[PolymorphicExpression]))
           NilObj -> e.withValue(PHRASE_VAR, previous.get.asInstanceOf[PolymorphicExpression].withExpression(toBeDefined))
@@ -311,11 +250,11 @@ object Preludes extends LispExp.Implicits {
       }
       (x, e) match {
         case (Apply(head, tail) :: body, _) =>
-          val toBeDefined = SimpleMacro(head :: tail, body.last, body.init)
+          val toBeDefined = SimpleMacroClosure(head :: tail, body.last, body.init, e)
           defineHelper(toBeDefined)
         case (Symbol(defined)::Nil, _)
-          if e.getValueOption(defined).exists(_.isInstanceOf[SimpleMacro]) =>
-          defineHelper(e.getValueOption(defined).get.asInstanceOf[SimpleMacro])
+          if e.getValueOption(defined).exists(_.isInstanceOf[SimpleMacroClosure]) =>
+          defineHelper(e.getValueOption(defined).get.asInstanceOf[SimpleMacroClosure])
       }
     },
     "try-option" -> PrimitiveMacro {
@@ -343,21 +282,81 @@ object Preludes extends LispExp.Implicits {
         returnable.returnable {
           Evaluator.eval(Apply(fn, returnFn :: Nil), EmptyEnv) match {
             case EvalSuccess(exp, _) => exp
-            case EvalFailureMessage(message) => 
+            case EvalFailureMessage(message) =>
               throw new RuntimeException(s"Returnable: $message")
           }
         }
     },
     "expand-macro" -> SideEffectFunction {
-      case (Quote(Apply(m, args)) :: Nil, env) =>
+      case (LisaList(m :: args) :: Nil, env) =>
         Evaluator.eval(m, env) match {
-          case EvalSuccess(mac: SimpleMacro, _) =>
+          case EvalSuccess(mac: SimpleMacroClosure, _) =>
             Quote(Evaluator.expandMacro(mac, args, env)) -> env
+          case EvalSuccess(pm@PolymorphicExpression(_, _, _, true), _) =>
+            pm.findMatch(args, env).map {
+              case ((mac: SimpleMacroClosure), _) =>
+                Quote(Evaluator.expandMacro(mac, args, env)) -> env
+            }.get
         }
     },
     "gen-sym" -> PrimitiveFunction {
       case Nil => Util.SymGenerator.nextSym
       case _ => throw new IllegalArgumentException("gen-sym does not accept arguments.")
+    }.withArity(0),
+    "write" -> PrimitiveFunction {
+      case x :: Nil => x.code
+    }.withArity(1),
+    "ast-of" -> PrimitiveFunction {
+      case x :: Nil => Evaluator.unQuoteList(x)
+    }.withArity(1),
+    "prelude-environment" -> PrimitiveFunction.withArityChecked(0) {
+      case _ =>
+        LisaMapRecord(preludeEnvironment.
+          collectDefinedValues.map(key => key -> preludeEnvironment.getValueOption(key).get).toMap)
+      case _ =>
+        throw new IllegalArgumentException(s"prelude-environment do not expect arguments")
+    },
+    "freeze-environment" -> SideEffectFunction { case (Nil, env) =>
+      new AbstractLisaRecord {
+        override def selectDynamic(key: String): Expression = env.getValueOption(key).getOrElse(throw new NoSuchElementException(key))
+
+        override def containsKey(key: String): Boolean = env.has(key)
+
+        override def getOrElse[EV >: Expression](key: String, otherwise: => EV): EV = env.getValueOption(key).getOrElse(otherwise)
+
+        override def recordTypeName: String = s"frozen-environment"
+
+        override def indented(bySpace: Int, level: Int): String = toString
+
+        override def toString: String = s"#$recordTypeName [not-computed]"
+
+        override def tpe: LisaType = NameOnlyType("LisaRecord")
+      } -> env
+      case  _ => throw new IllegalArgumentException(s"freeze-environment do not expect arguments")
+    },
+    "read-string" -> PrimitiveFunction.withArityChecked(1) {
+      case SString(s) :: Nil =>
+        import SExpressionParser._
+        parseAll(sExpression, s).map(Evaluator.compileToList) match {
+          case Success(result, _) => result
+          case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
+        }
+    },
+    "read" -> PrimitiveFunction { xs =>
+      import SExpressionParser._
+      parseAll(sExpression, io.StdIn.readLine(xs.mkString(" "))).map(Evaluator.compileToList) match {
+        case Success(result, _) => result
+        case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
+      }
+    },
+    "declare" -> PrimitiveMacro { case (declares, env) =>
+      val mutableEnv = env match {
+        case mutable: MutableEnv => mutable
+        case e => e.newMutableFrame
+      }
+      require(declares.forall(_.isInstanceOf[Symbol]))
+      declares.foreach(sym => mutableEnv.addValue(sym.asInstanceOf[Symbol].value, PlaceHolder))
+      NilObj -> mutableEnv
     }
   ))
 
@@ -394,6 +393,181 @@ object Preludes extends LispExp.Implicits {
     )), environment)
   }
 
+  private lazy val collectionEnvironment = EmptyEnv.withValues(Seq(
+    "cons" -> PrimitiveFunction.withArityChecked(2) {
+      case x :: (ll: LisaListLike[Expression]) :: Nil => LisaList(x :: ll.list)
+      case x :: WrappedScalaObject(wl: Seq[_]) :: Nil => WrappedScalaObject(x +: wl)
+      case x :: y :: Nil => LisaList.from(x, y)
+    },
+    "car" -> PrimitiveFunction.withArityChecked(1) {
+      case LisaList(x :: _) :: Nil => x
+      case WrappedScalaObject(ls: Seq[_]) :: Nil => fromScalaNative(ls.head)
+      case SString(s) :: Nil => s.head.toString
+    },
+    "cdr" -> PrimitiveFunction.withArityChecked(1) {
+      case LisaList(_ :: t) :: Nil => LisaList(t)
+      case WrappedScalaObject(ls: Seq[_]) :: Nil => WrappedScalaObject(ls.tail)
+      case SString(s) :: Nil => s.tail
+    },
+    "map" -> PrimitiveFunction.withArityChecked(2) {
+      case WrappedScalaObject(ls: Iterable[Any])::fn::Nil => fn match {
+        case WrappedScalaObject(obj) =>
+          WrappedScalaObject(ls.map(x =>
+            obj.asInstanceOf[{def apply(a: Any): Any}].apply(x)))
+        case x => WrappedScalaObject(Util.CollectionHelper.generalMap(ls, x).toIndexedSeq)
+      }
+      case WrappedScalaObject(els)::fn::Nil => fromScalaNative(els.asInstanceOf[{
+        def map(a: Any): Any
+      }].map(toScalaNative(fn)))
+      case LisaList(ll) :: fn :: Nil =>
+        LisaList(Util.CollectionHelper.generalMap(ll, fn).toList)
+      case SString(s) :: fn :: Nil =>
+        LisaList(Util.CollectionHelper.generalMap(s.toIterable, fn).toList)
+      case (it: Iterable[_]) :: fn :: Nil =>
+        LisaList(Util.CollectionHelper.generalMap(it, fn).toList)
+      case _ => Failure("Arity Error", "map only accepts 2 arguments, a seq-like and a function-like.")
+    },
+    "filter" -> PrimitiveFunction {
+      case WrappedScalaObject(ls: Iterable[Expression])::fn::Nil => {
+        WrappedScalaObject(Util.CollectionHelper.generalFilter(ls, fn).toIndexedSeq)
+      }
+      case LisaList(ll) :: fn :: Nil =>
+        LisaList(Util.CollectionHelper.generalFilter(ll, fn).toList)
+      case (it: Iterable[Expression]) :: fn :: Nil =>
+        LisaList(Util.CollectionHelper.generalFilter(it, fn).toList)
+      case SString(s) :: fn :: Nil =>
+        Util.CollectionHelper.generalFilter(s.toIterable.map(_.toString).map(SString), fn).mkString
+      case _ => Failure("Arity Error", "filter only accepts 2 arguments, a seq-like and a function-like.")
+    }.withArity(2),
+    "iter" -> PrimitiveFunction {
+      case x::Nil => x match {
+        case SString(s) => LisaList(s.split("").map(SString).toList)
+        case WrappedScalaObject(xs: Iterable[Any]) => LisaList(xs.map(fromScalaNative).toList)
+        case ll: LisaListLike[_] => ll
+        case _ => Failure("iter Error", s"$x is not iterable.")
+      }
+      case _ => Failure("Arity Error", "iter only accepts 1 argument, an iterable.")
+    }.withArity(1),
+    "length" -> PrimitiveFunction {
+      case arg::Nil => arg match {
+        case mha: MayHaveArity if mha.arity.isDefined => mha.arity.get
+        case SString(s) => s.length
+        case WrappedScalaObject(ls: Seq[Any]) => ls.length
+        case WrappedScalaObject(other) => ToolboxDotAccessor.accessDot("length")(other).asInstanceOf[Int]
+        case ll: LisaListLike[_] => ll.length
+        case other => Failure("Runtime Error", s"Can not get length for $other.")
+      }
+      case other => Failure("Arity Error", s"length only accepts one argument but ${other.length} found.")
+    }.withArity(1),
+    "list" -> PrimitiveFunction (LisaList(_)),
+    "seq" -> PrimitiveFunction (xs => WrappedScalaObject(xs.toIndexedSeq)),
+    "nth" -> PrimitiveFunction { arguments =>
+      require(arguments.length == 2 || arguments.length == 3, "nth expects 2 or 3 arguments")
+      def getDefault(i: Int): Expression =
+        if (arguments.length == 3) arguments.last else throw new IndexOutOfBoundsException(i)
+      arguments(1) match {
+        case SInteger(n) =>
+          val key = n.toInt
+          Util.CollectionHelper.generalGetElementOfSeqLike(arguments.head, key, getDefault(key))
+        case ex =>
+          throw new IllegalArgumentException(s"Contract violation: key of seq-like must be an integer, but ${ex.tpe.name} found.")
+      }
+    },
+    "get" -> PrimitiveFunction { arguments =>
+      require(arguments.length == 2 || arguments.length == 3, "get expects 2 or 3 arguments")
+      def getDefault: Expression = if (arguments.length == 3) arguments.last else NilObj
+      val keyExpr = arguments(1)
 
-  lazy val preludeEnvironment: CombineEnv = CombineEnv(Seq(primitiveEnvironment))
+      arguments.head match {
+        case lr: LisaRecord[Expression] =>
+          keyExpr match {
+            case SString(key) => lr.getOrElse(key, getDefault)
+            case ex =>
+              throw new IllegalArgumentException(s"Contract violation: key of Record must be a string, but ${ex.tpe.name} found.")
+          }
+        case coll =>
+          keyExpr match {
+            case SInteger(n) =>
+              val key = n.toInt
+              Util.CollectionHelper.generalGetElementOfSeqLike(coll, key, getDefault)
+            case invalidKey =>
+              throw new IllegalArgumentException(s"Contract violation: key of seq-like must be an integer, but ${invalidKey.tpe.name} found.")
+          }
+      }
+    },
+    "match-list" -> PrimitiveFunction.withArityChecked(2) {
+      case (LisaList(pattern)) :: (LisaList(arguments)) :: Nil =>
+        Evaluator.matchArgument(pattern, arguments).map(LisaMapRecord(_)).getOrElse(NilObj)
+    }
+  ))
+
+  private lazy val testerEnvironment = EmptyEnv.withValues(Seq(
+    "nil?" -> PrimitiveFunction.withArityChecked(1) {
+      case NilObj :: Nil => true
+      case _ :: Nil => false
+    },
+    "type-of" -> PrimitiveFunction.withArityChecked(1) {
+      case x :: Nil => WrappedScalaObject(x.tpe)
+    },
+    "typename-of" -> PrimitiveFunction.withArityChecked(1) {
+      case x :: Nil => x.tpe.name
+    },
+    "integer?" -> PrimitiveFunction.withArityChecked(1) {
+      case SInteger(_) :: Nil => true
+      case _ :: Nil => false
+    },
+    "number?" -> PrimitiveFunction.withArityChecked(1) {
+      case (_: SNumber[_]) :: Nil => true
+      case _ :: Nil => false
+    },
+    "rational?" -> PrimitiveFunction.withArityChecked(1) {
+      case SRational(_) :: Nil => true
+      case _ => false
+    },
+    "float?" -> PrimitiveFunction.withArityChecked(1) {
+      case SFloat(_) :: Nil => true
+      case _ => false
+    },
+    "string?" -> PrimitiveFunction.withArityChecked(1) {
+      case SString(_) :: Nil => true
+      case _ => false
+    },
+    "symbol?" -> PrimitiveFunction.withArityChecked(1) {
+      case Symbol(_) :: Nil => true
+      case _ => false
+    },
+    "procedure?" -> PrimitiveFunction.withArityChecked(1) {
+      case (_: Procedure | PolymorphicExpression(_, _, _, false) |
+            _: PrimitiveFunction | _: SideEffectFunction) :: Nil => true
+      case _ => false
+    },
+    "macro?" -> PrimitiveFunction.withArityChecked(1) {
+      case (_: SimpleMacro | _: PrimitiveMacro | PolymorphicExpression(_, _, _, true) | _: SimpleMacroClosure) :: Nil => true
+      case _ => false
+    },
+    "callable?" -> PrimitiveFunction.withArityChecked(1) {
+      case c :: Nil => c.isInstanceOf[Procedure]
+    },
+    "list?" -> PrimitiveFunction.withArityChecked(1) {
+      case (_: LisaListLike[_]) :: Nil => true
+      case _ => false
+    },
+    "record?" -> PrimitiveFunction.withArityChecked(1) {
+      case (_: LisaRecord[_]) :: Nil => true
+      case _ => false
+    },
+    "iterable?" -> PrimitiveFunction.withArityChecked(1) {
+      case (_: LisaRecord[_] | WrappedScalaObject(_: Iterable[_]) | SString(_)) :: Nil => true
+      case _ => false
+    },
+    "quoted?" -> PrimitiveFunction.withArityChecked(1) {
+      case Quote(_) :: Nil => true
+      case _ => false
+    },
+    "same-reference?" -> PrimitiveFunction.withArityChecked(2) {
+      case x :: y :: Nil => x eq y
+    }
+  ))
+
+  lazy val preludeEnvironment: CombineEnv = CombineEnv(Seq(primitiveEnvironment, collectionEnvironment, testerEnvironment))
 }

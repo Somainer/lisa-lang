@@ -1,9 +1,11 @@
 package moe.roselia.lisa
 
-import Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv}
-import RecordType.{MapRecord, Record}
+import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv}
+import moe.roselia.lisa.RecordType.{MapRecord, Record}
 
 import scala.annotation.tailrec
+import scala.collection.mutable
+import scala.ref.WeakReference
 
 object LispExp {
 
@@ -15,6 +17,7 @@ object LispExp {
 
   trait DocumentAble {
     var document = ""
+
     def withDocString(string: String): this.type = {
       document = string
       this
@@ -35,13 +38,17 @@ object LispExp {
 
   trait WithFreeValues {
     def freeVariables: Set[String] = collectEnvDependency(Set.empty)._1
+
     def freeVariables(env: Environment) = collectEnvDependency(Set.empty, env, Nil)._1
+
     def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
       // (Dependency, NewDefined)
       collectEnvDependency(defined, EmptyEnv, Nil)
     }
+
     def collectEnvDependency(defined: Set[String], env: Environment, context: List[Expression] = Nil): (Set[String], Set[String]) =
       collectEnvDependency(defined)
+
     protected def accumulateDependencies(expressions: List[Expression], initial: Set[String]) =
       expressions.foldLeft(Set.empty[String] -> initial) {
         case ((dependency, defined), expression) =>
@@ -63,6 +70,8 @@ object LispExp {
     def code: String = toString
 
     def tpe: LisaType = NameOnlyType(getClass.getSimpleName)
+
+    def toRawList: Expression = this
   }
 
   trait LisaValue
@@ -71,9 +80,15 @@ object LispExp {
     def value: String
 
     override def toString: String = value
+
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
       val dep = if (defined contains value) Set.empty[String] else Set(value)
       dep -> defined
+    }
+
+    override def equals(obj: Any): Boolean = obj match {
+      case Symbol(sym) => sym == value
+      case x => super.equals(x)
     }
   }
 
@@ -84,11 +99,13 @@ object LispExp {
   }
 
   case class PlainSymbol(value: String) extends Symbol
+
   case class GraveAccentSymbol(value: String) extends Symbol
+
+  import Rational.Implicits._
 
   import Numeric.Implicits._
   import Ordering.Implicits._
-  import Rational.Implicits._
 
   type LisaInteger = BigInt
   val LisaInteger = BigInt
@@ -96,23 +113,27 @@ object LispExp {
   type LisaDecimal = BigDecimal
   val LisaDecimal = BigDecimal
 
-  import LisaInteger.int2bigInt
   import LisaDecimal.double2bigDecimal
+  import LisaInteger.int2bigInt
 
   class SNumber[T](val number: T)(implicit evidence: scala.math.Numeric[T])
     extends Expression with Ordered[SNumber[T]] with NoExternalDependency with LisaValue {
     override def toString: String = number.toString
-    def mapTo[U : Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
+
+    def mapTo[U: Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
+
     def toIntNumber: SNumber[LisaInteger] = number match {
       case _: LisaInteger => this.asInstanceOf[SNumber[LisaInteger]]
       case _ => SInteger(toRationalNumber.number.toIntegral)
     }
+
     def toDoubleNumber: SNumber[LisaDecimal] = number match {
       case _: LisaDecimal => this.asInstanceOf[SNumber[LisaDecimal]]
       case num: Rational[LisaInteger] => LisaDecimal(num.numerator) / LisaDecimal(num.denominator)
       case n: LisaInteger => LisaDecimal(n)
       case _ => SFloat(number.toDouble)
     }
+
     def toRationalNumber: SNumber[Rational[LisaInteger]] = {
       import SNumber.NumberTypes._
       getTypeOrder(number) match {
@@ -121,9 +142,13 @@ object LispExp {
         case _ => Rational.fromDouble[LisaInteger](number.toDouble)
       }
     }
+
     def +(that: SNumber[T]): SNumber[T] = number + that.number
+
     def -(that: SNumber[T]): SNumber[T] = number - that.number
+
     def *(that: SNumber[T]): SNumber[T] = number * that.number
+
     def /(that: SNumber[T]): SNumber[Any] = {
       import SNumber.NumberTypes._
       val flag = commonLargestType(this, that)
@@ -140,14 +165,19 @@ object LispExp {
         SNumber(thisDecimal / thatDecimal).asInstanceOf[SNumber[Any]]
       }
     }
+
     def unary_- : SNumber[T] = -number
+
     override def compare(that: SNumber[T]): Int = implicitly[Ordering[T]].compare(number, that.number)
+
     def max(that: SNumber[T]): SNumber[T] = number max that.number
+
     def min(that: SNumber[T]): SNumber[T] = number min that.number
+
     def equalsTo(that: SNumber[T]): Boolean = number equiv that.number
 
     override def equals(obj: Any): Boolean = obj match {
-//      case num: SNumber[T] => equalsTo(num)
+      //      case num: SNumber[T] => equalsTo(num)
       case that: SNumber[_] => SNumber.performComputation(_ equalsTo _)(this, that)
       case other => super.equals(other)
     }
@@ -163,32 +193,38 @@ object LispExp {
   }
 
   object SNumber {
-    implicit def wrapToSNumber[T : Numeric](t: T): SNumber[T] = apply(t)
-    def apply[T : Numeric](number: T): SNumber[T] = number match {
+    implicit def wrapToSNumber[T: Numeric](t: T): SNumber[T] = apply(t)
+
+    def apply[T: Numeric](number: T): SNumber[T] = number match {
       case s: LisaInteger => SInteger(s).asInstanceOf[SNumber[T]]
       case s: LisaDecimal => SFloat(s).asInstanceOf[SNumber[T]]
       case s: Rational[LisaInteger] => SRational(s).asInstanceOf[SNumber[T]]
       case s => new SNumber(s)
     }
 
-    implicit def convertNumberTypes[T, U : Numeric](number: SNumber[T])(implicit transform: T => U): SNumber[U] =
+    implicit def convertNumberTypes[T, U: Numeric](number: SNumber[T])(implicit transform: T => U): SNumber[U] =
       number.mapTo[U]
+
     def performComputation[T](f: (SNumber[Any], SNumber[Any]) => T)(a: SNumber[_], b: SNumber[_]): T = {
       val (x, y) = NumberTypes.handleCommonLargestType(a, b)
       f(x, y)
     }
+
     object NumberTypes {
+
       object TypeFlags {
         val Integer = 1
         val Rational = 2
         val Double = 3
       }
+
       def getTypeOrder(obj: Any) = obj match {
         case _: Int | _: Integer | _: LisaInteger => TypeFlags.Integer
         case _: Rational[_] => TypeFlags.Rational
         case _: Float | _: Double | _: java.lang.Double | _: java.lang.Float | _: LisaDecimal =>
           TypeFlags.Double
       }
+
       def castToType(flag: Int)(obj: SNumber[_]): SNumber[_] = {
         flag match {
           case TypeFlags.Integer => obj.toIntNumber
@@ -205,12 +241,14 @@ object LispExp {
         castToType(flag)(a).asInstanceOf[SNumber[Any]] -> castToType(flag)(b).asInstanceOf[SNumber[Any]]
       }
     }
+
   }
 
   case class SInteger(value: LisaInteger) extends SNumber(value)
 
   object SInteger {
     private val integerCache = (-127 to 128).map(LisaInteger(_)).map(new SInteger(_))
+
     def apply(value: LisaInteger): SInteger = value match {
       case v if v >= -127 && v <= 128 => integerCache(v.toInt + 127)
       case v => new SInteger(v)
@@ -226,14 +264,20 @@ object LispExp {
 
     override def tpe: LisaType = NameOnlyType("Boolean")
   }
+
   object SBool {
     def apply(value: Boolean): SBool =
       if (value) SBool.True else SBool.False
+
     val True: SBool = new SBool(true)
     val False: SBool = new SBool(false)
   }
 
-  case class SString(value: String) extends Expression with NoExternalDependency with Ordered[SString] with LisaValue {
+  case class SString(value: String)
+    extends Expression
+      with NoExternalDependency
+      with Ordered[SString]
+      with LisaValue {
     override def toString: String = value.toString
 
     override def code: String = {
@@ -244,8 +288,12 @@ object LispExp {
     override def compare(that: SString): Int = value compare that.value
   }
 
-  case object NilObj extends Expression with NoExternalDependency with LisaValue {
+  case object NilObj extends Expression with NoExternalDependency with LisaValue with LisaListLike[Nothing] {
+    override def list: List[Nothing] = Nil
+
     override def toString: String = "( )"
+
+    override def tpe: LisaType = NameOnlyType("Nil")
   }
 
   case class WrappedScalaObject[+T](obj: T) extends Expression with NoExternalDependency with LisaValue {
@@ -255,6 +303,8 @@ object LispExp {
 
     override def tpe: LisaType =
       NameOnlyType(s"${getClass.getSimpleName}[${reflect.NameTransformer.decode(obj.getClass.getSimpleName)}]")
+
+    override def equals(obj: Any): Boolean = super.equals(obj) || this.obj == obj
   }
 
   object WrappedScalaObject {
@@ -272,6 +322,16 @@ object LispExp {
     extends Procedure with DeclareArityAfter with NoExternalDependency {
     override def toString: String = s"#[Native Code]($function)"
   }
+
+  object PrimitiveFunction {
+    def withArityChecked(arity: Int)(function: PartialFunction[List[Expression], Expression]): PrimitiveFunction = {
+      PrimitiveFunction({
+        case xs if xs.length == arity => function(xs)
+        case xs => throw new IllegalArgumentException(s"Arity Mismatch: Expected: $arity Given: ${xs.length}")
+      }).withArity(arity)
+    }
+  }
+
   case class SideEffectFunction(function: (List[Expression], Environment) => (Expression, Environment))
     extends Procedure with NoExternalDependency {
     override def toString: String = "#[Native Code!]"
@@ -289,7 +349,7 @@ object LispExp {
                                       context: List[Expression]): (Set[String], Set[String]) = {
       val innerDefinition = getBoundVariables(boundVariable) ++ defined
       val guardDependency = boundVariable.lastOption.map {
-        case Apply(Symbol("?" | "when" | "when?"), xs::Nil) =>
+        case LisaList(Symbol("?" | "when" | "when?") :: xs :: Nil) =>
           xs.collectEnvDependency(innerDefinition)._1
         case _ => Set.empty[String]
       }.getOrElse(Set.empty)
@@ -301,13 +361,46 @@ object LispExp {
       }
       (dependency ++ guardDependency ++ body.collectEnvDependency(defines)._1) -> defined
     }
+
+    override def toRawList: Expression = {
+      val list = Symbol("lambda") :: boundVariable ++ (nestedExpressions :+ body)
+      LisaList(list.map(_.toRawList))
+    }
   }
 
-  trait SelfReferencable { this: Expression =>
+  trait SelfReferencable {
+    this: Expression =>
+    @transient
     var selfReference: Expression = this
+
     def withSelf(self: Expression): this.type = {
       selfReference = self
       this
+    }
+  }
+
+  trait OriginalEnvironment {
+    @transient
+    private var originalDefinedAt: WeakReference[Environment] = _
+
+    @transient
+    private var isDefinedAtAnyEnvironment = false
+
+    def defineAtEnvironment(env: Environment): this.type = {
+      originalDefinedAt = WeakReference(env)
+      isDefinedAtAnyEnvironment = false
+      this
+    }
+    def defineAtEnvironment(): this.type = {
+      isDefinedAtAnyEnvironment = true
+      originalDefinedAt = null
+      this
+    }
+
+    def isDefinedAtEnvironment(env: Environment): Boolean = {
+      if (isDefinedAtAnyEnvironment) true
+      else if (originalDefinedAt eq null) false
+      else originalDefinedAt.get.exists(_ eq env)
     }
   }
 
@@ -315,12 +408,12 @@ object LispExp {
                      body: Expression,
                      capturedEnv: Environments.Environment,
                      sideEffects: List[Expression] = List.empty)
-    extends Procedure with MayHaveArity with MayBeDefined with SelfReferencable {
+    extends Procedure with MayHaveArity with MayBeDefined with SelfReferencable with OriginalEnvironment {
     override def valid: Boolean = body.valid
 
     override def toString: String = s"#Closure[${genHead(boundVariable)}]"
 
-    override def docString: String = s"${genHead(boundVariable)}: ${if(document.isEmpty) code else document}"
+    override def docString: String = s"${genHead(boundVariable)}: ${if (document.isEmpty) code else document}"
 
     def copy(boundVariable: List[Expression] = boundVariable,
              body: Expression = body,
@@ -334,7 +427,7 @@ object LispExp {
 
     override lazy val arity: Option[Int] = getArityOfPattern(boundVariable)
 
-    override def pattern: List[List[Expression]] = boundVariable::Nil
+    override def pattern: List[List[Expression]] = boundVariable :: Nil
 
     override def isDefinedAt(input: List[Expression], _env: Environment): Boolean =
       super.isDefinedAt(input, capturedEnv)
@@ -342,30 +435,42 @@ object LispExp {
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
       rawLambdaExpression collectEnvDependency defined
 
-    def flattenCaptured: Closure = copy(capturedEnv=capturedEnv.collectValues(freeVariables.toList))
+    def flattenCaptured: Closure = copy(capturedEnv = capturedEnv.collectValues(freeVariables.toList))
   }
 
-  case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Procedure {
+  case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Expression {
     override def valid: Boolean = predicate.valid && consequence.valid && alternative.valid
 
     override def code: String = s"(if ${predicate.code} ${consequence.code} ${alternative.code})"
 
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
-      accumulateDependencies(predicate::consequence::alternative::Nil, defined)
+      accumulateDependencies(predicate :: consequence :: alternative :: Nil, defined)
+
+    override def toRawList: Expression =
+      LisaList.from(Symbol("if"), predicate.toRawList, consequence.toRawList, alternative.toRawList)
   }
+
   case class SCond(conditions: List[(Expression, Expression)]) extends Expression {
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
-      accumulateDependencies(conditions.flatMap(it => it._1::it._2::Nil), defined)
+      accumulateDependencies(conditions.flatMap(it => it._1 :: it._2 :: Nil), defined)
+
+    override def toRawList: Expression = {
+      val condition = conditions.map {
+        case (SBool(true), exp) => LisaList.from(Symbol("else"), exp.toRawList)
+        case (pred, consequence) => LisaList.from(pred.toRawList, consequence.toRawList)
+      }
+      LisaList(Symbol("cond") :: condition)
+    }
   }
 
   case class Apply(head: Expression, args: List[Expression]) extends Expression {
     override def valid: Boolean = head.valid && args.forall(_.valid)
 
     override def code: String =
-      if(args.isEmpty) s"(${head.code})" else s"(${head.code} ${args.map(_.code).mkString(" ")})"
+      if (args.isEmpty) s"(${head.code})" else s"(${head.code} ${args.map(_.code).mkString(" ")})"
 
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) = {
-      accumulateDependencies(head::args, defined)
+      accumulateDependencies(head :: args, defined)
     }
 
     override def collectEnvDependency(defined: Set[String],
@@ -378,6 +483,10 @@ object LispExp {
           (lastDeps ++ deps, lastDefs ++ defs)
         case _ => lastDeps -> lastDefs
       }
+    }
+
+    override def toRawList: Expression = {
+      LisaList((head :: args).map(_.toRawList))
     }
   }
 
@@ -415,30 +524,30 @@ object LispExp {
   def genHead(ex: Seq[Expression]): String = {
     if (ex.isEmpty) "()"
     else ex.last match {
-      case Apply(Symbol("?" | "when"), xs::Nil) => s"${genHead(ex.init)} when ${xs.code}"
-      case Apply(Symbol("when?"), xs::Nil) => s"${genHead(ex.init)} when? ${xs.code}"
-      case Apply(Symbol("..."), Symbol(x)::Nil) => genHead(ex.init appended Symbol(s"...$x"))
+      case LisaList(Symbol("?" | "when") :: xs :: Nil) => s"${genHead(ex.init)} when ${xs.code}"
+      case LisaList(Symbol("when?") :: xs :: Nil) => s"${genHead(ex.init)} when? ${xs.code}"
+      case LisaList(Symbol("...") :: Symbol(x) :: Nil) => genHead(ex.init appended Symbol(s"...$x"))
       case _ => s"(${ex.map(_.code).mkString(" ")})"
     }
   }
 
   def getBoundVariables(pat: List[Expression]): Set[String] = pat match {
     case Nil => Set.empty
-    case Apply(Symbol("..."), Symbol(sym)::Nil)::Nil => Set(sym)
-    case Apply(Symbol("?" | "when?" | "when"), _)::Nil => Set.empty
-    case Symbol("_")::xs => getBoundVariables(xs)
-    case Symbol(sym)::xs => getBoundVariables(xs) + sym
-    case Apply(Symbol("seq"), args)::xs => getBoundVariables(xs) ++ getBoundVariables(args)
-    case Apply(ex, args)::xs => getBoundVariables(ex::xs) ++ getBoundVariables(args)
-    case _::xs => getBoundVariables(xs)
+    case LisaList(Symbol("...") :: Symbol(sym) :: Nil) :: Nil => Set(sym)
+    case LisaList(Symbol("?" | "when?" | "when") :: _) :: Nil => Set.empty
+    case Symbol("_") :: xs => getBoundVariables(xs)
+    case Symbol(sym) :: xs => getBoundVariables(xs) + sym
+    case LisaList(Symbol("seq") :: args) :: xs => getBoundVariables(xs) ++ getBoundVariables(args)
+    case LisaList(ex :: args) :: xs => getBoundVariables(ex :: xs) ++ getBoundVariables(args)
+    case _ :: xs => getBoundVariables(xs)
   }
 
   @tailrec
-  def getArityOfPattern(pat: List[Expression], accumulator: Int = 0): Option[Int] = pat match {
+  def getArityOfPattern(pat: Seq[Expression], accumulator: Int = 0): Option[Int] = pat.toList match {
     case Nil => Some(accumulator)
-    case Apply(Symbol("..."), _)::Nil => None // Can not count arity on va-args.
-    case Apply(Symbol("?" | "when?" | "when"), _)::Nil => Some(accumulator) // Match guards
-    case _::xs => getArityOfPattern(xs, accumulator + 1)
+    case LisaList(Symbol("...") :: _) :: Nil => None // Can not count arity on va-args.
+    case LisaList(Symbol("?" | "when?" | "when") :: _) :: Nil => Some(accumulator) // Match guards
+    case _ :: xs => getArityOfPattern(xs, accumulator + 1)
   }
 
   trait MayHaveArity {
@@ -446,7 +555,7 @@ object LispExp {
   }
 
   trait DeclareArityAfter extends MayHaveArity {
-    private [this] var _arity: Option[Int] = None
+    private[this] var _arity: Option[Int] = None
 
     override def arity: Option[Int] = _arity
 
@@ -459,20 +568,44 @@ object LispExp {
   case class SimpleMacro(paramsPattern: Seq[Expression],
                          body: Expression,
                          defines: Seq[Expression])
-    extends Expression with MayHaveArity with MayBeDefined with NoExternalDependency {
+    extends Procedure with MayHaveArity with MayBeDefined with NoExternalDependency {
     override def valid: Boolean = paramsPattern.forall(_.valid) && body.valid && defines.forall(_.valid)
 
     override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
 
     override def code: String = LambdaExpression(body, paramsPattern.toList, defines.toList).code
 
-    override lazy val arity: Option[Int] = getArityOfPattern(paramsPattern.toList)
+    override lazy val arity: Option[Int] = getArityOfPattern(paramsPattern)
 
-    override def pattern: List[List[Expression]] = paramsPattern.toList::Nil
+    override def pattern: List[List[Expression]] = paramsPattern.toList :: Nil
+  }
+
+  case class SimpleMacroClosure(paramsPattern: Seq[Expression],
+                                body: Expression,
+                                defines: Seq[Expression],
+                                capturedEnv: Environment)
+  extends Procedure with MayHaveArity with MayBeDefined with NoExternalDependency with OriginalEnvironment {
+    private lazy val relatingMacro = SimpleMacro(paramsPattern, body, defines)
+    override lazy val arity: Option[Int] = relatingMacro.arity
+
+    override def valid: Boolean = relatingMacro.valid
+
+    override def code: String = relatingMacro.code
+
+    override def pattern: List[List[Expression]] = relatingMacro.pattern
+
+    override def toString: String = relatingMacro.toString
+  }
+
+  object SimpleMacroClosure {
+    def fromMacro(m: SimpleMacro, inEnv: Environment): SimpleMacroClosure = {
+      val closure = SimpleMacroClosure(m.paramsPattern, m.body, m.defines, inEnv)
+      closure.copyDocString(m)
+    }
   }
 
   case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment))
-    extends Expression with DeclareArityAfter with NoExternalDependency {
+    extends Procedure with DeclareArityAfter with NoExternalDependency {
     override def toString: String = s"#Macro![Native Code]"
   }
 
@@ -482,14 +615,14 @@ object LispExp {
 
   case class PolymorphicExpression(name: String,
                                    variants: Seq[(Expression, Seq[Expression])],
-                                   innerEnvironment: MutableEnv, byName: Boolean=false)
-    extends Expression with MayHaveArity with MayBeDefined {
+                                   innerEnvironment: MutableEnv, byName: Boolean = false)
+    extends Procedure with MayHaveArity with MayBeDefined with OriginalEnvironment {
     def findMatch(args: Seq[Expression],
                   inEnv: Environment = EmptyEnv): Option[(Expression, Map[String, Expression])] = {
       @annotation.tailrec
       def find(v: List[(Expression, Seq[Expression])]): Option[(Expression, Map[String, Expression])] = v match {
         case Nil => None
-        case (exp, mat)::xs =>
+        case (exp, mat) :: xs =>
           val env = exp match {
             case Closure(_, _, capturedEnv, _) => capturedEnv
             case _ => inEnv
@@ -499,35 +632,36 @@ object LispExp {
             case _ => find(xs)
           }
       }
+
       val found = find(variants.toList)
-//      if(found.isDefined) println(s"${found.get} matches $args")
+      //      if(found.isDefined) println(s"${found.get} matches $args")
       found
     }
 
     def withExpression(closure: Closure): PolymorphicExpression = closure match {
       case c@Closure(_, _, capturedEnv, _) =>
-        val nc =
-          if(c.freeVariables.contains(name)) c.copy(capturedEnv=CombineEnv.of(innerEnvironment, capturedEnv))
-          else c
-        val newPolymorphic = copy(variants=variants.appended((nc, nc.boundVariable)))
+        val nc = c.copy(capturedEnv = CombineEnv.of(innerEnvironment, capturedEnv))
+//          if (c.freeVariables.contains(name)) c.copy(capturedEnv = CombineEnv.of(innerEnvironment, capturedEnv))
+//          else c
+        val newPolymorphic = copy(variants = variants.appended((nc, nc.boundVariable)))
         nc.withSelf(newPolymorphic)
         innerEnvironment.addValue(name, newPolymorphic)
         newPolymorphic
     }
 
 
-    def withExpression(mac: SimpleMacro): PolymorphicExpression = {
-      val newVariant = copy(variants=variants.appended((mac, mac.paramsPattern)))
+    def withExpression(mac: SimpleMacroClosure): PolymorphicExpression = {
+      val newVariant = copy(variants = variants.appended((mac, mac.paramsPattern)))
       innerEnvironment.addValue(name, newVariant)
       newVariant
     }
 
     override def docString: String = {
-      if(variants.length == 1) {
+      if (variants.length == 1) {
         variants.head._1.docString
       } else {
         val body = variants.map {
-          case (p, v) => if(p.docString.nonEmpty) p.docString else s"${genHead(v)}: ${p.code}"
+          case (p, v) => if (p.docString.nonEmpty) p.docString else s"${genHead(v)}: ${p.code}"
         }.mkString("\n")
         s"""
            |$name is a polymorphic function, with ${variants.length} overloads:
@@ -552,9 +686,9 @@ object LispExp {
         .flatMap {
           case (exp, _) => Evaluator.applyToEither(exp, arguments).map(_.toString).toOption
         }.getOrElse(verboseString)
-//      if (isDefinedAt(Symbol("to-string")::Nil, EmptyEnv))
-//        Evaluator.apply(this, Symbol("to-string") :: Nil).toOption.map(_.toString).getOrElse(verboseString)
-//      else verboseString
+      //      if (isDefinedAt(Symbol("to-string")::Nil, EmptyEnv))
+      //        Evaluator.apply(this, Symbol("to-string") :: Nil).toOption.map(_.toString).getOrElse(verboseString)
+      //      else verboseString
     }
 
     override lazy val arity: Option[Int] =
@@ -592,7 +726,7 @@ object LispExp {
       polymorphic
     }
 
-    def create(mac: SimpleMacro, name: String): PolymorphicExpression = {
+    def create(mac: SimpleMacroClosure, name: String): PolymorphicExpression = {
       val sharedEnv = Environments.EmptyEnv.newMutableFrame
       val polymorphicExpression =
         PolymorphicExpression(name, Seq((mac, mac.paramsPattern)), sharedEnv, byName = true)
@@ -610,27 +744,31 @@ object LispExp {
       @scala.annotation.tailrec
       def recurHelper(rec: List[Expression], acc: Map[String, Expression]): Map[String, Expression] = rec match {
         case Nil => acc
-        case Symbol(sym)::exp::xs => recurHelper(xs, acc.updated(sym, exp))
-        case Quote(Symbol(sym))::exp::xs => recurHelper(xs, acc.updated(sym, exp))
-        case (r: LisaRecordWithMap[_])::xs => recurHelper(xs, acc ++ r.record)
-        case x:: _ ::_ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
-        case x::_ => throw new IllegalArgumentException(s"No matching value for $x")
+        case Symbol(sym) :: exp :: xs => recurHelper(xs, acc.updated(sym, exp))
+        case Quote(Symbol(sym)) :: exp :: xs => recurHelper(xs, acc.updated(sym, exp))
+        case (r: LisaRecordWithMap[_]) :: xs => recurHelper(xs, acc ++ r.record)
+        case x :: _ :: _ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
+        case x :: _ => throw new IllegalArgumentException(s"No matching value for $x")
       }
+
       LisaMapRecord(recurHelper(rec, Map.empty), name)
     }
 
     def recordUpdater(rec: LisaRecordWithMap[Expression], arguments: List[Expression]) = {
       type V = Expression
+
       @annotation.tailrec
       def update(args: List[Expression], acc: LisaRecordWithMap[V]): LisaRecordWithMap[V] = args match {
         case Nil => acc
-        case Symbol(sym)::exp::xs => update(xs, acc.updated(sym, exp))
-        case Quote(Symbol(sym))::exp::xs => update(xs, acc.updated(sym, exp))
-        case (r: LisaRecordWithMap[_])::xs =>
+        case Symbol(sym) :: exp :: xs => update(xs, acc.updated(sym, exp))
+        case Quote(Symbol(sym)) :: exp :: xs => update(xs, acc.updated(sym, exp))
+        case SString(sym) :: exp :: xs => update(xs, acc.updated(sym, exp))
+        case (r: LisaRecordWithMap[_]) :: xs =>
           update(xs, r.record.foldLeft(acc) { case (acc, (k, v)) => acc.updated(k, v) })
-        case x:: _ ::_ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
-        case x::_ => throw new IllegalArgumentException(s"No matching value for $x")
+        case x :: _ :: _ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
+        case x :: _ => throw new IllegalArgumentException(s"No matching value for $x")
       }
+
       update(arguments, rec)
     }
 
@@ -649,7 +787,7 @@ object LispExp {
 
     lazy val RecordHelperEnv = Environments.Env(Map(
       "record" -> PrimitiveFunction {
-        case SString(name)::xs =>
+        case SString(name) :: xs =>
           recordMaker(xs, name)
         case xs =>
           recordMaker(xs)
@@ -708,6 +846,9 @@ object LispExp {
       }
     ), EmptyEnv)
   }
+
+  abstract class AbstractLisaRecord extends LisaRecord[Expression]
+
   trait LisaRecordWithMap[+V <: Expression] extends LisaRecord[V] with MapRecord[String, V] {
     override def toString: String = {
       val body = record.map {
@@ -715,6 +856,7 @@ object LispExp {
       }.mkString(" ")
       s"$recordTypeName {$body}".stripLeading
     }
+
     def updated[B >: V <: Expression](key: String, value: B): LisaRecordWithMap[B]
   }
 
@@ -726,6 +868,7 @@ object LispExp {
   case class TypedLisaRecord[+V <: Expression](record: Map[String, V], recordType: LisaType)
     extends LisaRecordWithMap[V] {
     override def recordTypeName: String = recordType.name
+
     override def updated[B >: V <: Expression](key: String, value: B): TypedLisaRecord[B] =
       if (record.contains(key)) copy(record.updated(key, value))
       else throw new IllegalArgumentException(s"Attribute $key does not exist on type $recordTypeName")
@@ -733,12 +876,53 @@ object LispExp {
     override def tpe: LisaType = recordType
   }
 
+  trait LisaListLike[+T]
+    extends Seq[T]
+      with Expression {
+    def list: List[T]
+
+    override def apply(i: Int): T = list(i)
+
+    override def length: Int = list.length
+
+    override def iterator: Iterator[T] = list.iterator
+
+    def wrapped: WrappedScalaObject[List[T]] = WrappedScalaObject(list)
+
+    override def equals(o: Any): Boolean = o match {
+      case l: Seq[_] => l == list
+      case WrappedScalaObject(l) => l == list
+      case _ => super.equals(o)
+    }
+  }
+
+  case class LisaList[+T <: Expression](list: List[T])
+    extends LisaListLike[T] {
+    override def tpe: LisaType = NameOnlyType("List")
+
+    override def toString: String = list.mkString("(", " ", ")")
+
+    override def code: String = s"${list.map(_.code).mkString("(", " ", ")")}"
+  }
+
+  object LisaList {
+    private val nil: LisaList[Nothing] = LisaList(Nil)
+
+    def apply[T <: Expression](list: List[T]) = new LisaList(list)
+    def from[T <: Expression](list: T*) = new LisaList(list.toList)
+    def empty[T <: Expression]: LisaList[T] = nil
+    def newBuilder[A <: Expression]: mutable.Builder[A, LisaList[A]] = List.newBuilder.mapResult(apply)
+  }
+
+  case object PlaceHolder extends Expression
+
   trait Implicits {
     import scala.language.implicitConversions
+
     implicit def fromInt(i: Int): SInteger = SInteger(i)
     implicit def fromBigInt(i: LisaInteger): SInteger = SInteger(i)
     implicit def fromString(s: String): SString = SString(s)
-    implicit def fromSymbol(sym: scala.Symbol):Symbol = Symbol(sym.name)
+    implicit def fromSymbol(sym: scala.Symbol): Symbol = Symbol(sym.name)
     implicit def fromFloat(f: Float): SFloat = SFloat(LisaDecimal(f))
     implicit def fromDouble(f: Double): SFloat = SFloat(LisaDecimal(f))
     implicit def fromDecimal(f: LisaDecimal): SFloat = SFloat(f)

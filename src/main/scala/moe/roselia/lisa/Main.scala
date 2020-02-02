@@ -63,7 +63,7 @@ object Main {
                   result match {
                     case LispExp.Failure(typ, msg) =>
                       printlnErr(s"$typ: $msg")
-                    case NilObj =>
+                    case s if s eq NilObj =>
                     case s =>
                       println(s"[$resultIndex]: ${s.tpe.name} = $s")
                   }
