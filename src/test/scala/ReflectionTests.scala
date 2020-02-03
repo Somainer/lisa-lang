@@ -123,4 +123,30 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
       newInstanceFromClassName("Some", Seq(1)) shouldEqual Some(1)
     }
   }
+
+  "Static Field Accessor" should {
+    import moe.roselia.lisa.Reflect.StaticFieldAccessor._
+
+    "Access field with names" in {
+      getFieldOrNilArityMethod(classOf[Math], "PI") shouldEqual Math.PI
+      a[NoSuchFieldException] should be thrownBy {
+        getFieldOrNilArityMethod(classOf[Math], "cos")
+      }
+      a [NoSuchFieldException] should be thrownBy {
+        getFieldOrNilArityMethod(classOf[String], "PI")
+      }
+    }
+
+    "Invoke static methods" in {
+      invokeStaticMethod(classOf[String], "valueOf")(114514) shouldEqual "114514"
+      invokeStaticMethod(classOf[Math], "max")(1, 2) shouldEqual 2
+      a[NoSuchMethodException] should be thrownBy invokeStaticMethod(classOf[Math], "max")(2)
+      invokeStaticMethod(classOf[Class[_]], "forName")("java.lang.String") shouldEqual classOf[java.lang.String]
+    }
+
+    "Handle Vararg functions" in {
+      invokeStaticMethod(classOf[String], "format")("%d%s", 2, "33") shouldEqual "233"
+      invokeStaticMethod(classOf[String], "format")("Hello") shouldEqual "Hello"
+    }
+  }
 }

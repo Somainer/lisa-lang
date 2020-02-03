@@ -9,7 +9,7 @@ object ScalaBridge {
 //    println(s"-> ${apply(c, xs.map(fromScalaNative).toList)}")
     val xs = ensureSeq(xOrxs)
     applyToEither(c, xs.map(fromScalaNative).toList)
-      .fold(ex => Failure("Scala Bridge Eval Error", ex), toScalaNative)
+      .fold(ex => throw new RuntimeException(ex), toScalaNative)
   }
 
   private def ensureSeq(xOrxs: Any) = xOrxs match {

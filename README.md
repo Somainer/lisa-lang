@@ -521,6 +521,14 @@ Hence, you can write code like:
 (define lisa-list (iter wrapped-list)) ; '(1 2)
 ```
 
+Static members can also be accessed now.
+```clojure
+Math/PI ; = Math.PI
+Integer/MAX_VALUE ; = 2147483647
+(Math/max 1 2) ; = 2
+(String/format "Hello, %s!" "World") ; => "Hello, World!"
+```
+
 ## Great! How to use it?
 
 `sbt pack`
