@@ -3,8 +3,8 @@ package moe.roselia.lisa
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv, NameSpacedEnv, SpecialEnv, TransparentLayer}
 import moe.roselia.lisa.Evaluator.{EvalFailure, EvalFailureMessage, EvalResult, EvalSuccess}
 import moe.roselia.lisa.LispExp._
-import moe.roselia.lisa.Reflect.{PackageAccessor, ToolboxDotAccessor}
-import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
+import moe.roselia.lisa.Reflect.{PackageAccessor, ToolboxDotAccessor, ConstructorCaller}
+import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative, fromJVMNative}
 
 import scala.util.Try
 
@@ -357,6 +357,10 @@ object Preludes extends LispExp.Implicits {
       require(declares.forall(_.isInstanceOf[Symbol]))
       declares.foreach(sym => mutableEnv.addValue(sym.asInstanceOf[Symbol].value, PlaceHolder))
       NilObj -> mutableEnv
+    },
+    "from-java" -> PrimitiveFunction.withArityChecked(1) {
+      case WrappedScalaObject(x) :: Nil => fromJVMNative(x)
+      case x :: Nil => x
     }
   ))
 
@@ -569,5 +573,9 @@ object Preludes extends LispExp.Implicits {
     }
   ))
 
-  lazy val preludeEnvironment: CombineEnv = CombineEnv(Seq(primitiveEnvironment, collectionEnvironment, testerEnvironment))
+  lazy val preludeEnvironment: CombineEnv = CombineEnv(Seq(
+    primitiveEnvironment,
+    collectionEnvironment,
+    testerEnvironment,
+    ConstructorCaller.ConstructorEnvironment))
 }

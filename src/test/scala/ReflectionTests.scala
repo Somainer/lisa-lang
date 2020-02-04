@@ -1,9 +1,18 @@
 import org.scalatest.wordspec.AsyncWordSpec
 import org.scalatest.matchers.should.Matchers
 import moe.roselia.lisa
-import moe.roselia.lisa.LispExp.Expression
+import moe.roselia.lisa.Annotation.RawLisa
+import moe.roselia.lisa.LispExp.{Expression, SInteger, SString}
 
 class ReflectionTests extends AsyncWordSpec with Matchers {
+  class Tester {
+    @RawLisa
+    def lisaString(a: SString): String = a.value
+    @RawLisa
+    def lisaString(i: SInteger): String = i.value.toString
+
+    def lisaString(fn: Double): String = fn.toString
+  }
   "AccessDot" should {
     import lisa.Reflect.DotAccessor.accessDot
     "get nil-arity function" in {
@@ -52,8 +61,8 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
         private def minus(x: Int, y: Int): Int = x - y
       }
 
-      applyDot("addOne")(o)(1) shouldEqual 2
-      applyDot("minus")(o)(2, 3) shouldEqual -1
+      applyDot("addOne")(o)(1)() shouldEqual 2
+      applyDot("minus")(o)(2, 3)() shouldEqual -1
     }
 
     "call parent methods" in {
@@ -61,7 +70,7 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
         def ?+(x: Int, y: Int) = x + y
       }
       class C extends P
-      applyDot("?+")(new C)(2, 3) shouldEqual 5
+      applyDot("?+")(new C)(2, 3)() shouldEqual 5
     }
 
     "should do type check" in {
@@ -70,12 +79,12 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
         def idString(s: lisa.LispExp.SString): String = s.value
       }
 
-      applyDot("idString")(o)("abc") shouldEqual "abc"
+      applyDot("idString")(o)("abc")() shouldEqual "abc"
       a[ScalaReflectionException] should be thrownBy {
-        applyDot("idString")(o)(1)
+        applyDot("idString")(o)(1)()
       }
       a[ScalaReflectionException] should be thrownBy {
-        applyDot("idString")(o)("two", "strings")
+        applyDot("idString")(o)("two", "strings")()
       }
     }
 
@@ -85,11 +94,59 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
         def handleType(i: Int) = "int"
       }
 
-      applyDot("handleType")(o)("s") shouldEqual "string"
-      applyDot("handleType")(o)(233) shouldEqual "int"
+      applyDot("handleType")(o)("s")() shouldEqual "string"
+      applyDot("handleType")(o)(233)() shouldEqual "int"
       a[ScalaReflectionException] should be thrownBy {
-        applyDot("handleType")(o)('a')
+        applyDot("handleType")(o)('a')()
       }
+    }
+
+    "should resolve RawLisa annotation" in {
+      val tester = new Tester
+
+      applyDot("lisaString")(tester)("native")(SString("lisa")) shouldEqual "lisa"
+      applyDot("lisaString")(tester)()(SInteger(233)) shouldEqual "233"
+      applyDot("lisaString")(tester)(114.514)() shouldEqual "114.514"
+      an[Exception] should be thrownBy {
+        applyDot("lisaString")(tester)("no way")()
+      }
+    }
+  }
+
+  "Reflection Constructor" should {
+    import moe.roselia.lisa.Reflect.ConstructorCaller.newInstanceFromClassName
+
+    "construct object from simple names" in {
+      val string = newInstanceFromClassName("String", Seq("string"))
+      string shouldEqual "string"
+
+      newInstanceFromClassName("Some", Seq(1)) shouldEqual Some(1)
+    }
+  }
+
+  "Static Field Accessor" should {
+    import moe.roselia.lisa.Reflect.StaticFieldAccessor._
+
+    "Access field with names" in {
+      getFieldOrNilArityMethod(classOf[Math], "PI") shouldEqual Math.PI
+      a[NoSuchFieldException] should be thrownBy {
+        getFieldOrNilArityMethod(classOf[Math], "cos")
+      }
+      a [NoSuchFieldException] should be thrownBy {
+        getFieldOrNilArityMethod(classOf[String], "PI")
+      }
+    }
+
+    "Invoke static methods" in {
+      invokeStaticMethod(classOf[String], "valueOf")(114514) shouldEqual "114514"
+      invokeStaticMethod(classOf[Math], "max")(1, 2) shouldEqual 2
+      a[NoSuchMethodException] should be thrownBy invokeStaticMethod(classOf[Math], "max")(2)
+      invokeStaticMethod(classOf[Class[_]], "forName")("java.lang.String") shouldEqual classOf[java.lang.String]
+    }
+
+    "Handle Vararg functions" in {
+      invokeStaticMethod(classOf[String], "format")("%d%s", 2, "33") shouldEqual "233"
+      invokeStaticMethod(classOf[String], "format")("Hello") shouldEqual "Hello"
     }
   }
 }

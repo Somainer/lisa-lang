@@ -498,6 +498,37 @@ With pipeline function `|>` with phrase definition in prelude, calling by chain 
     ('elder-than? (Person "Senpai" 24))) ; ==> true
 ```
 
+## Java Inter-Ops
+`Lisa` could deal with `Scala` objects mostly since they are automatically converted to `Lisa`
+objects. To convert Java objects, use pre-defined `from-java` procedure.
+As shown above, variable starts with dot will be treated as method accessors.
+Also, `new` function could be used to call constructor of class like `Clojure`. 
+If you miss `doto` macro, you can just write one as example below.
+```clojure
+(define-macro (doto ex (... ops))
+    (define sym (gen-sym))
+    (define ops-with-obj 
+        (map ops (lambda ((fn (... args))) (cons fn (cons sym args)))))
+    '(let ()
+        (define ~sym ~ex)
+        ~~ops-with-obj
+        ~sym))
+```
+Hence, you can write code like:
+```clojure
+(define array-list (doto (new ArrayList) (.add 1) (.add 2))) ; WrappedScalaObject[ArrayList]
+(define wrapped-list (from-java array-list)) ; WrappedScalaObject[Iterable]
+(define lisa-list (iter wrapped-list)) ; '(1 2)
+```
+
+Static members can also be accessed now.
+```clojure
+Math/PI ; = Math.PI
+Integer/MAX_VALUE ; = 2147483647
+(Math/max 1 2) ; = 2
+(String/format "Hello, %s!" "World") ; => "Hello, World!"
+```
+
 ## Great! How to use it?
 
 `sbt pack`

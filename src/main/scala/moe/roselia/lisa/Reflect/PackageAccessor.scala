@@ -37,7 +37,7 @@ object PackageAccessor {
             .map(clsObj.reflectMethod)
           if (nilArityMethod.isDefined) nilArityMethod.map(_.apply()).map(fromScalaNative).get
           else PrimitiveFunction {
-            xs => fromScalaNative(DotAccessor.applyDot(key)(obj)(mapRealArguments(xs): _*))
+            xs => fromScalaNative(DotAccessor.applyDot(key)(obj)(mapRealArguments(xs): _*)(xs: _*))
           }
         }
         else throw ScalaReflectionException(s"$key is not a method")

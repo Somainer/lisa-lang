@@ -5,7 +5,7 @@ import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
 import ScalaBridge._
 import moe.roselia.lisa.Annotation.RawLisa
-import moe.roselia.lisa.LispExp.{LisaList, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, WrappedScalaObject}
 import moe.roselia.lisa.Util.Extractors.NeedInt
 
 object DotAccessor {
@@ -85,7 +85,7 @@ object DotAccessor {
 //      println(s"${clsObj.symbol.toType} <:< $typ: ${clsObj.symbol.toType <:< typ}")
       clsObj.symbol.toType <:< typ
     }
-    sym.zip(args).forall {
+    sym.lengthIs == args.length && sym.zip(args).forall {
       case (x, y) => checkType(y)(x.typeSignature) || checkType(y)(x.typeSignature.map(boxedType))
     }
   }
@@ -113,7 +113,7 @@ object DotAccessor {
   }
 
   @throws[ScalaReflectionException]("When no underlying method")
-  def applyDotOfPlainObject[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
+  def applyDotOfPlainObject[A : ClassTag](acc: String)(obj: A)(args: Any*)(expressionArgs: Expression*) = {
     val classObj = getClassObject(obj)
 //    val decl = classObj.symbol.toType.decl(TermName(acc))
     val decl = lookUpForTerm(classObj.symbol, acc)
@@ -121,9 +121,15 @@ object DotAccessor {
     val overloads = decl.get.alternatives
       .filter(_.isMethod)
       .map(_.asMethod)
-      .filter(_.paramLists.flatten.length == args.length) match {
+      .filter(overload => {
+        if(hasRawLisaAnnotation(overload)) overload.paramLists.flatten.length == expressionArgs.length
+        else overload.paramLists.flatten.length == args.length
+      }) match {
         case xs@_::Nil => xs
-        case xs => xs.filter(sig => checkTypeFits(sig.paramLists.flatten)(args.toSeq))
+        case xs =>
+          val (rawNames, native) = xs.partition(hasRawLisaAnnotation)
+          rawNames.filter(sig => checkTypeFits(sig.paramLists.flatten)(expressionArgs)) ++
+            native.filter(sig => checkTypeFits(sig.paramLists.flatten)(args))
       }
 
 //    println(decl.asTerm.alternatives.filter(_.isMethod).map(_.asMethod)
@@ -135,17 +141,20 @@ object DotAccessor {
 //    println(classObj.symbol)
 //    println(overloads)
     if (overloads.isEmpty) throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
-    classObj.reflectMethod(overloads.head).apply(args: _*)
+    overloads.head match {
+      case symbol if hasRawLisaAnnotation(symbol) => classObj.reflectMethod(symbol).apply(expressionArgs: _*)
+      case symbol => classObj.reflectMethod(symbol).apply(args: _*)
+    }
   }
 
   @throws[ScalaReflectionException]("When no underlying method")
-  def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*) = {
+  def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*)(expressionArgs: Expression*) = {
     obj match {
       case dynamic: Dynamic => util.Try {
         applyDotDynamic(acc)(dynamic)(args: _*)
-      }.getOrElse(applyDotOfPlainObject(acc)(obj)(args: _*))
+      }.getOrElse(applyDotOfPlainObject(acc)(obj)(args: _*)(expressionArgs: _*))
       case _ =>
-        applyDotOfPlainObject(acc)(obj)(args: _*)
+        applyDotOfPlainObject(acc)(obj)(args: _*)(expressionArgs: _*)
     }
   }
 
@@ -166,7 +175,7 @@ object DotAccessor {
         }
       case x::xs =>
         val field = key.substring(1)
-        fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative): _*))
+        fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative): _*)(xs: _*))
     }.withDocString(s"$key: Access ${key substring 1} attribute or method of a scala object. " +
       s"If you do not care about performance, use box$key"))
   })
