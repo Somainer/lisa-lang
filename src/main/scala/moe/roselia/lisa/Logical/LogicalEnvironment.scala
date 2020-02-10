@@ -1,14 +1,16 @@
 package moe.roselia.lisa.Logical
 
 import moe.roselia.lisa.Environments.{EmptyEnv, Environment}
-import moe.roselia.lisa.LispExp.{Expression, LisaList, NilObj, PrimitiveFunction, PrimitiveMacro, SAtom, SBool, SString, SideEffectFunction, Symbol, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, NilObj, PrimitiveFunction, PrimitiveMacro, Quote, SAtom, SBool, SString, SideEffectFunction, Symbol, WrappedScalaObject}
 
 case class LogicalEnvironment(var logicalContext: LogicalContext) extends Queries {
   implicit def context: LogicalContext = logicalContext
 
   def addFact(fact: Expression): Unit = {
     logicalContext = logicalContext.addedFact(replaceIfPossible(fact, {
+      case s@Symbol("_") => s
       case Symbol(s) => SAtom(s)
+      case Quote(sym@Symbol(_)) => sym
     }))
   }
   def addRule(name: String, rule: LogicalRule): Unit = {

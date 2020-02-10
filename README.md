@@ -553,8 +553,9 @@ Facts can be defined using macro `fact`.
 (fact (path d e))
 (fact (path e f))
 ```
-Notice that you cannot have variables in fact definition. So, symbols in facts are automatically
-transformed to atoms.
+Notice that you usually do not have variables in fact definition. So, symbols in facts are automatically
+transformed to atoms. If you want to use variables, use `'sym`. This **only** works in fact definition.
+`_` matches any case without introducing any new constraints into the environment.
 
 ```clojure
 (fact (path a b)) ; <=> 
@@ -595,6 +596,7 @@ Special combinator can help you build powerful queries.
 * `but` Accepts a query, the result query will not match if this query matches.
 * `lisa` Accepts an expression evaluated to boolean, the result query will match if the expression is true.
 * `execute-lisa` Just runs the accepted expression and do nothing to the result.
+* `=` is the unifier that unifies two expressions.
 
 ```clojure
 (fact (salary a 114))

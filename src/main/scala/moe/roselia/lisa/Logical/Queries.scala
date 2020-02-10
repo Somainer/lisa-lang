@@ -42,6 +42,12 @@ trait Queries {
       })
     }
 
+    def createUnifier(left: Expression, right: Expression): Matcher = (in, _) => {
+      in.flatMap { constraint =>
+        unifyMatch(left, right, constraint.newMutableFrame).map(_.frozen)
+      }
+    }
+
     def fromLisa(expression: Expression, capturedEnv: Environment): Matcher = (in, _) => {
       in.filter { env =>
         Evaluator.eval(Evaluator.unQuoteList(expression), CombineEnv(env :: capturedEnv :: Nil)) match {
@@ -163,7 +169,9 @@ trait Queries {
       }
       env
     }
-    environment.getValueOption(name) match {
+    // Ignore match
+    if(name == "_") Some(environment)
+    else environment.getValueOption(name) match {
       case Some(x) => extendList(unifyMatch(x, exp, environment))
       case _ => exp match {
         case Symbol(sym) => environment.getValueOption(sym) match {
@@ -200,7 +208,7 @@ trait Queries {
   }
 
   def unifyMatch(pattern1: Expression, pattern2: Expression, constraints: MutableEnv): Option[MutableEnv] = {
-    // println(s"Match $pattern1 and $pattern2 with $constraints")
+//    println(s"Match $pattern1 and $pattern2 with $constraints")
     if(pattern1 == pattern2) Some(constraints)
     else pattern1 match {
       case Symbol(name) => extendUndeterminedIfPossible(name, pattern2, constraints)
@@ -226,6 +234,7 @@ trait Queries {
         case Symbol("not") :: x :: Nil => compile(x).not
         case Symbol("lisa") :: x :: Nil => Matcher.fromLisa(x, inEnv)
         case Symbol("execute-lisa") :: x :: Nil => Matcher.lisaExecutor(x, inEnv)
+        case Symbol("=") :: lhs :: rhs :: Nil => Matcher.createUnifier(lhs, rhs)
         case Symbol(sym) :: xs if context.hasRule(sym) =>
           Matcher.fromRule(context.getRule(sym).get, xs, inEnv)
         case Symbol(sym) :: xs =>
