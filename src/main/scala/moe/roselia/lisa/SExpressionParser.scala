@@ -9,8 +9,8 @@ import scala.util.parsing.combinator.{ImplicitConversions, RegexParsers}
 object SExpressionParser extends ImplicitConversions with RegexParsers {
   override protected val whiteSpace = """(\s|;.*)+""".r
 
-  def sValue = sValueExclude("")
-  def sValueExclude(ex: String) =
+  def sValue: SExpressionParser.Parser[Value] = sValueExclude("")
+  def sValueExclude(ex: String): SExpressionParser.Parser[Value] =
     ("`.+`".r.map(_.drop(1).dropRight(1)).map(GraveAccentAtom) | s"[^() ${Regex.quote(ex)}\\s]+".r.map(PlainValue)) named "Values"
 
   def string = "\"(((\\\\\")|[^\"])*)\"".r
@@ -26,8 +26,12 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
 
   def sUnquote = "~" ~> sExpression map SUnQuote
 
+  def sAtom = ":" ~> (
+    string.map(SAtomLeaf) | sValue.map { case Value(s) => SAtomLeaf(s) }
+  )
+
   def sExpression: Parser[SimpleLispTree] =
-    ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | lambdaHelper | sQuote | sUnquote | sValue
+    ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | lambdaHelper | sQuote | sUnquote | sAtom | sValue
 
   def eof = "\\z".r named "End of line"
 

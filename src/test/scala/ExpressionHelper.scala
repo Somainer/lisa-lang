@@ -22,6 +22,7 @@ trait ExpressionHelper extends Implicits {
 
   implicit class StringOps(string: String) {
     def asSymbol = Symbol(string)
+    def asAtom = SAtom(string)
     def toLisa: Expression = {
       val program = string
       import moe.roselia.lisa.SExpressionParser._

@@ -222,7 +222,7 @@ Note that same variable means same value.
 The last argument in a function definition can be a pattern matching guard.
 It looks like an application of `?`, `when`, or `when?`, like `(? <predicate>)`. 
 
-* `?`, `when` requires that predicate never be failure, if so, matching will result in an evail failure.
+* `?`, `when` requires that predicate never be failure, if so, matching will result in an eval failure.
 * `when?` if predicate returns failure, this branch will be ignored and not match.
 
 The function will match only if the guard predicate indicates true. 
@@ -527,6 +527,81 @@ Math/PI ; = Math.PI
 Integer/MAX_VALUE ; = 2147483647
 (Math/max 1 2) ; = 2
 (String/format "Hello, %s!" "World") ; => "Hello, World!"
+```
+
+## Logical Programming (Experimental)
+Lisa supports logical programming. Lisa has a built-in logical programming system.
+
+### Atoms
+Atom is a special form in Lisa Logical which indicates `atoms`. Atom starts with a `:`
+and follows an identifier or a String. Like `:a`, `:"atom with spaces"`, or `:"b"`.
+`:a` is equal to `:"a"`.
+
+### Logical Module
+To use logical module, you should import that via `(import-env! logical)` first.
+Logical facts and rules are defined in `LogicalContext`s, hence, it is possible to deal with
+multiple logical worlds. To create a context, simply use `(logical/new-context)`.
+
+When a context is created, you can use defined macros like `fact`, `define-rule` and `query`.
+
+### Facts
+Facts are primitives in logical programming.
+Facts can be defined using macro `fact`.
+```clojure
+(fact (path a b))
+(fact (path b c))
+(fact (path d e))
+(fact (path e f))
+```
+Notice that you cannot have variables in fact definition. So, symbols in facts are automatically
+transformed to atoms.
+
+```clojure
+(fact (path a b)) ; <=> 
+(fact (path :a :b))
+```
+
+### Rules
+Rules are means of abstraction in logical programming.
+Rules can be defined via `define-rule`.
+
+```clojure
+(define-rule (link a c)
+    (or (path a c)
+        (and (path a b)
+            (link b c))))
+```
+
+Symbols in rules are treated as variables while atoms are treated as atoms.
+
+### Queries
+Queries are means of combination in logical programming.
+A query can be combines with facts, rules and some special combinator.
+A query can be executed via macro `query`.
+
+```clojure
+(query (link from to)) ; => ({'from :a 'to :b} {'from :b 'to :c} {'from :d 'to :e} {'from :e 'to :f} {'from :a 'to :c} {'from :d 'to :f})
+(query (link :a to)) ; => ({'to :b} {'to :c})
+```
+
+The execution result will be a list of records. An empty list will be emitted if no fact match the query.
+If you only want to test if a fact is true, use `is-true?` macro.
+
+### Combinator
+Special combinator can help you build powerful queries.
+
+* `and` Accepts arbitrary queries, the result query will match if all queries match. 
+* `or` Accepts arbitrary queries, the result query will match if one of the queries match. 
+* `but` Accepts a query, the result query will not match if this query matches.
+* `lisa` Accepts an expression evaluated to boolean, the result query will match if the expression is true.
+* `execute-lisa` Just runs the accepted expression and do nothing to the result.
+
+```clojure
+(fact (salary a 114))
+(fact (salary b 514))
+
+(query (and (salary x y) (lisa (> y 200)))) ; => ({'x :b 'y 514})
+(query (and (salary x y) (execute-lisa (println! y)))) ; Prints 114 514 and the result should be ({'x :a 'y 114} {'x :b 'y 514})
 ```
 
 ## Great! How to use it?

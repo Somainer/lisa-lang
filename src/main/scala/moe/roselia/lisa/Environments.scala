@@ -171,10 +171,14 @@ object Environments {
 
     override def collectDefinedValues: Set[String] =
       env.keySet.toSet ++ parent.collectDefinedValues
+
+    def frozen: Env = Env(env.toMap, parent)
   }
 
   object MutableEnv {
-    def createEmpty = MutableEnv(MutableMap.empty, EmptyEnv)
+    def createEmpty: MutableEnv = MutableEnv(MutableMap.empty, EmptyEnv)
+    def fromMap(map: Map[String, LispExp.Expression]): MutableEnv =
+      MutableEnv(MutableMap.from(map), EmptyEnv)
   }
 
   case class NameSpacedEnv(nameSpace: String, env: Environment, separator: String = ".") extends Environment {

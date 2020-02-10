@@ -817,18 +817,19 @@ object LispExp {
             case ls if ls.length == members.length =>
               TypedLisaRecord(membersString.zip(ls).toMap, recordType)
           }.withArity(members.length)
+            .withDocString(s"Constructor for $recordName (${membersString.mkString(" ")})")
           val tester = PrimitiveFunction {
             case TypedLisaRecord(_, tpe) :: Nil if tpe eq recordType => true
             case _ :: Nil => false
             case _ => throw new IllegalArgumentException(s"Only accept on argument.")
-          }.withArity(1)
+          }.withArity(1).withDocString(s"Test if an object is constructed by $recordName")
 
           val duckTypeTester = PrimitiveFunction {
             case (r: LisaRecord[_]) :: Nil =>
               membersString.forall(r.containsKey)
             case _ :: Nil => false
             case _ => throw new IllegalArgumentException(s"Only accept on argument.")
-          }.withArity(1)
+          }.withArity(1).withDocString(s"Test if an object is structural identical to $recordName")
 
           NilObj -> env.withValues(
             Seq(recordName -> constructor, s"$recordName?" -> tester, s"$recordName??" -> duckTypeTester)
@@ -910,11 +911,21 @@ object LispExp {
 
     def apply[T <: Expression](list: List[T]) = new LisaList(list)
     def from[T <: Expression](list: T*) = new LisaList(list.toList)
+    def fromExpression(exps: Expression*) = new LisaList(exps.toList)
     def empty[T <: Expression]: LisaList[T] = nil
     def newBuilder[A <: Expression]: mutable.Builder[A, LisaList[A]] = List.newBuilder.mapResult(apply)
   }
 
   case object PlaceHolder extends Expression
+
+  trait IdenticalLisaExpression extends Expression
+
+  case class SAtom(value: String) extends IdenticalLisaExpression with NoExternalDependency {
+    lazy val valuePart: String = if (value.matches("\\S+")) value else SString(value).code
+    override def toString: String = s":$valuePart"
+
+    override def tpe: LisaType = NameOnlyType("Atom")
+  }
 
   trait Implicits {
     import scala.language.implicitConversions

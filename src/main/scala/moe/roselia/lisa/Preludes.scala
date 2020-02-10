@@ -31,7 +31,8 @@ object Preludes extends LispExp.Implicits {
     "scala-root" -> PackageAccessor.rootScalaEnv,
     "dot-accessor" -> ToolboxDotAccessor.accessEnv,
     "system" -> Library.System.systemEnv,
-    "io-source" -> Library.IOSource.sourceLibrary
+    "io-source" -> Library.IOSource.sourceLibrary,
+    "logical" -> Logical.LogicalModuleEnvironment
   ).view.mapValues(_.withIdentify("prelude"))
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
