@@ -597,6 +597,7 @@ Special combinator can help you build powerful queries.
 * `lisa` Accepts an expression evaluated to boolean, the result query will match if the expression is true.
 * `execute-lisa` Just runs the accepted expression and do nothing to the result.
 * `=` is the unifier that unifies two expressions.
+* `<-` Accepts one symbol and an expression, evaluate the expression and unify the result to that symbol.
 
 ```clojure
 (fact (salary a 114))
@@ -604,6 +605,12 @@ Special combinator can help you build powerful queries.
 
 (query (and (salary x y) (lisa (> y 200)))) ; => ({'x :b 'y 514})
 (query (and (salary x y) (execute-lisa (println! y)))) ; Prints 114 514 and the result should be ({'x :a 'y 114} {'x :b 'y 514})
+
+(query (= (x x x) ((1 b c) (a 2 c) (a b 3)))); => ({'a 1 'b 2 'c 3 'x (1 2 3)})
+
+(define-rule (minus-one x y)
+    (<- y (- x 1)))
+(is-true? (minus-one 3 2)) ; => true
 ```
 
 ## Great! How to use it?

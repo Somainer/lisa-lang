@@ -18,7 +18,7 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
   }
 
   def executeQuery(query: Expression, inEnvironment: Environment): Expression = {
-    matchResultToScalaNative(runMatch(query, inEnvironment))
+    matchResultToLisaNative(runMatch(query, inEnvironment))
   }
 
   def factExists(query: Expression, inEnvironment: Environment): SBool = {

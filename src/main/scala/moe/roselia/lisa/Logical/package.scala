@@ -1,7 +1,7 @@
 package moe.roselia.lisa
 
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, NameSpacedEnv, TransparentLayer}
-import moe.roselia.lisa.LispExp.{NilObj, SideEffectFunction, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{LisaMapRecord, NilObj, PrimitiveFunction, SideEffectFunction, WrappedScalaObject}
 
 package object Logical {
   lazy val LogicalModuleEnvironment: NameSpacedEnv = NameSpacedEnv("logical", EmptyEnv.withValues(Seq(
@@ -16,6 +16,13 @@ package object Logical {
           LogicalEnvironment(LogicalContext.empty).implementationsEnvironment,
           e
         )
+    },
+    "unify" -> PrimitiveFunction.withArityChecked(2) {
+      case lhs :: rhs :: Nil =>
+        Queries.unifyMatch(lhs, rhs, EmptyEnv.newMutableFrame)
+          .map(_.flattenToMap)
+          .map(LisaMapRecord(_))
+          .getOrElse(NilObj)
     }
   )), "/")
 }

@@ -3,7 +3,7 @@ import org.scalatest.OptionValues
 import org.scalatest.wordspec.AsyncWordSpec
 import moe.roselia.lisa
 import moe.roselia.lisa.Environments.{EmptyEnv, MutableEnv}
-import moe.roselia.lisa.LispExp.{LisaList, LisaMapRecord}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord}
 import moe.roselia.lisa.Logical.{LogicalContext, LogicalRule}
 
 class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues with ExpressionHelper {
@@ -118,6 +118,37 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
       val matchResult = matcher(LazyList(MutableEnv.createEmpty), context)
       matchResult should have length 1
       matchResult.head.getValueOption("who").value shouldBe "TNOK".asAtom
+    }
+  }
+
+  "matchLogicalArgument" should {
+    import LogicalRule.matchLogicalRuleArgument
+
+    "match simple situation" in {
+      val pattern = "a".asSymbol :: "b".asSymbol :: Nil
+      val arguments: List[Expression] = 1.asLisa :: 2.asLisa :: Nil
+      val (matched, introduced) = matchLogicalRuleArgument(pattern, arguments).value
+      val expected = pattern.map(_.value).zip(arguments).toMap
+      matched should have size 2
+      matched shouldEqual expected
+      introduced shouldBe empty
+    }
+
+    "handle introduced values" in {
+      val pattern = "a".asAtom :: "b".asSymbol :: Nil
+      val pattern2 = "a".asAtom :: "y".asSymbol :: Nil
+      val arguments = "x".asSymbol :: "y".asSymbol :: Nil
+      val (matched, introduced) = matchLogicalRuleArgument(pattern, arguments).value
+
+      introduced should have size 1
+      introduced("x") shouldEqual "a".asAtom
+      matched("b") shouldBe "y".asSymbol
+
+      val (matched2, introduced2) = matchLogicalRuleArgument(pattern2, arguments).value
+
+      introduced2 should have size 1
+      introduced2("x") shouldEqual "a".asAtom
+      matched2("y") shouldBe "y".asSymbol
     }
   }
 }

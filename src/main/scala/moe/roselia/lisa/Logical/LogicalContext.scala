@@ -12,8 +12,8 @@ case class LogicalContext(facts: LisaList[Expression], rules: Map[String, Logica
   def hasRule(name: String): Boolean = rules contains name
   def getRule(name: String): Option[LogicalRule] = rules.get(name)
 
-  def findRule(name: String, params: List[Expression]): Option[(Map[String, Expression], Expression)] = {
-    rules.get(name).flatMap(_.findMatch(params))
+  def findRule(name: String, params: List[Expression]): Seq[((Map[String, Expression], Map[String, Expression]), Expression)] = {
+    rules.get(name).map(_.findMatch(params)).getOrElse(Nil)
   }
 }
 object LogicalContext {

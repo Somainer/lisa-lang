@@ -26,6 +26,11 @@ trait Queries {
       val thisOut = this(in, lc)
       in.filterNot(m => thisOut.exists(m.eq))
     }
+
+    def mapEveryFrame(mapper: Environment => Environment): Matcher = (in, lc) => {
+      val thisOut = this(in, lc)
+      thisOut.map(mapper)
+    }
   }
   object Matcher {
     def success: Matcher = (in, _) => in
@@ -68,14 +73,19 @@ trait Queries {
     }
 
     def fromRule(rule: LogicalRule, params: List[Expression], capturedEnv: Environment): Matcher = {
-      rule.findMatch(params).map[Matcher] { case (matched, body) =>
+      def envExtenderWithMap(map: Map[String, Expression])(env: Environment) = {
+        map.foldLeft(env) {
+          case (acc, (k, v)) => acc.withValue(k, v)
+        }
+      }
+      Matcher.or(rule.findMatch(params).map[Matcher] { case ((matched, introduced), body) =>
         body match {
           case SBool(true) =>
-            success
+            success.mapEveryFrame(envExtenderWithMap(introduced))
           case _ => (in, lc) => {
             val matcher =
               compileExpressionToMatcher(body, lc, capturedEnv)
-            in.flatMap { previous =>
+            in.map(envExtenderWithMap(introduced)).flatMap { previous =>
               val (undetermined, determined) = matched.partition {
                 case (_, Symbol(s)) => previous.getValueOption(s).forall(_.isInstanceOf[Symbol])
                 case _ => false
@@ -98,16 +108,28 @@ trait Queries {
             }
           }
         }
-      }.getOrElse(fail)
+      })
     }
 
+    def createAssigner(value: String, expression: Expression, environment: Environment): Matcher = (in, _) => {
+      in.flatMap { parentEnv =>
+        Evaluator.eval(Evaluator.unQuoteList(expression), CombineEnv(Seq(parentEnv, environment))) match {
+          case EvalSuccess(result, _) => parentEnv.getValueOption(value) match {
+            case Some(`result`) => Some(parentEnv)
+            case Some(_) => None
+            case None => Some(parentEnv.withValue(value, result))
+          }
+          case _ => None
+        }
+      }
+    }
 
     def runMatcher(matcher: Matcher)(implicit context: LogicalContext): OutputType = {
       matcher(LazyList(MutableEnv.createEmpty), context)
     }
   }
 
-  def matchResultToScalaNative(result: OutputType): Expression = LisaList {
+  def matchResultToLisaNative(result: OutputType): Expression = LisaList {
     result.map { e =>
       LisaMapRecord(e.collectDefinedValues.map(k => k -> e.getValueOption(k).get).toMap)
     }.toList
@@ -235,6 +257,7 @@ trait Queries {
         case Symbol("lisa") :: x :: Nil => Matcher.fromLisa(x, inEnv)
         case Symbol("execute-lisa") :: x :: Nil => Matcher.lisaExecutor(x, inEnv)
         case Symbol("=") :: lhs :: rhs :: Nil => Matcher.createUnifier(lhs, rhs)
+        case Symbol("<-") :: Symbol(name) :: exp :: Nil => Matcher.createAssigner(name, exp, inEnv)
         case Symbol(sym) :: xs if context.hasRule(sym) =>
           Matcher.fromRule(context.getRule(sym).get, xs, inEnv)
         case Symbol(sym) :: xs =>
@@ -245,3 +268,5 @@ trait Queries {
     }
   }
 }
+
+object Queries extends Queries

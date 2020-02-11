@@ -23,6 +23,7 @@ object Environments {
   }
   sealed trait Environment extends Identifiable {
     def has(key: String): Boolean = getValueOption(key).isDefined
+    def get(key: String): LispExp.Expression = getValueOption(key).get
     def getValueOption(key: String): Option[LispExp.Expression]
     def newFrame = Env(Map.empty, this)
     def withValue(key: String, value: LispExp.Expression): Env = newFrame withValue (key, value)
@@ -36,6 +37,11 @@ object Environments {
     def collectDefinedValues: Set[String] = Set.empty
     def flatten: Environment = {
       collectValues(collectDefinedValues.toSeq)
+    }
+    def flattenToMap: Map[String, LispExp.Expression] = {
+      collectDefinedValues.map { key =>
+        key -> getValueOption(key).get
+      }.toMap
     }
     def collectValues(values: Seq[String]): Environment = {
       if(values.isEmpty) EmptyEnv
