@@ -27,12 +27,14 @@ trait Queries {
       in.filterNot(m => thisOut.exists(m.eq))
     }
 
-    def mapEveryFrame(mapper: Environment => Environment): Matcher = (in, lc) => {
-      val thisOut = this(in, lc)
-      thisOut.map(mapper)
+    def mapEveryFrame(mapper: Environment => Environment): Matcher = and { (in, _) =>
+      in.map(mapper)
     }
+
+    def flatMapEveryFrame(mapper: Environment => IterableOnce[Environment]): Matcher = and((in, _) => in.flatMap(mapper))
   }
   object Matcher {
+    def unit(e: Environment): Matcher = (_, _) => LazyList(e)
     def success: Matcher = (in, _) => in
     def fail: Matcher = (_, _) => LazyList.empty
 
@@ -73,19 +75,28 @@ trait Queries {
     }
 
     def fromRule(rule: LogicalRule, params: List[Expression], capturedEnv: Environment): Matcher = {
-      def envExtenderWithMap(map: Map[String, Expression])(env: Environment) = {
-        map.foldLeft(env) {
-          case (acc, (k, v)) => acc.withValue(k, v)
+      def envExtenderWithMap(map: Map[String, Expression])(env: Environment): Option[Environment] = {
+        @scala.annotation.tailrec
+        def traverse(m: collection.View[(String, Expression)], acc: Environment): Option[Environment] = {
+          if (m.isEmpty) Some(acc)
+          else m.head match { case (k, v) =>
+            acc.getValueOption(k) match {
+              case Some(`v`) => traverse(m.tail, acc)
+              case Some(_) => None
+              case None => traverse(m.tail, acc.withValue(k, v))
+            }
+          }
         }
+        traverse(map.view, env)
       }
       Matcher.or(rule.findMatch(params).map[Matcher] { case ((matched, introduced), body) =>
         body match {
           case SBool(true) =>
-            success.mapEveryFrame(envExtenderWithMap(introduced))
+            success.flatMapEveryFrame(envExtenderWithMap(introduced))
           case _ => (in, lc) => {
             val matcher =
               compileExpressionToMatcher(body, lc, capturedEnv)
-            in.map(envExtenderWithMap(introduced)).flatMap { previous =>
+            in.flatMap(envExtenderWithMap(introduced)).flatMap { previous =>
               val (undetermined, determined) = matched.partition {
                 case (_, Symbol(s)) => previous.getValueOption(s).forall(_.isInstanceOf[Symbol])
                 case _ => false
