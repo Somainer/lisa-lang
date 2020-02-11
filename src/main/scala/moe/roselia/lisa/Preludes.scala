@@ -251,7 +251,7 @@ object Preludes extends LispExp.Implicits {
       }
       (x, e) match {
         case (Apply(head, tail) :: body, _) =>
-          val toBeDefined = SimpleMacroClosure(head :: tail, body.last, body.init, e)
+          val toBeDefined = SimpleMacroClosure((head :: tail).map(_.toRawList), body.last.toRawList, body.init.map(_.toRawList), e)
           defineHelper(toBeDefined)
         case (Symbol(defined)::Nil, _)
           if e.getValueOption(defined).exists(_.isInstanceOf[SimpleMacroClosure]) =>
@@ -267,8 +267,12 @@ object Preludes extends LispExp.Implicits {
     }.withArity(1),
     "string->symbol" -> PrimitiveFunction {
       case SString(sym)::Nil => Symbol(sym)
-      case _ => Failure("Arity Error", "only accept a string")
+      case _ => Failure("Contract Violation", "only accept a string")
     }.withArity(1),
+    "string->atom" -> PrimitiveFunction.withArityChecked(1) {
+      case SString(sym) :: Nil => SAtom(sym)
+      case _ => Failure("Contract Violation", "only accept a string")
+    },
     "string" -> PrimitiveFunction { xs =>
       xs.mkString
     }.withArity(1),
@@ -539,6 +543,10 @@ object Preludes extends LispExp.Implicits {
     },
     "symbol?" -> PrimitiveFunction.withArityChecked(1) {
       case Symbol(_) :: Nil => true
+      case _ => false
+    },
+    "atom?" -> PrimitiveFunction.withArityChecked(1) {
+      case SAtom(_) :: Nil => true
       case _ => false
     },
     "procedure?" -> PrimitiveFunction.withArityChecked(1) {
