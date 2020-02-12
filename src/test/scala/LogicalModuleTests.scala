@@ -38,6 +38,8 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
 
       matchResult.getValueOption("x").value shouldBe 1.asLisa
       matchResult.getValueOption("y").value shouldBe LisaList.fromExpression(2, 3)
+
+      Queries.unifyMatch(pattern2, pattern1, MutableEnv.createEmpty).value shouldBe matchResult
     }
 
     "deal with unknown values" in  {

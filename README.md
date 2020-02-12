@@ -540,7 +540,10 @@ and follows an identifier or a String. Like `:a`, `:"atom with spaces"`, or `:"b
 ### Logical Module
 To use logical module, you should import that via `(import-env! logical)` first.
 Logical facts and rules are defined in `LogicalContext`s, hence, it is possible to deal with
-multiple logical worlds. To create a context, simply use `(logical/new-context)`.
+multiple logical worlds. When a `LogicalContext` is stored in a variable, it is immutable. 
+Use `(current-context)` to get current context, `(pop-context!)` to remove current logical
+context, and `(logical/push-context context)` to set `context` as current context.
+To create a context, simply use `(logical/new-context)`.
 
 When a context is created, you can use defined macros like `fact`, `define-rule` and `query`.
 

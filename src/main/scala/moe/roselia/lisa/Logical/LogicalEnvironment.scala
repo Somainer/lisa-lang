@@ -64,8 +64,11 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
       case (body :: Nil, e) =>
         factExists(body.toRawList, e) -> e
     },
+    "current-context" -> PrimitiveFunction.withArityChecked(0) { case _ =>
+      WrappedScalaObject(context)
+    },
     "pop-context!" -> SideEffectFunction { case (_, e) =>
-      WrappedScalaObject(context) -> e.collectBy(_ ne implementationsEnvironment)
+      NilObj -> e.collectBy(_ ne implementationsEnvironment)
     }
   ))
 }

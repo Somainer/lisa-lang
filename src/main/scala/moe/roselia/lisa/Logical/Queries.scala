@@ -241,6 +241,9 @@ trait Queries {
       else None
     case otherwise :: xs => data match {
       case `otherwise` :: ys => matchPatternOfList(xs, ys, constraints)
+      case LisaList(Symbol("...") :: (sym@Symbol(_)) :: Nil) :: xs =>
+        if (xs.isEmpty) unifyMatch(LisaList(pattern), sym, constraints)
+        else None
       case y :: ys => for {
         _ <- unifyMatch(otherwise, y, constraints)
         tailMatch <- matchPatternOfList(xs, ys, constraints)
