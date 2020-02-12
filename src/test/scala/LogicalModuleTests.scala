@@ -3,8 +3,8 @@ import org.scalatest.OptionValues
 import org.scalatest.wordspec.AsyncWordSpec
 import moe.roselia.lisa
 import moe.roselia.lisa.Environments.{EmptyEnv, MutableEnv}
-import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord}
-import moe.roselia.lisa.Logical.{LogicalContext, LogicalRule}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, NilObj}
+import moe.roselia.lisa.Logical.{LogicalContext, LogicalEnvironment, LogicalRule}
 
 class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues with ExpressionHelper {
   import lisa.Logical.Queries
@@ -149,6 +149,63 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
       introduced2 should have size 1
       introduced2("x") shouldEqual "a".asAtom
       matched2("y") shouldBe "y".asSymbol
+    }
+  }
+
+  "Query Module" should {
+    val lcEnv = LogicalEnvironment(LogicalContext.empty)
+    val env = lcEnv.implementationsEnvironment.combinedWithPrelude
+    """
+      |(define-macro (facts (... fs))
+      |    (define fact-clauses (map fs &(list 'fact #)))
+      |    '(let () ~~fact-clauses))
+      |
+      |(facts
+      |    (path 0 1 1)
+      |    (path 1 3 3)
+      |    (path 3 2 2)
+      |    (path 1 2 4))
+      |
+      |(define-rule (is-connected x y)
+      |    (or (path x y _)
+      |        (and (path x u _)
+      |            (is-connected u y))))
+      |
+      |(define-rule (not-connected x y)
+      |    (not (is-connected x y)))
+      |
+      |(define-rule (distance x y d)
+      |    (or (path x y d)
+      |        (and (path x u d1)
+      |             (distance u y d2)
+      |             (<- d (+ d1 d2)))))
+      |""".stripMargin.toListOfLisa.evalOn(env)
+
+    def runQuery(qs: String) = {
+      val lisaList = lisa"'$qs".evalOn(EmptyEnv)
+      lcEnv.runMatch(lisaList, env)
+    }
+
+    "query for facts" in {
+      runQuery("(path 0 1 1)") should not be empty
+      runQuery("(path 0 1 2)") shouldBe empty
+      runQuery("(path 1 x d)") should have size 2
+    }
+
+    "apply rules correctly" in {
+      runQuery("(is-connected 0 2)") should have size 2
+    }
+
+    "query for right results" in {
+      val result = runQuery("(distance 0 3 d)").head
+      result.collectDefinedValues should have size 1
+      result.getValueOption("d").value shouldBe 4.asLisa
+
+      runQuery("(distance 0 3 4)") should not be empty
+    }
+
+    "handle not cases" in {
+      runQuery("(not-connected 0 2)") shouldBe empty
     }
   }
 }

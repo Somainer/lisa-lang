@@ -23,8 +23,17 @@ trait Queries {
     }
 
     def not: Matcher = (in, lc) => {
+      @scala.annotation.tailrec
+      def existPart(e: Environment, p: Environment => Boolean): Boolean = e match {
+        case EmptyEnv => p(e)
+        case env@Env(_, parent) => p(env) || existPart(parent, p)
+        case mEnv@MutableEnv(_, parent) => p(mEnv) || existPart(parent, p)
+        case env@CombineEnv(envs) =>
+          if (envs.isEmpty) p(env) else p(env) || p(envs.head) || existPart(CombineEnv(envs.tail), p)
+        case _ => p(e)
+      }
       val thisOut = this(in, lc)
-      in.filterNot(m => thisOut.exists(m.eq))
+      in.filterNot(m => thisOut.exists(existPart(_, m.eq)))
     }
 
     def mapEveryFrame(mapper: Environment => Environment): Matcher = and { (in, _) =>
