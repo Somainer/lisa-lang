@@ -76,11 +76,12 @@ object Evaluator {
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
     case SUnQuote(q) => UnQuote(compileToList(q))
+    case SAtomLeaf(atom) => LispExp.SAtom(atom)
     case Value(value) => {
       if(value.matches("-?\\d+"))
         SInteger(LisaInteger(value))
       //        value.toIntOption.map(SInteger).getOrElse(SFloat(value.toDouble))
-      else if(value.matches("""([0-9]*\.)?[0-9]+([eE][-+]?[0-9]+)?"""))
+      else if(value.matches("""-?([0-9]*\.)?[0-9]+([eE][-+]?[0-9]+)?"""))
         SFloat(LisaDecimal(value))
       else Symbol(value)
     }
@@ -265,6 +266,7 @@ object Evaluator {
             closure.withDocString(document)
           case _ => closure
         })
+      case id: IdenticalLisaExpression => pureValue(id)
       case c: Closure => pureValue(c)
       case fn: PrimitiveFunction => pureValue(fn)
       case s: SString => pureValue(s)

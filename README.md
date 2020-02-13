@@ -222,7 +222,7 @@ Note that same variable means same value.
 The last argument in a function definition can be a pattern matching guard.
 It looks like an application of `?`, `when`, or `when?`, like `(? <predicate>)`. 
 
-* `?`, `when` requires that predicate never be failure, if so, matching will result in an evail failure.
+* `?`, `when` requires that predicate never be failure, if so, matching will result in an eval failure.
 * `when?` if predicate returns failure, this branch will be ignored and not match.
 
 The function will match only if the guard predicate indicates true. 
@@ -527,6 +527,93 @@ Math/PI ; = Math.PI
 Integer/MAX_VALUE ; = 2147483647
 (Math/max 1 2) ; = 2
 (String/format "Hello, %s!" "World") ; => "Hello, World!"
+```
+
+## Logical Programming (Experimental)
+Lisa supports logical programming. Lisa has a built-in logical programming system.
+
+### Atoms
+Atom is a special form in Lisa Logical which indicates `atoms`. Atom starts with a `:`
+and follows an identifier or a String. Like `:a`, `:"atom with spaces"`, or `:"b"`.
+`:a` is equal to `:"a"`.
+
+### Logical Module
+To use logical module, you should import that via `(import-env! logical)` first.
+Logical facts and rules are defined in `LogicalContext`s, hence, it is possible to deal with
+multiple logical worlds. When a `LogicalContext` is stored in a variable, it is immutable. 
+Use `(current-context)` to get current context, `(pop-context!)` to remove current logical
+context, and `(logical/push-context context)` to set `context` as current context.
+To create a context, simply use `(logical/new-context)`.
+
+When a context is created, you can use defined macros like `fact`, `define-rule` and `query`.
+
+### Facts
+Facts are primitives in logical programming.
+Facts can be defined using macro `fact`.
+```clojure
+(fact (path a b))
+(fact (path b c))
+(fact (path d e))
+(fact (path e f))
+```
+Notice that you usually do not have variables in fact definition. So, symbols in facts are automatically
+transformed to atoms. If you want to use variables, use `'sym`. This **only** works in fact definition.
+`_` matches any case without introducing any new constraints into the environment.
+
+```clojure
+(fact (path a b)) ; <=> 
+(fact (path :a :b))
+```
+
+### Rules
+Rules are means of abstraction in logical programming.
+Rules can be defined via `define-rule`.
+
+```clojure
+(define-rule (link a c)
+    (or (path a c)
+        (and (path a b)
+            (link b c))))
+```
+
+Symbols in rules are treated as variables while atoms are treated as atoms.
+
+### Queries
+Queries are means of combination in logical programming.
+A query can be combines with facts, rules and some special combinator.
+A query can be executed via macro `query`.
+
+```clojure
+(query (link from to)) ; => ({'from :a 'to :b} {'from :b 'to :c} {'from :d 'to :e} {'from :e 'to :f} {'from :a 'to :c} {'from :d 'to :f})
+(query (link :a to)) ; => ({'to :b} {'to :c})
+```
+
+The execution result will be a list of records. An empty list will be emitted if no fact match the query.
+If you only want to test if a fact is true, use `is-true?` macro.
+
+### Combinator
+Special combinator can help you build powerful queries.
+
+* `and` Accepts arbitrary queries, the result query will match if all queries match. 
+* `or` Accepts arbitrary queries, the result query will match if one of the queries match. 
+* `but` Accepts a query, the result query will not match if this query matches.
+* `?` Accepts an expression evaluated to boolean, the result query will match if the expression is true.
+* `execute-lisa` Just runs the accepted expression and do nothing to the result.
+* `=` is the unifier that unifies two expressions.
+* `<-` Accepts one symbol and an expression, evaluate the expression and unify the result to that symbol.
+
+```clojure
+(fact (salary a 114))
+(fact (salary b 514))
+
+(query (and (salary x y) (? (> y 200)))) ; => ({'x :b 'y 514})
+(query (and (salary x y) (execute-lisa (println! y)))) ; Prints 114 514 and the result should be ({'x :a 'y 114} {'x :b 'y 514})
+
+(query (= (x x x) ((1 b c) (a 2 c) (a b 3)))); => ({'a 1 'b 2 'c 3 'x (1 2 3)})
+
+(define-rule (minus-one x y)
+    (<- y (- x 1)))
+(is-true? (minus-one 3 2)) ; => true
 ```
 
 ## Great! How to use it?

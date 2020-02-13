@@ -112,6 +112,14 @@ object DotAccessor {
     }].applyDynamic(acc)(args: _*)
   }
 
+  def handleReflectionException[T](block: => T): T = {
+    try block
+    catch {
+      case ex: java.lang.reflect.InvocationTargetException =>
+        throw ex.getTargetException
+    }
+  }
+
   @throws[ScalaReflectionException]("When no underlying method")
   def applyDotOfPlainObject[A : ClassTag](acc: String)(obj: A)(args: Any*)(expressionArgs: Expression*) = {
     val classObj = getClassObject(obj)
@@ -154,7 +162,7 @@ object DotAccessor {
         applyDotDynamic(acc)(dynamic)(args: _*)
       }.getOrElse(applyDotOfPlainObject(acc)(obj)(args: _*)(expressionArgs: _*))
       case _ =>
-        applyDotOfPlainObject(acc)(obj)(args: _*)(expressionArgs: _*)
+        handleReflectionException(applyDotOfPlainObject(acc)(obj)(args: _*)(expressionArgs: _*))
     }
   }
 

@@ -52,4 +52,8 @@ object SimpleLispTree {
   case class PrecompiledSExpression(exp: LispExp.Expression) extends SimpleLispTree {
     override def toString: String = exp.code
   }
+
+  case class SAtomLeaf(value: String) extends SimpleLispTree {
+    override def toString: String = s":$value"
+  }
 }

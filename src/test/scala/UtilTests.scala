@@ -1,7 +1,8 @@
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-
 import moe.roselia.lisa
+import moe.roselia.lisa.Evaluator
+import moe.roselia.lisa.LispExp.{NilObj, PrimitiveFunction}
 
 class UtilTests extends AsyncWordSpec with Matchers {
   "Returnable" should {
@@ -29,6 +30,14 @@ class UtilTests extends AsyncWordSpec with Matchers {
     "produce an exception out of returnable block" in {
       a[lisa.Util.ReturnControlFlow.ReturnException[Int]] should be thrownBy {
         new Returns[Int].returns(1)
+      }
+    }
+
+    "not be caught in applications" in {
+      val ret = new Returns[Any]
+      val retExpr = PrimitiveFunction(_ => ret.returns(NilObj))
+      a[lisa.Util.ReturnControlFlow.ReturnException[_]] should be thrownBy {
+        Evaluator.applyToEither(retExpr, Nil)
       }
     }
   }
