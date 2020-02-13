@@ -111,6 +111,13 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
         applyDot("lisaString")(tester)("no way")()
       }
     }
+
+    "should not catch control flows" in {
+      val breaks = new util.control.Breaks
+      a[util.control.ControlThrowable] should be thrownBy {
+        applyDot("break")(breaks)()()
+      }
+    }
   }
 
   "Reflection Constructor" should {

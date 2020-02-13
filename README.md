@@ -597,7 +597,7 @@ Special combinator can help you build powerful queries.
 * `and` Accepts arbitrary queries, the result query will match if all queries match. 
 * `or` Accepts arbitrary queries, the result query will match if one of the queries match. 
 * `but` Accepts a query, the result query will not match if this query matches.
-* `lisa` Accepts an expression evaluated to boolean, the result query will match if the expression is true.
+* `?` Accepts an expression evaluated to boolean, the result query will match if the expression is true.
 * `execute-lisa` Just runs the accepted expression and do nothing to the result.
 * `=` is the unifier that unifies two expressions.
 * `<-` Accepts one symbol and an expression, evaluate the expression and unify the result to that symbol.
@@ -606,7 +606,7 @@ Special combinator can help you build powerful queries.
 (fact (salary a 114))
 (fact (salary b 514))
 
-(query (and (salary x y) (lisa (> y 200)))) ; => ({'x :b 'y 514})
+(query (and (salary x y) (? (> y 200)))) ; => ({'x :b 'y 514})
 (query (and (salary x y) (execute-lisa (println! y)))) ; Prints 114 514 and the result should be ({'x :a 'y 114} {'x :b 'y 514})
 
 (query (= (x x x) ((1 b c) (a 2 c) (a b 3)))); => ({'a 1 'b 2 'c 3 'x (1 2 3)})

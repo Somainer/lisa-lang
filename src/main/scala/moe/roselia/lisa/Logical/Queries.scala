@@ -3,7 +3,7 @@ package moe.roselia.lisa.Logical
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Env, Environment, MutableEnv}
 import moe.roselia.lisa.Evaluator
 import moe.roselia.lisa.Evaluator.{EvalFailure, EvalSuccess}
-import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, SAtom, SBool, Symbol}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, Quote, SAtom, SBool, Symbol}
 
 
 trait Queries {
@@ -277,12 +277,14 @@ trait Queries {
         case Symbol("and") :: xs => Matcher.and(xs.map(compile))
         case Symbol("or") :: xs => Matcher.or(xs.map(compile))
         case Symbol("not") :: x :: Nil => compile(x).not
-        case Symbol("lisa") :: x :: Nil => Matcher.fromLisa(x, inEnv)
+        case Symbol("?") :: x :: Nil => Matcher.fromLisa(x, inEnv)
         case Symbol("execute-lisa") :: x :: Nil => Matcher.lisaExecutor(x, inEnv)
         case Symbol("=") :: lhs :: rhs :: Nil => Matcher.createUnifier(lhs, rhs)
         case Symbol("<-") :: Symbol(name) :: exp :: Nil => Matcher.createAssigner(name, exp, inEnv)
         case Symbol(sym) :: xs if context.hasRule(sym) =>
           Matcher.fromRule(context.getRule(sym).get, xs, inEnv)
+        case Quote(symbol@Symbol(_)) :: xs =>
+          Matcher.fromExpression(LisaList(symbol :: xs))
         case Symbol(sym) :: xs =>
           Matcher.fromExpression(LisaList(SAtom(sym) :: xs))
         case xs => Matcher.fromExpression(LisaList(xs))
