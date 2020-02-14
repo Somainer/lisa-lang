@@ -57,6 +57,10 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
       case (body :: Nil, e) =>
         executeQuery(body.toRawList, e) -> e
     },
+    "lazy-query"-> PrimitiveMacro {
+      case (body :: Nil, e) =>
+        WrappedScalaObject(runMatch(body.toRawList, e)) -> e
+    },
     "execute-query" -> SideEffectFunction { case (body :: Nil, e) =>
       executeQuery(body, e) -> e
     },

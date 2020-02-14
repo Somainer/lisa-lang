@@ -30,8 +30,8 @@ object Main {
     robot.keyPress(code)
     robot.keyRelease(code)
   }
-  lazy val isMac = {
-    util.Properties.isMac
+  lazy val isHeadless: Boolean = {
+    java.awt.GraphicsEnvironment.isHeadless
   }
 
   private def sendSpace(spaceNum: Int): Unit =
@@ -39,8 +39,8 @@ object Main {
 
   @annotation.tailrec def prompt(env: Environments.Environment, lastInput: String = "", resultIndex: Int = 0): Unit = {
     val lastIndentLevel = indentLevel(lastInput)
-    val tabs = if (isMac && lastIndentLevel > 0) " ".repeat(lastIndentLevel << 2) else ""
-    if (!isMac && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
+    val tabs = if (isHeadless && lastIndentLevel > 0) " ".repeat(lastIndentLevel << 2) else ""
+    if (!isHeadless && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
     val s = scala.io.StdIn
       .readLine(if(lastInput.isEmpty) "lisa>" else s"....>${tabs}")
     val concatInput = s"${lastInput}\n$s".trim
