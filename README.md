@@ -618,18 +618,22 @@ Special combinator can help you build powerful queries.
 
 ## Great! How to use it?
 
-`sbt pack`
-In target/pack/bin
+Install SBT
 
-`./main` to enter REPL
+run `sbt pack`
 
-`./main <filename>` to execute a file.
+Compiled binaries can be discovered
+in target/pack/bin
 
-`./main repl <filename>` To load the file before entering repl.
+`./lisa` to enter REPL
+
+`./lisa <filename>` to execute a file.
+
+`./lisa repl <filename>` To load the file before entering repl.
 
 Also, there are some examples in `src/test/lisa/`
 
-If you are using VSCode, I hope you will be happy with vscode-scheme and Bracket Pair Colorizer.
+If you are using `VSCode`, I hope you will be happy with vscode-scheme and Bracket Pair Colorizer.
 
 ## Awesome! How can I use it in production?
 

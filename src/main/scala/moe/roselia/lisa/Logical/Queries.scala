@@ -151,7 +151,7 @@ trait Queries {
 
   def matchResultToLisaNative(result: OutputType): Expression = LisaList {
     result.map { e =>
-      LisaMapRecord(e.collectDefinedValues.map(k => k -> e.getValueOption(k).get).toMap)
+      LisaMapRecord(e.flattenToMap)
     }.toList
   }
 

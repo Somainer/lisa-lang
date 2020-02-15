@@ -1,7 +1,7 @@
 package moe.roselia.lisa.Logical
 
 import moe.roselia.lisa.Environments.{EmptyEnv, Environment}
-import moe.roselia.lisa.LispExp.{Expression, LisaList, NilObj, PrimitiveFunction, PrimitiveMacro, Quote, SAtom, SBool, SString, SideEffectFunction, Symbol, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, NilObj, PrimitiveFunction, PrimitiveMacro, Quote, SAtom, SBool, SString, SideEffectFunction, Symbol, WrappedScalaObject}
 
 case class LogicalEnvironment(var logicalContext: LogicalContext) extends Queries {
   implicit def context: LogicalContext = logicalContext
@@ -59,7 +59,9 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
     },
     "lazy-query"-> PrimitiveMacro {
       case (body :: Nil, e) =>
-        WrappedScalaObject(runMatch(body.toRawList, e)) -> e
+        WrappedScalaObject(
+          runMatch(body.toRawList, e).map(m => LisaMapRecord(m.flattenToMap))
+        ) -> e
     },
     "execute-query" -> SideEffectFunction { case (body :: Nil, e) =>
       executeQuery(body, e) -> e
