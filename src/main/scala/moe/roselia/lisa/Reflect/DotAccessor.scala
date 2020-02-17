@@ -60,7 +60,7 @@ object DotAccessor {
           accessDotDynamic(acc)(dynamic)
         }.getOrElse(accessDotOfPlainObject(acc)(obj))
       case _ =>
-        accessDotOfPlainObject(acc)(obj)
+        handleReflectionException(accessDotOfPlainObject(acc)(obj))
     }
   }
 

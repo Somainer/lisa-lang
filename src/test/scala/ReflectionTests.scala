@@ -13,6 +13,7 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
 
     def lisaString(fn: Double): String = fn.toString
   }
+  class DistinctException extends RuntimeException
   "AccessDot" should {
     import lisa.Reflect.DotAccessor.accessDot
     "get nil-arity function" in {
@@ -50,6 +51,15 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
       ))
       record.whatever shouldEqual result
       accessDot("whatever")(record) shouldEqual result
+    }
+
+    "throw what is thrown" in {
+      val x = new {
+        def o: Nothing = throw new DistinctException
+      }
+      a [DistinctException] shouldBe thrownBy {
+        accessDot("o")(x)
+      }
     }
   }
   "ApplyDot" should {
@@ -116,6 +126,16 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
       val breaks = new util.control.Breaks
       a[util.control.ControlThrowable] should be thrownBy {
         applyDot("break")(breaks)()()
+      }
+    }
+
+    "throw what is thrown" in {
+      val x = new {
+        def f(x: Int) = throw new DistinctException
+      }
+
+      a [DistinctException] shouldBe thrownBy {
+        applyDot("f")(x)(1)()
       }
     }
   }

@@ -30,8 +30,12 @@ object Main {
     robot.keyPress(code)
     robot.keyRelease(code)
   }
+  def isMac: Boolean = util.Properties.isMac
   lazy val isHeadless: Boolean = {
     java.awt.GraphicsEnvironment.isHeadless
+  }
+  lazy val shouldFixIndent: Boolean = {
+    isHeadless || isMac
   }
 
   private def sendSpace(spaceNum: Int): Unit =
@@ -39,8 +43,8 @@ object Main {
 
   @annotation.tailrec def prompt(env: Environments.Environment, lastInput: String = "", resultIndex: Int = 0): Unit = {
     val lastIndentLevel = indentLevel(lastInput)
-    val tabs = if (isHeadless && lastIndentLevel > 0) " ".repeat(lastIndentLevel << 2) else ""
-    if (!isHeadless && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
+    val tabs = if (shouldFixIndent && lastIndentLevel > 0) " ".repeat(lastIndentLevel << 2) else ""
+    if (!shouldFixIndent && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
     val s = scala.io.StdIn
       .readLine(if(lastInput.isEmpty) "lisa>" else s"....>${tabs}")
     val concatInput = s"${lastInput}\n$s".trim
@@ -68,7 +72,9 @@ object Main {
                       println(s"[$resultIndex]: ${s.tpe.name} = $s")
                   }
                   result match {
-                    case NilObj | LispExp.Failure(_, _) =>
+                    case LispExp.Failure(_, _) =>
+                      prompt(newEnv, resultIndex = resultIndex)
+                    case x if x eq NilObj =>
                       prompt(newEnv, resultIndex = resultIndex)
                     case s =>
                       prompt(newEnv.withValue(s"[$resultIndex]", s), resultIndex = resultIndex + 1)
