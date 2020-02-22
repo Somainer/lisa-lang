@@ -4,7 +4,7 @@ import java.io.{ByteArrayOutputStream, FileInputStream, FileOutputStream, Object
 
 import moe.roselia.lisa.Environments.{CombineEnv, NameSpacedEnv}
 import moe.roselia.lisa.Evaluator.EvalResult
-import moe.roselia.lisa.LispExp.{NilObj, SString, SideEffectFunction, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{LisaList, NilObj, SString, SideEffectFunction, WrappedScalaObject}
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -145,7 +145,7 @@ object Main {
               case exp => compileChain(next, exp::acc)
             }
 
-          case Failure(msg, _) =>
+          case NoSuccess(msg, _) =>
             printlnErr(s"Fatal: $msg")
             Nil
         }
@@ -223,19 +223,19 @@ object Main {
 
     }
     else {
-      args match {
-        case Array(fileName) =>
-          executeFile(fileName,
-            preludeEnv.withValue("__PATH__", SString(fileName)).withValue("args", WrappedScalaObject(args.toSeq)))
-        case Array("repl", fileName) =>
+      args.toList match {
+        case "repl" :: fileName :: Nil =>
           prompt(executeFile(
             fileName, preludeEnv.withValue("__PATH__", SString(fileName))
           ))
-        case Array("compile", fileName, "-o", toFile) =>
+        case "compile" :: fileName :: "-o" :: toFile :: Nil =>
           compileFile(fileName, toFile)
-        case Array("execute", fileName) =>
+        case "execute" :: fileName :: Nil =>
           val result = executeCompiled(fileName, preludeEnv)
           if(!result.isSuccess) printlnErr(s"Error: $result")
+        case fileName :: arguments =>
+          executeFile(fileName,
+            preludeEnv.withValue("__PATH__", SString(fileName)).withValue("system/arguments", LisaList(arguments.map(SString))))
         case _ => printlnErr("I could not understand your arguments.")
       }
 

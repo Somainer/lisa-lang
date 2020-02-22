@@ -1,7 +1,7 @@
 package moe.roselia.lisa.Logical
 
 import moe.roselia.lisa.Environments.{EmptyEnv, Environment}
-import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, NilObj, PrimitiveFunction, PrimitiveMacro, Quote, SAtom, SBool, SString, SideEffectFunction, Symbol, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, NameOnlyType, NilObj, PrimitiveFunction, PrimitiveMacro, Quote, SAtom, SBool, SString, SideEffectFunction, Symbol, TypedLisaRecord, WrappedScalaObject}
 
 case class LogicalEnvironment(var logicalContext: LogicalContext) extends Queries {
   implicit def context: LogicalContext = logicalContext
@@ -40,6 +40,11 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
         NilObj -> e
       case (xs, _) => throw new IllegalArgumentException(s"1 argument expected but ${xs.length} found.")
     },
+    "add-fact" -> PrimitiveFunction.withArityChecked(1) {
+      case (ll: LisaList[_]) :: Nil =>
+        addFact(ll)
+        NilObj
+    },
     "get-facts" -> PrimitiveFunction.withArityChecked(0) { case _ =>
       context.facts
     },
@@ -63,14 +68,30 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
           runMatch(body.toRawList, e).map(m => LisaMapRecord(m.flattenToMap))
         ) -> e
     },
-    "execute-query" -> SideEffectFunction { case (body :: Nil, e) =>
+    "run-query" -> SideEffectFunction { case (body :: Nil, e) =>
       executeQuery(body, e) -> e
+    },
+    "run-lazy-query"-> SideEffectFunction {
+      case (body :: Nil, e) =>
+        WrappedScalaObject(
+          runMatch(body, e).map(m => LisaMapRecord(m.flattenToMap))
+        ) -> e
     },
     "is-true?" -> PrimitiveMacro {
       case (body :: Nil, e) =>
         factExists(body.toRawList, e) -> e
     },
+    "test-is-true?" -> SideEffectFunction {
+      case (body :: Nil, e) =>
+        factExists(body, e) -> e
+    },
     "current-context" -> PrimitiveFunction.withArityChecked(0) { case _ =>
+      TypedLisaRecord(Map(
+        "facts" -> context.facts,
+        "rules" -> LisaMapRecord(context.rules.view.mapValues(WrappedScalaObject(_)).toMap, "LogicalRules")
+      ), NameOnlyType("LogicalContext"))
+    },
+    "current-context/raw" -> PrimitiveFunction.withArityChecked(0) { case _ =>
       WrappedScalaObject(context)
     },
     "pop-context!" -> SideEffectFunction { case (_, e) =>

@@ -447,7 +447,7 @@ object LispExp {
       accumulateDependencies(predicate :: consequence :: alternative :: Nil, defined)
 
     override def toRawList: Expression =
-      LisaList.from(Symbol("if"), predicate.toRawList, consequence.toRawList, alternative.toRawList)
+      LisaList.fromExpression(Symbol("if"), predicate.toRawList, consequence.toRawList, alternative.toRawList)
   }
 
   case class SCond(conditions: List[(Expression, Expression)]) extends Expression {
@@ -456,8 +456,8 @@ object LispExp {
 
     override def toRawList: Expression = {
       val condition = conditions.map {
-        case (SBool(true), exp) => LisaList.from(Symbol("else"), exp.toRawList)
-        case (pred, consequence) => LisaList.from(pred.toRawList, consequence.toRawList)
+        case (SBool(true), exp) => LisaList.fromExpression(Symbol("else"), exp.toRawList)
+        case (pred, consequence) => LisaList.fromExpression(pred.toRawList, consequence.toRawList)
       }
       LisaList(Symbol("cond") :: condition)
     }
@@ -909,8 +909,6 @@ object LispExp {
   object LisaList {
     private val nil: LisaList[Nothing] = LisaList(Nil)
 
-    def apply[T <: Expression](list: List[T]) = new LisaList(list)
-    def from[T <: Expression](list: T*) = new LisaList(list.toList)
     def fromExpression(exps: Expression*) = new LisaList(exps.toList)
     def empty[T <: Expression]: LisaList[T] = nil
     def newBuilder[A <: Expression]: mutable.Builder[A, LisaList[A]] = List.newBuilder.mapResult(apply)

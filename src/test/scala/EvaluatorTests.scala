@@ -29,7 +29,7 @@ class EvaluatorTests extends AsyncFunSuite with Matchers with ExpressionHelper {
     val EvalSuccess(num, _) = Evaluator.eval(fact(5), EmptyEnv)
     num shouldEqual (SInteger(120))
     a[StackOverflowError] should be thrownBy {
-      Evaluator.eval(fact(260), EmptyEnv)
+      Evaluator.eval(fact(10000), EmptyEnv)
     }
   }
 
@@ -48,7 +48,7 @@ class EvaluatorTests extends AsyncFunSuite with Matchers with ExpressionHelper {
     assertResult(factFunction.freeVariables)(Set("*", "-"))
     val factOf5 = factFunction(5).pipe(Evaluator.eval(_, EmptyEnv)).asInstanceOf[EvalSuccess].expression
     assertResult(factOf5)(SInteger(120))
-    val factOf1000 = factFunction(1000).pipe(Evaluator.eval(_, EmptyEnv)).asInstanceOf[EvalSuccess].expression
-    assert(factOf1000.isInstanceOf[SInteger])
+    val factOf10000 = factFunction(10000).pipe(Evaluator.eval(_, EmptyEnv)).asInstanceOf[EvalSuccess].expression
+    assert(factOf10000.isInstanceOf[SInteger])
   }
 }

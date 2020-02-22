@@ -406,17 +406,19 @@ object Preludes extends LispExp.Implicits {
     "cons" -> PrimitiveFunction.withArityChecked(2) {
       case x :: (ll: LisaListLike[Expression]) :: Nil => LisaList(x :: ll.list)
       case x :: WrappedScalaObject(wl: Seq[_]) :: Nil => WrappedScalaObject(x +: wl)
-      case x :: y :: Nil => LisaList.from(x, y)
+      case x :: y :: Nil => LisaList.fromExpression(x, y)
     },
     "car" -> PrimitiveFunction.withArityChecked(1) {
       case LisaList(x :: _) :: Nil => x
       case WrappedScalaObject(ls: Seq[_]) :: Nil => fromScalaNative(ls.head)
       case SString(s) :: Nil => s.head.toString
+      case x :: Nil => throw new UnsupportedOperationException(s"car on $x")
     },
     "cdr" -> PrimitiveFunction.withArityChecked(1) {
       case LisaList(_ :: t) :: Nil => LisaList(t)
       case WrappedScalaObject(ls: Seq[_]) :: Nil => WrappedScalaObject(ls.tail)
       case SString(s) :: Nil => s.tail
+      case x :: Nil => throw new UnsupportedOperationException(s"cdr on $x")
     },
     "map" -> PrimitiveFunction.withArityChecked(2) {
       case WrappedScalaObject(ls: Iterable[Any])::fn::Nil => fn match {
@@ -507,6 +509,29 @@ object Preludes extends LispExp.Implicits {
     "match-list" -> PrimitiveFunction.withArityChecked(2) {
       case (LisaList(pattern)) :: (LisaList(arguments)) :: Nil =>
         Evaluator.matchArgument(pattern, arguments).map(LisaMapRecord(_)).getOrElse(NilObj)
+    },
+    "->record" -> PrimitiveFunction.withArityChecked(1) {
+      case WrappedScalaObject(m: Map[_, _]) :: Nil =>
+        LisaMapRecord(m.map {
+          case (k, v) => k.toString -> fromScalaNative(v)
+        })
+      case WrappedScalaObject(jm: java.util.Map[_, _]) :: Nil =>
+        import scala.jdk.CollectionConverters._
+        LisaMapRecord(jm.asScala.map {
+          case (k, v) => k.toString -> fromScalaNative(v)
+        }.toMap)
+    },
+    "range" -> PrimitiveFunction {
+      case SInteger(from) :: SInteger(to) :: Nil =>
+        WrappedScalaObject(Range(from.toInt, to.toInt))
+      case SInteger(from) :: SInteger(to) :: SInteger(step) :: Nil =>
+        WrappedScalaObject(Range(from.toInt, to.toInt, step.toInt))
+    },
+    "range/inclusive" -> PrimitiveFunction {
+      case SInteger(from) :: SInteger(to) :: Nil =>
+        WrappedScalaObject(Range.inclusive(from.toInt, to.toInt))
+      case SInteger(from) :: SInteger(to) :: SInteger(step) :: Nil =>
+        WrappedScalaObject(Range.inclusive(from.toInt, to.toInt, step.toInt))
     }
   ))
 

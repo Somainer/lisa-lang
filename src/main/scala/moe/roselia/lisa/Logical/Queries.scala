@@ -11,6 +11,9 @@ trait Queries {
   type OutputType = QuerySeq[Environment]
   type MatcherFunction = (QuerySeq[Environment], LogicalContext) => OutputType
 
+  def emptyResult: OutputType = LazyList.empty
+  def makeResult(xs: Environment*): OutputType = LazyList.from(xs)
+
   trait Matcher extends MatcherFunction {
     def and(that: Matcher): Matcher = (in, lc) => {
       val thisOut = this(in, lc)
@@ -36,6 +39,14 @@ trait Queries {
       in.filterNot(m => thisOut.exists(existPart(_, m.eq)))
     }
 
+    def unique: Matcher = (in, lc) => {
+      in.flatMap { frame =>
+        val output = this(makeResult(frame), lc)
+        if (output.nonEmpty && output.tail.isEmpty) output.headOption
+        else emptyResult
+      }
+    }
+
     def mapEveryFrame(mapper: Environment => Environment): Matcher = and { (in, _) =>
       in.map(mapper)
     }
@@ -43,9 +54,9 @@ trait Queries {
     def flatMapEveryFrame(mapper: Environment => IterableOnce[Environment]): Matcher = and((in, _) => in.flatMap(mapper))
   }
   object Matcher {
-    def unit(e: Environment): Matcher = (_, _) => LazyList(e)
+    def unit(e: Environment): Matcher = (_, _) => makeResult(e)
     def success: Matcher = (in, _) => in
-    def fail: Matcher = (_, _) => LazyList.empty
+    def fail: Matcher = (_, _) => emptyResult
 
     def and(matchers: Seq[Matcher]): Matcher =
       matchers.fold(success)(_ and _)
@@ -114,7 +125,7 @@ trait Queries {
                 case Symbol(s) => previous.getValueOption(s).get
                 case x => x
               }.toMap
-              val inputs = LazyList(MutableEnv.fromMap(determinedSubstituted))
+              val inputs = makeResult(MutableEnv.fromMap(determinedSubstituted))
 
               matcher(inputs, lc).map { m =>
                 undetermined.foldLeft(previous) {
@@ -145,7 +156,7 @@ trait Queries {
     }
 
     def runMatcher(matcher: Matcher)(implicit context: LogicalContext): OutputType = {
-      matcher(LazyList(MutableEnv.createEmpty), context)
+      matcher(makeResult(MutableEnv.createEmpty), context)
     }
   }
 
@@ -281,6 +292,7 @@ trait Queries {
         case Symbol("execute-lisa") :: x :: Nil => Matcher.lisaExecutor(x, inEnv)
         case Symbol("=") :: lhs :: rhs :: Nil => Matcher.createUnifier(lhs, rhs)
         case Symbol("<-") :: Symbol(name) :: exp :: Nil => Matcher.createAssigner(name, exp, inEnv)
+        case Symbol("unique") :: x :: Nil => compile(x).unique
         case Symbol(sym) :: xs if context.hasRule(sym) =>
           Matcher.fromRule(context.getRule(sym).get, xs, inEnv)
         case Quote(symbol@Symbol(_)) :: xs =>

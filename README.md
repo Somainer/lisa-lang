@@ -55,6 +55,8 @@ The `a` attribute of record `s` can be accessed via:
 
 get procedure can be called as `(get map key)` `(get map key not-found)`
 
+To convert a `Map` to `record`, use `->record` procedure.
+
 ## Syntax
 
 ```scheme
@@ -582,6 +584,10 @@ Symbols in rules are treated as variables while atoms are treated as atoms.
 Queries are means of combination in logical programming.
 A query can be combines with facts, rules and some special combinator.
 A query can be executed via macro `query`.
+If you do not want to do all searches, you can delay the computation via `lazy-query`,
+this macro will return a `LazyList` which will not compute all results at once.
+To iterate through results, use `car` and `cdr` and use `nil?` to test if
+the sequence is empty like any other seq-likes in Lisa.
 
 ```clojure
 (query (link from to)) ; => ({'from :a 'to :b} {'from :b 'to :c} {'from :d 'to :e} {'from :e 'to :f} {'from :a 'to :c} {'from :d 'to :f})
@@ -601,6 +607,7 @@ Special combinator can help you build powerful queries.
 * `execute-lisa` Just runs the accepted expression and do nothing to the result.
 * `=` is the unifier that unifies two expressions.
 * `<-` Accepts one symbol and an expression, evaluate the expression and unify the result to that symbol.
+* `unique` Accepts on query, the result query will match if each constraint only has exactly one match.
 
 ```clojure
 (fact (salary a 114))
@@ -615,6 +622,18 @@ Special combinator can help you build powerful queries.
     (<- y (- x 1)))
 (is-true? (minus-one 3 2)) ; => true
 ```
+
+### Procedure Variants
+Except from macros like `fact`, `query`, there also have procedure versions to make it easier to
+do logical queries and add facts from variables. The name of these procedures are prefixed with verbs.
+
+* `fact` => `add-fact`
+* `query` => `run-query`
+* `lazy-query` => `run-lazy-query`
+* `is-true?` => `test-is-true?`
+
+So, basically, you can write a simple query interface by writing an infinite loop of
+`(println! (run-query (read)))`.
 
 ## Great! How to use it?
 

@@ -2,8 +2,8 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.OptionValues
 import org.scalatest.wordspec.AsyncWordSpec
 import moe.roselia.lisa
-import moe.roselia.lisa.Environments.{EmptyEnv, MutableEnv}
-import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, NilObj}
+import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, MutableEnv}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, LisaRecordWithMap, NilObj}
 import moe.roselia.lisa.Logical.{LogicalContext, LogicalEnvironment, LogicalRule}
 
 class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues with ExpressionHelper {
@@ -19,7 +19,7 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
        * z = 1
       **/
       val pattern1 = LisaList("x".asSymbol :: "x".asSymbol :: Nil)
-      val pattern2 = LisaList.from(
+      val pattern2 = LisaList.fromExpression(
         LisaList.fromExpression(1, "y".asSymbol, 3),
         LisaList.fromExpression("z".asSymbol, 2, 3)
       )
@@ -44,7 +44,7 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
 
     "deal with unknown values" in  {
       val pattern1 = LisaList("x".asSymbol :: "x".asSymbol :: Nil)
-      val pattern2 = LisaList.from(
+      val pattern2 = LisaList.fromExpression(
         LisaList.fromExpression("y".asSymbol, 1, "w".asSymbol),
         LisaList.fromExpression(2, "v".asSymbol, "z".asSymbol)
       )
@@ -60,7 +60,7 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
 
     "refuse to solve a fix-point equation" in {
       val pattern1 = LisaList("x".asSymbol :: "x".asSymbol :: Nil)
-      val pattern2 = LisaList.from(
+      val pattern2 = LisaList.fromExpression(
         "y".asSymbol,
         LisaList.fromExpression(1, LisaList.fromExpression("...".asSymbol, "y".asSymbol))
       )
@@ -181,6 +181,8 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
       |        (and (path x u d1)
       |             (distance u y d2)
       |             (<- d (+ d1 d2)))))
+      |(define-rule (single-source x)
+      |    (and (path x _ _) (unique (path x y _))))
       |""".stripMargin.toListOfLisa.evalOn(env)
 
     def runQuery(qs: String) = {
@@ -208,6 +210,23 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
 
     "handle not cases" in {
       runQuery("(not-connected 0 2)") shouldBe empty
+    }
+
+    "handle unique combinator" in {
+      val output = runQuery("(single-source x)")
+      output should have size 2
+      output.map(_.get("x")) should contain allElementsOf LisaList.fromExpression(0, 3)
+    }
+
+    "dump and load correctly" in {
+      val dumpedContext = lisa"(current-context)".evalOn(env)
+      dumpedContext shouldBe a[LisaRecordWithMap[_]]
+      val loadedContext = "(logical/push-context ctx) (current-context/raw)"
+        .toListOfLisa
+        .evalOn(
+          CombineEnv(Seq(lisa.Logical.LogicalModuleEnvironment, EmptyEnv.withValue("ctx", dumpedContext)))
+        ).last.asInstanceOf[lisa.LispExp.WrappedScalaObject[_]].obj
+      loadedContext shouldEqual lcEnv.context
     }
   }
 }

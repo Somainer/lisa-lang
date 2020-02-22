@@ -10,6 +10,9 @@ object Evaluator {
   import Environments._
   import LispExp._
   import SimpleLispTree._
+
+  val shouldOptimizeTailCall: Boolean = true
+
   trait InterpreterControlFlow {
     def appendTrace(msg: => String): InterpreterControlFlow
   }
@@ -408,6 +411,7 @@ object Evaluator {
                           case Right(value) => value
                         }
                     e match {
+                      case _ if !shouldOptimizeTailCall => evaluate(body, env)
                       case _: Closure => tailCallOptimized
                       case poly: PolymorphicExpression if !poly.byName => tailCallOptimized
                       case _ => evaluate(body, env)
@@ -456,7 +460,7 @@ object Evaluator {
         case LisaList(ll) => liftOption(ll.map {
             case UnQuote(LisaList(ull)) => liftOption(ull.map(u)).map(_.toList).map(LisaList(_))
             case sym@UnQuote(UnQuote(Symbol(_))) => u(sym)
-            case ex => u(ex).map(LisaList.from(_))
+            case ex => u(ex).map(LisaList.fromExpression(_))
           }).map(flattenSeq).map(_.toList).map(LisaList(_))
         case Quote(s) => u(s).map(Quote)
         case UnQuote(Symbol(sym)) => env.getValueOption(sym)
