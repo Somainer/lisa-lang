@@ -78,6 +78,7 @@ object Evaluator {
     case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
+    case Value("null") => JVMNull
     case SUnQuote(q) => UnQuote(compileToList(q))
     case SAtomLeaf(atom) => LispExp.SAtom(atom)
     case Value(value) => {

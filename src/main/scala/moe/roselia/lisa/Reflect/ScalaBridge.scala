@@ -18,6 +18,7 @@ object ScalaBridge {
   }
 
   def toScalaNative(exp: Expression): Any = exp match {
+    case JVMNull => null
     case SBool(b) => b
     case SInteger(i) => if(i.isValidInt) i.toInt else i
     case SString(s) => s
@@ -39,11 +40,18 @@ object ScalaBridge {
   }
 
   def fromScalaNative(any: Any): Expression = any match {
+    case null => JVMNull
     case list: List[_] =>
       LisaList(list.map(fromScalaNative))
+    case array: Array[_] => LisaList(array.map(fromScalaNative).toList)
     case ex: Expression => ex
     case b: Boolean => SBool(b)
+    case s: Short => SInteger(s.intValue())
+    case b: Byte => SInteger(b.intValue())
+    case c: Char => SString(c.toString)
     case i: Int => SInteger(i)
+    case l: Long => SInteger(LisaInteger(l))
+    case l: java.lang.Long => SInteger(LisaInteger(l))
     case i: java.lang.Integer => SInteger(i.intValue())
     case d: Double => SFloat(d)
     case f: Float => SFloat(f.toDouble)
@@ -51,7 +59,7 @@ object ScalaBridge {
     case bi: LisaInteger => SInteger(bi)
     case di: LisaDecimal => SFloat(di)
     case scala.Symbol(sym) => Symbol(sym)
-    case () | null => NilObj
+    case () => NilObj
     // case ls: List[Any] => WrappedScalaObject(ls)
 //    case tuple: Product => LisaList(tuple.productIterator.map(fromScalaNative).toList)
 //    case fn: Function[Any, Any] =>

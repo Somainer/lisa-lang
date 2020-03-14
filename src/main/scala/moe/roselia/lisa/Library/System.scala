@@ -4,13 +4,21 @@ import sys.process._
 import sys.env
 import util.Properties
 import moe.roselia.lisa.Environments.{EmptyEnv, Env}
-import moe.roselia.lisa.LispExp.{LisaMapRecord, NilObj, PrimitiveFunction, SString}
+import moe.roselia.lisa.LispExp.{LisaMapRecord, NilObj, PrimitiveFunction, SString, WrappedScalaObject}
 import moe.roselia.lisa.LispExp.Implicits._
+
+import scala.concurrent.Future
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object System {
   lazy val systemEnv = Env(Map(
     "system" -> PrimitiveFunction {
       xs => stringSeqToProcess(xs.map(_.toString)).!!
+    },
+    "system/fork" -> PrimitiveFunction { xs =>
+      WrappedScalaObject(Future {
+        xs.map(_.toString).!!
+      })
     },
     "get-system-environment" -> PrimitiveFunction {
       case SString(name) :: SString(alternative) :: Nil =>
@@ -36,6 +44,10 @@ object System {
         Properties.scalaPropOrElse(name, alternative)
       case _ =>
         throw new IllegalArgumentException()
+    },
+    "throw" -> PrimitiveFunction.withArityChecked(1) {
+      case WrappedScalaObject(ex: Throwable) :: Nil => throw ex
+      case x :: Nil => throw new IllegalArgumentException(s"$x is not throwable.")
     }
   ), EmptyEnv)
 }

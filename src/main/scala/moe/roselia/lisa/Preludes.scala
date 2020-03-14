@@ -251,7 +251,7 @@ object Preludes extends LispExp.Implicits {
       }
       (x, e) match {
         case (Apply(head, tail) :: body, _) =>
-          val toBeDefined = SimpleMacroClosure((head :: tail).map(_.toRawList), body.last.toRawList, body.init.map(_.toRawList), e)
+          val toBeDefined = SimpleMacroClosure((head :: tail).map(_.toRawList), body.last, body.init, e)
           defineHelper(toBeDefined)
         case (Symbol(defined)::Nil, _)
           if e.getValueOption(defined).exists(_.isInstanceOf[SimpleMacroClosure]) =>
@@ -347,10 +347,27 @@ object Preludes extends LispExp.Implicits {
           case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
         }
     },
+    "read-many-from-string" -> PrimitiveFunction.withArityChecked(1) {
+      case SString(s) :: Nil =>
+        import SExpressionParser._
+        parseAll(rep(sExpression), s).map(_.map(Evaluator.compileToList)) match {
+          case Success(result, _) => LisaList(result)
+          case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
+        }
+    },
     "read" -> PrimitiveFunction { xs =>
       import SExpressionParser._
       parseAll(sExpression, io.StdIn.readLine(xs.mkString(" "))).map(Evaluator.compileToList) match {
         case Success(result, _) => result
+        case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
+      }
+    },
+    "read-many" -> PrimitiveFunction { xs =>
+      import SExpressionParser._
+      print(xs.mkString(" "))
+      val input = Iterator.continually(io.StdIn.readLine).takeWhile(_ ne null).mkString
+      parseAll(rep(sExpression), input).map(_.map(Evaluator.compileToList)) match {
+        case Success(result, _) => LisaList(result)
         case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
       }
     },
@@ -539,12 +556,16 @@ object Preludes extends LispExp.Implicits {
     "nil?" -> PrimitiveFunction.withArityChecked(1) {
       case NilObj :: Nil => true
       case _ :: Nil => false
-    },
+    }.withDocString("Test if an expression is an empty list."),
     "type-of" -> PrimitiveFunction.withArityChecked(1) {
       case x :: Nil => WrappedScalaObject(x.tpe)
     },
     "typename-of" -> PrimitiveFunction.withArityChecked(1) {
       case x :: Nil => x.tpe.name
+    },
+    "class-of" -> PrimitiveFunction.withArityChecked(1) {
+      case WrappedScalaObject(o) :: Nil => WrappedScalaObject(o.getClass)
+      case x :: Nil => WrappedScalaObject(x.getClass)
     },
     "integer?" -> PrimitiveFunction.withArityChecked(1) {
       case SInteger(_) :: Nil => true

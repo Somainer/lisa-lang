@@ -531,6 +531,14 @@ Integer/MAX_VALUE ; = 2147483647
 (String/format "Hello, %s!" "World") ; => "Hello, World!"
 ```
 
+### Null
+In many lisp dialects, `nil`s are empty lists, so does lisa. `nil?` tests if an object is
+an empty list. Since JVM has a special value `null` for no references, and we also need
+it for inter-operation ability. So here is also a special value `null` in lisa. `null` is
+not `nil`, and `nil?` test `null` will be `false`. The only way to test if a value `x` is null
+is `(= x null)` or `(same-reference? x null)`. `null` will be translated to JVM null if it
+is passed in JVM methods or reflections. But in lisa, we still use `()` to represent `nil`.
+
 ## Logical Programming (Experimental)
 Lisa supports logical programming. Lisa has a built-in logical programming system.
 

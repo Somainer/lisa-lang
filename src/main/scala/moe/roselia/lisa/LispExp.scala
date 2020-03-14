@@ -1,5 +1,6 @@
 package moe.roselia.lisa
 
+import moe.roselia.lisa.Annotation.RawLisa
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv}
 import moe.roselia.lisa.RecordType.{MapRecord, Record}
 
@@ -785,6 +786,13 @@ object LispExp {
         override def indented(bySpace: Int, level: Int): String = record.indented(bySpace, level)
       }
 
+    def getKeyStringOf(keyLike: Expression): String = keyLike match {
+      case SString(k) => k
+      case Symbol(sym) => sym
+      case Quote(Symbol(sym)) => sym
+      case x => throw new IllegalArgumentException(s"Unrecognized key $x.")
+    }
+
     lazy val RecordHelperEnv = Environments.Env(Map(
       "record" -> PrimitiveFunction {
         case SString(name) :: xs =>
@@ -792,10 +800,25 @@ object LispExp {
         case xs =>
           recordMaker(xs)
       },
+      "mutable-record" -> PrimitiveFunction {
+        case Nil => MutableLisaMapRecord.empty
+        case SString(name) :: Nil => MutableLisaMapRecord.empty(name)
+        case (r: LisaRecordWithMap[_]) :: Nil => MutableLisaMapRecord.fromMap(r.record, r.recordTypeName)
+      },
       "record-updated" -> PrimitiveFunction {
         case (r: LisaRecordWithMap[_]) :: xs => recordUpdater(r, xs)
         case _ =>
           throw new IllegalArgumentException(s"Expected a record")
+      },
+      "record-update!" -> PrimitiveFunction.withArityChecked(3) {
+        case (r: MutableLisaMapRecord) :: key :: value :: Nil =>
+          val k = getKeyStringOf(key)
+          r.update(k, value)
+          NilObj
+      },
+      "record-contains?" -> PrimitiveFunction.withArityChecked(2) {
+        case (r: LisaRecordWithMap[_]) :: key :: Nil =>
+          SBool(r.containsKey(getKeyStringOf(key)))
       },
       "get-record-or-else" -> PrimitiveFunction {
         case (r: LisaRecord[_]) :: SString(key) :: alter :: Nil =>
@@ -859,11 +882,58 @@ object LispExp {
     }
 
     def updated[B >: V <: Expression](key: String, value: B): LisaRecordWithMap[B]
+    @RawLisa def updated[B >: V <: Expression](key: SString, value: B): LisaRecordWithMap[B] = updated(key.value, value)
   }
 
   case class LisaMapRecord[+V <: Expression](record: Map[String, V], recordTypeName: String = "")
     extends LisaRecordWithMap[V] {
     override def updated[B >: V <: Expression](key: String, value: B): LisaMapRecord[B] = copy(record.updated(key, value))
+  }
+
+  case class MutableLisaMapRecord(map: mutable.Map[String, Expression], recordTypeName: String = "")
+    extends LisaRecordWithMap[Expression] {
+    def update(key: String, value: Expression): MutableLisaMapRecord = {
+      map.update(key, value)
+      this
+    }
+    @`inline` def updateDynamic(key: String)(value: Expression): Unit = {
+      update(key, value)
+    }
+    @RawLisa def update(key: SString, value: Expression): MutableLisaMapRecord = update(key.value, value)
+    override def record: Map[String, Expression] = map.toMap
+    @RawLisa override def updated[B >: Expression <: Expression](key: String, value: B): LisaRecordWithMap[B] = {
+      MutableLisaMapRecord.fromMap(map.toMap.updated(key, value), recordTypeName)
+    }
+    def copied: MutableLisaMapRecord = copy(map.clone())
+    def delete(key: String): Expression = {
+      map.remove(key).getOrElse(NilObj)
+    }
+
+    override def containsKey(key: String): Boolean = map.contains(key)
+    override def getOrElse[EV >: Expression](key: String, otherwise: => EV): EV = map.getOrElse(key, otherwise)
+
+    override def toString: String = {
+      val visited = mutable.ArrayBuffer.empty[Expression]
+      def traverse(curr: Expression): String = curr match {
+        case r @ MutableLisaMapRecord(m, name) =>
+          if (visited exists r.eq) "{...}" else {
+            visited.addOne(r)
+            m.map {
+              case (k, v) => s"'$k ${traverse(v)}"
+            }.mkString(s"$name {", " ", "}").stripLeading()
+          }
+        case o => o.toString
+      }
+      traverse(this)
+    }
+  }
+  object MutableLisaMapRecord {
+    def apply(map: mutable.Map[String, Expression], recordTypeName: String = ""): MutableLisaMapRecord =
+      new MutableLisaMapRecord(map, recordTypeName)
+    def fromMap(map: Map[String, Expression], recordTypeName: String = ""): MutableLisaMapRecord =
+      new MutableLisaMapRecord(mutable.Map.from(map), recordTypeName)
+    def empty(name: String): MutableLisaMapRecord = apply(mutable.Map.empty, name)
+    def empty: MutableLisaMapRecord = empty("")
   }
 
   case class TypedLisaRecord[+V <: Expression](record: Map[String, V], recordType: LisaType)
@@ -923,6 +993,13 @@ object LispExp {
     override def toString: String = s":$valuePart"
 
     override def tpe: LisaType = NameOnlyType("Atom")
+  }
+
+  case object JVMNull extends IdenticalLisaExpression with NoExternalDependency {
+    document = "JVM null object"
+    override def toString: String = "null"
+
+    override def tpe: LisaType = NameOnlyType("Null")
   }
 
   trait Implicits {

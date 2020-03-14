@@ -4,7 +4,7 @@ import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
 import moe.roselia.lisa.Util.Extractors.RichOption
 import ScalaBridge.{fromScalaNative, toScalaNative}
-import moe.roselia.lisa.LispExp.PrimitiveFunction
+import moe.roselia.lisa.LispExp.{Expression, PrimitiveFunction}
 
 object StaticFieldAccessor {
   def jvmBoxedClass(clazz: Class[_]): Class[_] = clazz match {
@@ -101,23 +101,32 @@ object StaticFieldAccessor {
   }
 
 
-  private object StaticFieldsAccessorImpl extends SpecialEnv {
-    override def getValueOption(key: String): Option[LispExp.Expression] = {
+  object StaticFieldsAccessorEnvironment extends SpecialEnv {
+    private val cache = collection.mutable.Map.empty[String, Expression]
+    private val classCache = collection.mutable.Map.empty[String, Class[_]]
+
+    override def getValueOption(key: String): Option[Expression] = {
+      cache.get(key).orElse(getValueByReflection(key))
+    }
+
+    private def getValueByReflection(key: String): Option[LispExp.Expression] = {
       key.split('/') match {
         case Array(className, fieldName) => scala.util.Try {
-          val clazz = ConstructorCaller.resolveClassBySimpleName(className)
-          if (isFieldOrNilArityMethod(clazz, fieldName))
+          val clazz = classCache.getOrElseUpdate(className, ConstructorCaller.resolveClassBySimpleName(className))
+          if (isFieldOrNilArityMethod(clazz, fieldName)) // We can not cache fields because they are potentially mutable.
             fromScalaNative(getFieldOrNilArityMethod(clazz, fieldName))
           else if(isMethod(clazz, fieldName)) {
-            PrimitiveFunction {
+            val method = PrimitiveFunction {
               xs => fromScalaNative(invokeStaticMethod(clazz, fieldName)(xs.map(toScalaNative): _*))
             }
+
+            // Methods can be cached because methods are expected to be immutable.
+            cache.update(key, method)
+            method
           } else throw new NoSuchMethodException(key)
         }.toOption
         case _ => None
       }
     }
   }
-
-  val StaticFieldsAccessorEnvironment: SpecialEnv = SpecialEnv.cached(StaticFieldsAccessorImpl)
 }
