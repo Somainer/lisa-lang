@@ -179,6 +179,8 @@ object Environments {
       env.keySet.toSet ++ parent.collectDefinedValues
 
     def frozen: Env = Env(env.toMap, parent)
+
+    def copied: MutableEnv = copy(env.clone())
   }
 
   object MutableEnv {

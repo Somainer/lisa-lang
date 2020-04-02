@@ -652,7 +652,8 @@ object LispExp {
 
 
     def withExpression(mac: SimpleMacroClosure): PolymorphicExpression = {
-      val newVariant = copy(variants = variants.appended((mac, mac.paramsPattern)))
+      val newMacro = mac.copy(capturedEnv = CombineEnv.of(innerEnvironment, mac.capturedEnv))
+      val newVariant = copy(variants = variants.appended((newMacro, newMacro.paramsPattern)))
       innerEnvironment.addValue(name, newVariant)
       newVariant
     }
@@ -713,6 +714,8 @@ object LispExp {
       else NameOnlyType(s"Polymorphic$polymorphicType")
 
     override def code: String = name
+
+    def copied: PolymorphicExpression = copy(innerEnvironment=innerEnvironment.copied)
   }
 
   object PolymorphicExpression {

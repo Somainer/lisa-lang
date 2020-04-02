@@ -24,6 +24,7 @@ object Preludes extends LispExp.Implicits {
   implicit def unwrapPromise[T](t: DirtyPromise[T]): T = t()
 
   private lazy val selectablePreludes = Map[String, DirtyPromise[Environment]](
+    "actors" -> Actors.ActorEnvironment,
     "javascript" -> javaScriptPlugin,
     "javascript-cross" -> javaScriptEnv,
     "scala" -> scalaPlugin,

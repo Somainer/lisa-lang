@@ -1,6 +1,6 @@
 name := "lisa"
 
-version := "2.4"
+version := "2.5"
 
 scalaVersion := "2.13.0"
 
@@ -19,6 +19,8 @@ libraryDependencies ++= {
     case _ => None
   }
 }
+
+libraryDependencies += "com.typesafe.akka" %% "akka-actor-typed" % "2.6.4"
 
 packMain := Map("lisa" -> "moe.roselia.lisa.Main")
 
