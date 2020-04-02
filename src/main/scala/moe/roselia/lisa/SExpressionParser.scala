@@ -1,6 +1,6 @@
 package moe.roselia.lisa
 
-import moe.roselia.lisa.LispExp.{Apply, LambdaExpression, PlainSymbol, Symbol}
+import moe.roselia.lisa.LispExp.{Apply, LambdaExpression, LisaList, PlainSymbol, Symbol}
 import moe.roselia.lisa.SimpleLispTree._
 
 import scala.util.matching.Regex
@@ -49,6 +49,6 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
       case s"#$i" => i.toInt
     }.map(PlainSymbol).toList
     PrecompiledSExpression(LambdaExpression(Evaluator.compile(ex),
-      if(variables.isEmpty) Apply(Symbol("..."), Symbol("_")::Nil)::Nil else variables))
+      if(variables.isEmpty) LisaList(Symbol("...") :: Symbol("_") :: Nil)::Nil else variables))
   }))
 }

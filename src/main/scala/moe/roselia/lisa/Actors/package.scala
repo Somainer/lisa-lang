@@ -3,7 +3,7 @@ package moe.roselia.lisa
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Props, SpawnProtocol}
 import akka.actor.typed.scaladsl.Behaviors
 
-import scala.concurrent.{Await, Awaitable, ExecutionContext, Future}
+import scala.concurrent.{Await, Awaitable, ExecutionContext, Future, Promise}
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.util.Timeout
 
@@ -48,6 +48,30 @@ package object Actors {
       "ask" -> PrimitiveFunction.withArityChecked(2) {
         case WrappedScalaObject(actorRef: ActorRef[Expression]) :: question :: Nil =>
           WrappedScalaObject(actorRef.ask[Expression](ref => LisaList(question :: WrappedScalaObject(ref) :: Nil)))
+      },
+      "future" -> PrimitiveFunction.withArityChecked(1) {
+        case fn :: Nil => WrappedScalaObject(Future {
+          Evaluator.applyToEither(fn, Nil) match {
+            case Right(value) => value
+            case Left(ex) => throw new RuntimeException(ex)
+          }
+        })
+      },
+      "promise" -> PrimitiveFunction.withArityChecked(1) {
+        case fn :: Nil =>
+          val promise = Promise[Expression]()
+          val success = PrimitiveFunction.withArityChecked(1) { case value :: Nil =>
+            promise.success(value)
+            NilObj
+          }
+          val failure = PrimitiveFunction.withArityChecked(1) {
+            case WrappedScalaObject(ex: Throwable) :: Nil =>
+              promise.failure(ex)
+              NilObj
+            case _ => throw new IllegalArgumentException(s"Failure must be an exception.")
+          }
+          Evaluator.applyToEither(fn, success :: failure :: Nil).left.foreach(s => promise.failure(new RuntimeException(s)))
+          WrappedScalaObject(promise)
       }
     )
   ), "/")
