@@ -245,7 +245,23 @@ object LispExp {
 
   }
 
-  case class SInteger(value: LisaInteger) extends SNumber(value)
+  case class SInteger(value: LisaInteger) extends SNumber(value) {
+    def <<(n: Int): SInteger = SInteger(value << n)
+    def >>(n: Int): SInteger = SInteger(value >> n)
+
+    @RawLisa def % (that: SInteger): SInteger = SInteger(value % that.value)
+    @RawLisa def /% (that: SInteger): LisaList[SInteger] = {
+      val (divider, remainder) = value /% that.value
+      LisaList(List(divider, remainder).map(SInteger(_)))
+    }
+
+    def ~ = SInteger(~value)
+    @RawLisa def &(that: SInteger): SInteger = SInteger(value & that.value)
+    @RawLisa def |(that: SInteger): SInteger = SInteger(value | that.value)
+    @RawLisa def ^(that: SInteger): SInteger = SInteger(value ^ that.value)
+
+    def pow(that: Int): SInteger = SInteger(value pow that)
+  }
 
   object SInteger {
     private val integerCache = (-127 to 128).map(LisaInteger(_)).map(new SInteger(_))

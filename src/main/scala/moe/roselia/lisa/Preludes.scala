@@ -276,6 +276,10 @@ object Preludes extends LispExp.Implicits {
     "string" -> PrimitiveFunction { xs =>
       xs.mkString
     }.withArity(1),
+    "string/interpolate" -> PrimitiveFunction.withArityChecked(2) {
+      case LisaList(part :: parts) :: LisaList(arguments) :: Nil =>
+        (part :: arguments.zip(parts).flatten(x => List(x._1, x._2))).mkString
+    },
     "returnable" -> PrimitiveFunction {
       case fn :: Nil =>
         val returnable = new Util.ReturnControlFlow.Returns
@@ -625,6 +629,21 @@ object Preludes extends LispExp.Implicits {
     },
     "same-reference?" -> PrimitiveFunction.withArityChecked(2) {
       case x :: y :: Nil => x eq y
+    },
+    "not" -> PrimitiveFunction.withArityChecked(1) {
+      case SBool(bool) :: Nil => SBool(!bool)
+    },
+    "and" -> PrimitiveMacro { case (args, env) =>
+      assert(args.length == 2, s"and accepts 2 arguments but got ${args.length}.")
+      val lhs :: rhs :: Nil = args
+      val andSymbol = Symbol("&&the symbol for and&&")
+      Apply(LambdaExpression(SIfElse(andSymbol, rhs, andSymbol), andSymbol :: Nil), lhs :: Nil) -> env
+    },
+    "or" -> PrimitiveMacro { case (args, env) =>
+      assert(args.length == 2, s"or accepts 2 arguments but got ${args.length}.")
+      val lhs :: rhs :: Nil = args
+      val orSymbol = Symbol("&&the symbol for or&&")
+      Apply(LambdaExpression(SIfElse(orSymbol, orSymbol, rhs), orSymbol :: Nil), lhs :: Nil) -> env
     }
   ))
 

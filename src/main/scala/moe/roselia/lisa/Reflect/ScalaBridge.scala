@@ -29,7 +29,9 @@ object ScalaBridge {
     case SRational(rat) =>
       if(rat.isIntegral) {
         val integral = rat.toIntegral
-        if(integral.isValidInt) rat.toIntegral.toInt else integral
+        if(integral.isValidInt) integral.toInt
+        else if (integral.isValidLong) integral.toLong
+        else integral
       } else rat.toDouble
     case sNumber: SNumber[_] => sNumber
     case PrimitiveFunction(fn) => (xs: Any) => fn(ensureSeq(xs).map(fromScalaNative).toList)

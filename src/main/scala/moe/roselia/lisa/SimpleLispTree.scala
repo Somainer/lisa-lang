@@ -35,6 +35,9 @@ object SimpleLispTree {
   case class StringLiteral(content: String) extends SimpleLispTree {
     override def toString: String = s"${content.replace("\"", "\\\"")}"
   }
+  case class StringTemplate(templateName: String, parts: List[String], arguments: List[SimpleLispTree]) extends SimpleLispTree {
+     override def toString: String = s"$templateName${StringContext(parts: _*).s(arguments: _*)}"
+  }
   case class SList(list: Seq[SimpleLispTree]) extends SimpleLispTree {
     override def toString: String =
       if(list.isEmpty) "( )"

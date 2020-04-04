@@ -101,8 +101,40 @@ go ; Error: Symbol go not found.
 
 (gen (+ i 1) for i in (list 1 2 3)); <=>
 (map (list 1 2 3) (lambda (i) (+ i 1)))
+```
 
+### String Interpolation
+String Interpolation works in parse time. Such expression will be transformed
+to a procedure application. Such strings are called template strings.
 
+Template strings are literals enclosed by single or triple double quote characters (`"` or `"""`)
+followed an identifier, such as `$"Like $this."`, or`template-name"""string literals"""`.
+Note that there shouldn't be any spaces between identifier and string literal in order to
+distinguish it from an application whose procedure is an identifier and the first argument
+is a string like `(string "string")` is not `(string"string")`.
+
+Template literals can contain placeholders. 
+These are indicated by the dollar sign and curly braces (`${expression}`), 
+Or identifiers with only letters and number after a dollar sign
+(no hyphens, which are legal lisa identifiers) (`$identifier`).
+The expressions in the placeholders and the text between the quotes get passed to a function.
+
+One special template is the dollar sign `$`, this works likes normal string interpolation.
+And such string will compiled to an application of `string` which joins the arguments.
+`$"1 + 1 = ${(+ 1 1)}."` will be transformed to `(string "1 + 1 = " (+ 1 1) ".")`.
+
+Otherwise the templates and placeholders will be transform to the application of that identifier.
+Like `need-lisa"($name $age)"` will be compiled to `(need-lisa '("(" " " ")") (list name age))`.
+So, the return type of template function does not necessarily be a string.
+
+The stand interpolator is `string/interpolate`. Hence, the `need-lisa` procedure can be written as:
+```clojure
+(define (need-lisa parts args)
+    (let ((code (string/interpolate parts args)))
+        (read-string code)))
+(define name "YJSNPI")
+(define age 24)
+need-lisa"($name $age)" ; => (YJSNPI 24)
 ```
 
 ## Start Playing as A Calculator
