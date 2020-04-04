@@ -39,7 +39,7 @@ object ConstructorCaller {
     newInstanceForClass(clazz, args)
   }
 
-  def newInstanceForClass(clazz: Class[_], args: Seq[Any]): Any = {
+  def newInstanceForClass(clazz: Class[_], args: Seq[Any]): Any = DotAccessor.handleReflectionException {
     val classSymbol = getSymbolForClass(clazz)
     val constructors = getConstructorOfType(classSymbol.toType)
     val constructorSymbol = findMatchingMethod(constructors, args)

@@ -7,7 +7,7 @@ import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, Quote, SAt
 
 
 trait Queries {
-  type QuerySeq[T] = LazyList[T]
+  type QuerySeq[+T] = LazyList[T]
   type OutputType = QuerySeq[Environment]
   type MatcherFunction = (QuerySeq[Environment], LogicalContext) => OutputType
 

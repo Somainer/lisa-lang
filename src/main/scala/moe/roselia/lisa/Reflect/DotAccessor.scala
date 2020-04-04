@@ -48,7 +48,7 @@ object DotAccessor {
         .map(_.asMethod)
         .map(classObj.reflectMethod)
         .map(_.apply())
-        .getOrElse(classObj.reflectField(decl.get.accessed.asTerm).get)
+        .getOrElse(classObj.reflectField(util.Try(decl.get.accessed.asTerm).getOrElse(decl.get)).get)
     } else throw ScalaReflectionException(s"Field or 0-arity method $acc for $obj: ${classObj.symbol.fullName} not found")
   }
 

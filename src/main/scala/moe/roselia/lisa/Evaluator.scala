@@ -91,11 +91,26 @@ object Evaluator {
     }
     case StringLiteral(value) =>
       SString(value)
+    case StringTemplate("$", part :: Nil, Nil) => SString(part)
+  }
+
+  private def compileStringTemplate(template: StringTemplate, toList: Boolean): Expression = {
+    val StringTemplate(templateName, parts, arguments) = template
+    val args = if (toList) arguments.map(compileToList) else arguments.map(compile)
+    val stringParts = parts.map(SString)
+    val compiled = if (templateName == "$") {
+      Apply(Symbol("string"),
+        stringParts.head :: args.zip(stringParts.tail).flatten(x => List(x._1, x._2)))
+    } else {
+      Apply(Symbol(templateName), LisaList(stringParts) :: Apply(Symbol("list"), args) :: Nil)
+    }
+    if (toList) compiled.toRawList else compiled
   }
 
   def compileToList(tree: SimpleLispTree): Expression =
     compilePrimitives.applyOrElse[SimpleLispTree, Expression](tree, {
       case SList(ls) => LisaList(ls.map(compileToList).toList)
+      case template: StringTemplate => compileStringTemplate(template, toList = true)
     })
 
   def unQuoteList(ll: Expression): Expression = {
@@ -109,6 +124,7 @@ object Evaluator {
 
   def compile(tree: SimpleLispTree): Expression = tree match {
     case t if compilePrimitives.isDefinedAt(t) => compilePrimitives(t)
+    case template: StringTemplate => compileStringTemplate(template, toList = false)
     case SList(ls) => ls match {
       case Value("quote" | "'")::xs => xs match {
         case expr::Nil => Quote(compileToList(expr))
@@ -333,8 +349,8 @@ object Evaluator {
       case SIfElse(predicate, consequence, alternative) =>
         evaluate(predicate, env) match {
           case EvalSuccess(SBool(b), _) => evaluate(if(b) consequence else alternative, env)
+          case EvalSuccess(other, _) => EvalFailure(s"Unexpected if predicate value: $other: ${other.tpe.name}")
           case f: EvalFailure => f
-          case other => EvalFailure(s"Unexpected if predicate value: $other")
         }
 
       case SCond(conditions) =>

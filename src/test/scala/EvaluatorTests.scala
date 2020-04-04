@@ -51,4 +51,18 @@ class EvaluatorTests extends AsyncFunSuite with Matchers with ExpressionHelper {
     val factOf10000 = factFunction(10000).pipe(Evaluator.eval(_, EmptyEnv)).asInstanceOf[EvalSuccess].expression
     assert(factOf10000.isInstanceOf[SInteger])
   }
+
+  test("String interpolation should work well") {
+    assert(
+      lisa"""$$"A raw string"""".isInstanceOf[SString], "Empty template should be string only."
+    )
+    assertResult(
+      lisa""" $$"1 + 1 = $${(+ 1 1)}" """
+    )(Apply(symbol"string", "1 + 1 = " :: Apply(symbol"+", 1.asLisa :: 1.asLisa :: Nil) :: "".asLisa :: Nil))
+    assertThrows[Exception](lisa"""s "" """)
+    assertResult(
+      lisa""" s"$$a-b" """
+    )(Apply(symbol"s", LisaList.fromExpression("", "-b") :: Apply(symbol"list", symbol"a" :: Nil) :: Nil))
+    assertResult(lisa""":"atom$$1"""")(SAtom("atom$1"))
+  }
 }

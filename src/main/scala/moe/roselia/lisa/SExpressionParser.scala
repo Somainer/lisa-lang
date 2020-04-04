@@ -1,6 +1,6 @@
 package moe.roselia.lisa
 
-import moe.roselia.lisa.LispExp.{Apply, LambdaExpression, PlainSymbol, Symbol}
+import moe.roselia.lisa.LispExp.{Apply, LambdaExpression, LisaList, PlainSymbol, Symbol}
 import moe.roselia.lisa.SimpleLispTree._
 
 import scala.util.matching.Regex
@@ -11,16 +11,56 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
 
   def sValue: SExpressionParser.Parser[Value] = sValueExclude("")
   def sValueExclude(ex: String): SExpressionParser.Parser[Value] =
-    ("`.+`".r.map(_.drop(1).dropRight(1)).map(GraveAccentAtom) | s"[^() ${Regex.quote(ex)}\\s]+".r.map(PlainValue)) named "Values"
+    ("`.+`".r.map(_.drop(1).dropRight(1)).map(GraveAccentAtom) | s"[^(){} ${Regex.quote(ex)}\\s]+".r.map(PlainValue)) named "Values"
 
-  def string = "\"(((\\\\\")|[^\"])*)\"".r
-    .flatMap(x =>
+  private def unEscapeString(stringParser: Parser[String]): Parser[String] =
+    stringParser.flatMap(x =>
       scala.util
         .Try(StringContext.processEscapes(x))
         .fold(ex => err(ex.getLocalizedMessage), success))
-    .map(_.drop(1).dropRight(1)) named "String Literals"
 
-  def stringValue = string.map(StringLiteral) named "String Values"
+  def rawSingleString: Parser[String] = "\"(((\\\\\")|[^\"])*)\"".r.map(_.drop(1).dropRight(1))
+
+  def singleString = unEscapeString(rawSingleString) named "String Literals"
+
+  def tripleQuotedRawString = "\"\"\"([\\S\\s]+)\"\"\"".r.map(_.drop(3).dropRight(3))
+
+  def tripleQuotedString = unEscapeString(tripleQuotedRawString)
+
+  def string = tripleQuotedString | singleString
+  def rawString = tripleQuotedRawString | rawSingleString
+  private def noPrefixWhiteSpace[T](p: Parser[T]): Parser[T] = in => {
+    val source = in.source
+    val offset = in.offset
+    if (!in.atEnd && source.charAt(offset).isWhitespace) failure("No whitespace expected")(in)
+    else p(in)
+  }
+  private def restorePrefixWhiteSpace(p: Parser[String]): Parser[String] = in => {
+    val whiteSpace = """\s+""".r
+    val source = in.source
+    whiteSpace.findPrefixMatchOf(source.subSequence(in.offset, source.length())) match {
+      case Some(matched) => p(in.drop(matched.end)).map(source.subSequence(in.offset, in.offset + matched.end).+)
+      case None => p(in)
+    }
+  }
+  def templateString = (sValueExclude("\"") ~ noPrefixWhiteSpace(string >> parseTemplateBody)) map {
+    case Value(template) ~ ((parts, args)) => StringTemplate(template, parts, args)
+  }
+  def templateBody = {
+    val plainString: Parser[String] = restorePrefixWhiteSpace("(?:\\$\\$|[^$])*".r.map(_.replace("$$", "$")))
+    val expressionString = ("${" ~> sExpression <~ "}") | ("$" ~> "[a-zA-Z0-9_]+".r).map(Value(_))
+    plainString ~ rep(expressionString ~ plainString) map {
+      case head ~ tails =>
+        ((head :: tails.map(_._2)), tails.map(_._1))
+    }
+  }
+  private def parseTemplateBody(body: String) = parseAll(templateBody, body) match {
+    case Success(result, _) => success(result)
+    case f => err(f.toString)
+  }
+
+  def stringLiteral = string | ("raw" ~> rawString)
+  def stringValue = stringLiteral.map(StringLiteral) named "String Values"
 
   def sQuote = "'" ~> sExpression map SQuote
 
@@ -31,7 +71,7 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
   )
 
   def sExpression: Parser[SimpleLispTree] =
-    ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | lambdaHelper | sQuote | sUnquote | sAtom | sValue
+    ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | lambdaHelper | sQuote | sUnquote | sAtom | templateString | sValue
 
   def eof = "\\z".r named "End of line"
 
@@ -49,6 +89,6 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
       case s"#$i" => i.toInt
     }.map(PlainSymbol).toList
     PrecompiledSExpression(LambdaExpression(Evaluator.compile(ex),
-      if(variables.isEmpty) Apply(Symbol("..."), Symbol("_")::Nil)::Nil else variables))
+      if(variables.isEmpty) LisaList(Symbol("...") :: Symbol("_") :: Nil)::Nil else variables))
   }))
 }

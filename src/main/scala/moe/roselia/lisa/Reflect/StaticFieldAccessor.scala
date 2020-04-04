@@ -62,11 +62,12 @@ object StaticFieldAccessor {
     loop(params.map(jvmBoxedClass).toList, arguments.toList, Nil)
   }
 
-  def invokeStaticMethodOfClass(clazz: Class[_], name: String)(args: Any*): Option[Any] = {
+  def invokeStaticMethodOfClass(clazz: Class[_], name: String)(args: Any*): Option[Any] = DotAccessor.handleReflectionException {
     getStaticMethodOfClassByName(clazz, name).find(method => {
       if(method.isVarArgs) matchRealArguments(method.getParameterTypes, args).isDefined
       else method.getParameterCount == args.length && isTypeFitForJava(method.getParameterTypes, args)
     })
+      .filter(_.trySetAccessible())
       .map(method => {
         if (method.isVarArgs) method.invoke(null, matchRealArguments(method.getParameterTypes, args).get: _*)
         else method.invoke(null, args: _*)
@@ -81,6 +82,7 @@ object StaticFieldAccessor {
 
   def getStaticFieldValueOfClass(clazz: Class[_], name: String): Option[Any] = {
     getStaticFiledOfClassByName(clazz, name)
+      .filter(_.trySetAccessible())
       .map(_.get(null))
       // .getOrThrow(new NoSuchFieldException(s"No such filed $name for ${clazz.getName}."))
   }
@@ -104,6 +106,15 @@ object StaticFieldAccessor {
   object StaticFieldsAccessorEnvironment extends SpecialEnv {
     private val cache = collection.mutable.Map.empty[String, Expression]
     private val classCache = collection.mutable.Map.empty[String, Class[_]]
+
+    override def has(key: String): Boolean = cache.contains(key) || scala.util.Try {
+      key.split('/') match {
+        case Array(className, fieldName) =>
+          val clazz = classCache.getOrElseUpdate(className, ConstructorCaller.resolveClassBySimpleName(className))
+          isFieldOrNilArityMethod(clazz, fieldName) || isMethod(clazz, fieldName)
+        case _ => false
+      }
+    }.getOrElse(false)
 
     override def getValueOption(key: String): Option[Expression] = {
       cache.get(key).orElse(getValueByReflection(key))
