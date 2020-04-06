@@ -1,0 +1,229 @@
+;; Standard library of lisa language.
+;; All of them are signatures, not runnable.
+
+(import-env! predef lisa)
+(define (+ (... xs))
+    "Add numbers or strings."
+    (apply lisa.+ xs))
+
+(define (- x)
+    "Get opposite number of the x"
+    (lisa.- x))
+(define (- head (... xs))
+    "Substract numbers."
+    (+ head (apply + (map xs -))))
+
+(define (* (... xs))
+    "Get the product of numbers."
+    (apply lisa.* xs))
+
+(define (/ lhs rhs)
+    "Divide two numbers."
+    (lisa./ lhs rhs))
+
+(define (< (... xs))
+    "Test if arguments are ascending-ordered."
+    (apply lisa.< xs))
+
+(define (<= (... xs))
+    "Test if arguments are non decending-ordered."
+    (apply lisa.<= xs))
+
+(define (> (... xs))
+    "Test if arguments are decending-ordered."
+    (apply < (.reverse xs)))
+
+(define (>= (... xs))
+    "Test if arguments are non ascending-ordered."
+    (apply <= (.reverse xs)))
+
+(define (= x x)
+    "Test if two areguments are equal,"
+    true)
+(define (= x y) false)
+
+(define (print! (... xs))
+    "Print strings separated with one space."
+    (.print System/out (.mkString xs " ")))
+
+(define (println! (... xs))
+    "Print strings separated with one space, then print one new line."
+    (.println System/out (.mkString xs " ")))
+
+(define (input (... xs))
+    "print strings like print! then get next line from stdin."
+    (apply print! xs)
+    (let ((scanner (new java.util.Scanner System/in)))
+        (.nextLine scanner)))
+
+(define (int n)
+    "Convert one value to integer."
+    (cond
+        ((string? n) (scala.math.BigInt/apply n 10))
+        ((integer? n) n)
+        ((= n true) 1)
+        ((= n false) 0)
+        ((number? n) (lisa.int n))))
+
+(define (eval exp)
+    "Evaluate the expression in the invoked environment."
+    (panic!))
+
+(define (truthy? e)
+    "Test if a value is truthy."
+    (cond
+        ((nil? e) false)
+        ((number? e) (not (= e 0)))
+        ((string? e) (truthy? (length e)))
+        ((list? e) (truthy? (length e)))
+        ((= e false) false)
+        (else true)))
+
+(define-macro (import-env! env (when (symbol? env)))
+    "Import all variables in targent environment to current scope."
+    '(lisa.import-env! ~env))
+(define-macro (import-env! env namespace (when (and (symbol? env) (symbol? namespace))))
+    "Import all variables in target environment to a namespaced scope of namespace."
+    '(lisa.import-env! ~env ~namespace))
+
+(define (load! file-name (when (string? file-name)))
+    "Load lisa file directly to current scope."
+    (panic!))
+
+(define (wrap-scala value)
+    "Convert value to scala native then wrap that value to WrappedScalaObject(value) for reflection abilities."
+    (lisa.wrap-scala value))
+
+(define (wrap value)
+    "Just wrap value to WrappedScalaObject(value) for reflection abilities."
+    (lisa.wrap value))
+
+(define-macro (set! symbol value (when (symbol? symbol)))
+    "Set a mutable variable symbol to value."
+    '(lisa.set! ~symbol ~value))
+
+(define-macro (define-mutable! symbol (when (symbol? symbol)))
+    "Define a mutable value symbol."
+    '(lisa.define-mutable! ~symbol))
+
+(define-macro (group! (... block))
+    "Inline all code where invoked."
+    '(lisa.group! ~~block))
+
+(define-macro (block (... block))
+    "Execute all code in a new scope."
+    '(let () ~~block))
+
+(define-macro (while predicate body)
+    "Just works like while clause in imperative languages, but you won't miss while in lisa."
+    '(lisa.while ~predicate ~body))
+
+(define (help expr)
+    "Get the docstring of an expression, if empty, get the code."
+    (define doc (.docString (wrap expr)))
+    (if (= (length doc) 0) (write expr) doc))
+
+(define (panic! (... xs))
+    "Throw a RuntimeException with body."
+    (throw (new RuntimeException (.mkString xs " "))))
+
+(define (apply proc args (when (list? args)))
+    "Apply arguments to a procedure."
+    (lisa.apply proc args))
+
+(define (limit-arity n f (when (number? n)))
+    "Limit the arity of a procedure f to accept only n arguments."
+    (lisa.limit-arity n f))
+
+(define (get-doc e)
+    "Get the docString of expression."
+    (.docString e))
+
+(define (set-doc e s (when (string? s)))
+    "Set the docstring of an expression, then returns the expression."
+    (.withDocString e s))
+
+(define-macro (define-phrase (((... args)) (... body)))
+    "Define a phrase with arguments and body."
+    '(define-macro (`&__PHRASE__` ~~args) ~~body))
+(define-macro (define-phrase defined (when (symbol? defined)))
+    "Define a phrase with a defined macro."
+    '(lisa.define-phrase ~defined))
+
+(define-macro (try-option x)
+    "If x evaluated successfully, get scala.Some(x) otherwise scala.None."
+    '(lisa.try-option ~x))
+
+(define (string->symbol value (when (string? value)))
+    "Convert a string to a symbol."
+    (lisa.string->symbol value))
+
+(define (string->atom value (when (string? value)))
+    "Convert a string to an atom."
+    (lisa.string->atom value))
+
+(define (string (... parts))
+    "Join parts to a string."
+    (.mkString parts))
+
+(define (string/interpolate parts arguments (when (and (list? parts) (list? arguments))))
+    "Do string interpolation."
+    (lisa.string/interpolate parts arguments))
+
+(define (returnable proc (when (callable? proc)))
+    "Accepts a procedure, pass it with one function that could pass the invoked value to where invoked."
+    (lisa.returnable proc))
+
+(define (expand-macro (macro (... args)) (when (symbol? macro)))
+    "Expand an existing macro with arguments."
+    (lisa.expand-macro (cons 'macro args)))
+
+(define (gen-sym)
+    "Generate a unqiue symbol."
+    (lisa.gen-sym))
+
+(define (write expr)
+    "Get the code for expr."
+    (.code (wrap expr)))
+
+(define (ast-of expr)
+    "Get the abstract syntax tree for the expr."
+    (lisa.ast-of expr))
+
+(define (prelude-environment)
+    "Convert the prelue environment to lisa record."
+    (lisa.prelude-environment))
+
+(define (freeze-environment)
+    "Freeze the environment invoked to a lisa record."
+    (panic!))
+
+(define (read-string s (when (string? s)))
+    "Read a lisa expression from string."
+    (lisa.read-string s))
+
+(define (read-many-from-string s (when (string? s)))
+    "Read a list of lisa expressions from string."
+    (lisa.read-many-from-string s))
+
+(define (read (... xs))
+    "Read a lisa expression from stdin."
+    (define s (apply input xs))
+    (read-string s))
+
+(define (read (... xs))
+    "Read a list of lisa expressions from stdin."
+    (define s (apply input xs))
+    (read-many-from-string s))
+
+(define-macro (declare (... declares))
+    "Declare procedures, can be used before implemented."
+    '(lisa.declare ~~declares))
+
+(define (from-java coll)
+    "Conver a java collection to a scala collection."
+    (lisa.from-java coll))
+
+(define-macro (new class-name (... arguments))
+    "Call the constructor of the JVM class."
+    '(lisa.new ~class-name ~~arguments))

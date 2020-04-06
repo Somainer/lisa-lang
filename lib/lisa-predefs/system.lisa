@@ -1,0 +1,39 @@
+;; System library of lisa language.
+;; All of them are signatures, not runnable.
+
+(import-env! system system)
+
+(define (system (... args))
+    "Execute system command synchronously."
+    (apply system.system args))
+
+(define (system/fork (... args))
+    "Execute system command asynchronously."
+    (apply system.system/fork args))
+
+(define (get-system-environment name alternative)
+    "Get system environment variable."
+    (system.get-system-environment name alternative))
+(define (get-system-environment name)
+    (let ((variable (get-system-environment name "")))
+        (if (= variable "")
+            (panic!)
+            variable)))
+
+(define system-environment system.system-environment)
+
+(define (get-prop name alternative)
+    "Get system property by name"
+    (system.get-prop name alternative))
+(define (get-prop name)
+    (get-prop name ""))
+
+(define (get-scala-prop name alternative)
+    "Get scala property by name"
+    (system.get-scala-prop name alternative))
+(define (get-scala-prop name)
+    (get-scala-prop name ""))
+
+(define (throw ex)
+    "Throws a throwable ex."
+    (panic! ex))

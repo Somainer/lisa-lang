@@ -32,7 +32,8 @@ object Preludes extends LispExp.Implicits {
     "dot-accessor" -> ToolboxDotAccessor.accessEnv,
     "system" -> Library.System.systemEnv,
     "io-source" -> Library.IOSource.sourceLibrary,
-    "logical" -> Logical.LogicalModuleEnvironment
+    "logical" -> Logical.LogicalModuleEnvironment,
+    "predef" -> preludeEnvironment,
   ).view.mapValues(_.withIdentify("prelude"))
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
@@ -617,6 +618,10 @@ object Preludes extends LispExp.Implicits {
     },
     "record?" -> PrimitiveFunction.withArityChecked(1) {
       case (_: LisaRecord[_]) :: Nil => true
+      case _ => false
+    },
+    "wrapped?" -> PrimitiveFunction.withArityChecked(1) {
+      case (_: WrappedScalaObject[_]) :: Nil => true
       case _ => false
     },
     "iterable?" -> PrimitiveFunction.withArityChecked(1) {

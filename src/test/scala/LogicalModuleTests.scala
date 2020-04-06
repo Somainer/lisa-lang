@@ -3,7 +3,7 @@ import org.scalatest.OptionValues
 import org.scalatest.wordspec.AsyncWordSpec
 import moe.roselia.lisa
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, MutableEnv}
-import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, LisaRecordWithMap, NilObj}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, LisaRecordWithMap, NilObj, Quote}
 import moe.roselia.lisa.Logical.{LogicalContext, LogicalEnvironment, LogicalRule}
 
 class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues with ExpressionHelper {
@@ -96,10 +96,10 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
 
   "rule matcher" should {
     val context = LogicalContext(LisaList.fromExpression(
-      LisaList.fromExpression("programmer".asSymbol, "linus".asAtom),
-      LisaList.fromExpression("love".asSymbol, "YJSNPI".asAtom, "TON".asAtom),
-      LisaList.fromExpression("love".asSymbol, "TNOK".asAtom, "TNOK".asAtom),
-      LisaList.fromExpression("love".asSymbol, "MUR".asAtom, "KMR".asAtom)
+      LisaList.fromExpression("programmer".asAtom, "linus".asAtom),
+      LisaList.fromExpression("love".asAtom, "YJSNPI".asAtom, "TON".asAtom),
+      LisaList.fromExpression("love".asAtom, "TNOK".asAtom, "TNOK".asAtom),
+      LisaList.fromExpression("love".asAtom, "MUR".asAtom, "KMR".asAtom)
     ), Map.empty).addedRule("be-loved", LogicalRule(List(
       List("for", "who").map(_.asSymbol) -> LisaList.fromExpression("love".asSymbol, "who".asSymbol, "for".asSymbol)
     ))).addedRule("self-loved", LogicalRule(List(
@@ -120,6 +120,17 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
       val matchResult = matcher(LazyList(MutableEnv.createEmpty), context)
       matchResult should have length 1
       matchResult.head.getValueOption("who").value shouldBe "TNOK".asAtom
+    }
+
+    "match rules when first argument is symbol" in {
+      val matcher = Queries.compileExpressionToMatcher(
+        LisaList.fromExpression(Quote(symbol"relationship"), "KMR".asAtom, "MUR".asAtom),
+        context,
+        EmptyEnv
+      )
+
+      Queries.Matcher.runMatcher(matcher)(context)
+        .flatMap(_.getValueOption("relationship")) should contain only "be-loved".asAtom
     }
   }
 

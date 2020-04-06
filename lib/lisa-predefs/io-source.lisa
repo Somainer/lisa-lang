@@ -1,0 +1,28 @@
+;; IO-Source library of lisa language.
+;; All of them are signatures, not runnable.
+
+(import-env! io-source io)
+
+(define (read-file-content file-name (when (string? file-name)))
+    "Read file content from file name."
+    (io.read-file-content file-name))
+
+(define (read-from-uri uri (when (string? uri)))
+    "Read file content from uri."
+    (io.read-from-uri uri))
+
+(define (read-from-url url (when (string? url)))
+    "Get http content from url."
+    (io.read-from-url url))
+
+(define (parse-json-option json (when (string? json)))
+    "Try parse json content to lisa."
+    (io.parse-json-option json))
+
+(define (parse-json json (when (string? json)))
+    "Parse json content to lisa."
+    (.get (parse-json-option json)))
+
+(define (to-json-string exp)
+    "Convert lisa expression to json string."
+    (io.to-json-string exp))

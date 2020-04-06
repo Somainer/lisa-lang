@@ -383,11 +383,12 @@ object Evaluator {
     }
   }
 
-  def applyToEither(procedure: Expression, arguments: List[Expression]): Either[String, Expression] =
-    eval(Apply(procedure, arguments), EmptyEnv) match {
+  def applyToEither(procedure: Expression, arguments: List[Expression]): Either[String, Expression] = {
+    eval(Apply(procedure, arguments.map(Quote)), EmptyEnv) match {
       case EvalSuccess(exp, _) => Right(exp)
       case EvalFailureMessage(message) => Left(message)
     }
+  }
 
   def evalList(exps: Seq[Expression], env: Environment): Either[String, Seq[Expression]] = {
     val evaledExpr = exps.map(eval(_, env))

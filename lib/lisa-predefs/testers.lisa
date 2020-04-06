@@ -1,0 +1,100 @@
+;; Tester library of lisa language.
+;; All of them are signatures, not runnable.
+
+(import-env! predef lisa)
+
+(define (nil? ())
+    "Test if an expression is an empty list."
+    true)
+(define (nil? _) false)
+
+(define (type-of x)
+    "Get the type of x."
+    (.tpe (wrap x)))
+
+(define (typename-of x)
+    "Get the name of type of x."
+    (.name (type-of x)))
+
+(define (class-of x)
+    "Get the class of x."
+    (lisa.class-of x))
+
+(define (integer? x (when? (= x (int x))))
+    "Test if an expression is an integer."
+    true)
+(define (integer? _) false)
+
+(define (number? x (when? (&true (+ 0 x))))
+    "Test if an expression is an number."
+    true)
+(define (number? _) false)
+
+(define (rational? x)
+    "Test if an expression is a rational number."
+    (lisa.rational? x))
+
+(define (float? x)
+    "Test if an expression is a float."
+    (lisa.float? x))
+
+(define (string? x)
+    "Test if an expression is a string."
+    (= x (string x)))
+
+(define (symbol? x)
+    "Test if an expression is a symbol."
+    (lisa.symbol? x))
+
+(define (atom? x)
+    "Test if an expression is an atom."
+    (lisa.atom? x))
+
+(define (procedure? x)
+    "Test if an expression is a procedure."
+    (lisa.procedure? x))
+
+(define (macro? x)
+    "Test if an expression is a macro."
+    (lisa.macro x))
+
+(define (list? x)
+    "Test if an expression is a lisa."
+    (lisa.list? x))
+
+(define (record? x)
+    "Test if an expression is a record."
+    (lisa.record? x))
+
+(define (wrapped? x)
+    "Test if an expression is a WrappedScalaObject."
+    (lisa.wrapped? x))
+
+(define (iterable? x)
+    "Test if an expression is an iterable."
+    (lisa.iterable? x))
+
+(define (quoted? x)
+    "Test if an expression is a quoted expression."
+    (lisa.quoted? x))
+
+(define (same-reference? x y)
+    "Test if two expressions are referential equal."
+    (lisa.same-reference? x y))
+
+(define (not false)
+    "Get logical negative."
+    true)
+(define (not true) false)
+
+(define-macro (and lhs rhs)
+    "Logical and, short circited."
+    (define symbol (gen-sym))
+    '(let ((~symbol ~lhs))
+        (if ~symbol ~rhs ~symbol)))
+
+(define-macro (or lhs rhs)
+    "Logical or, short circited."
+    (define symbol (gen-sym))
+    '(let ((~symbol ~lhs))
+        (if ~symbol ~symbol ~rhs)))

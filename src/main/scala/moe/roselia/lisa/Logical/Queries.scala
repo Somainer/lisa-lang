@@ -11,8 +11,11 @@ trait Queries {
   type OutputType = QuerySeq[Environment]
   type MatcherFunction = (QuerySeq[Environment], LogicalContext) => OutputType
 
-  def emptyResult: OutputType = LazyList.empty
-  def makeResult(xs: Environment*): OutputType = LazyList.from(xs)
+  val QuerySeq = LazyList
+  def concatQuerySeq[T, U >: T](first: QuerySeq[T], second: => QuerySeq[U]): QuerySeq[U] =
+    first #::: second
+  def emptyResult: OutputType = QuerySeq.empty
+  def makeResult(xs: Environment*): OutputType = QuerySeq.from(xs)
 
   trait Matcher extends MatcherFunction {
     def and(that: Matcher): Matcher = (in, lc) => {
@@ -67,6 +70,14 @@ trait Queries {
       in.flatMap(constraint => {
         lc.facts.flatMap(unifyMatch(_, expression, constraint.newMutableFrame)).map(_.frozen)
       })
+    }
+
+    def fromMatchingRelationship(relationName: String, params: List[Expression], capturedEnv: Environment): Matcher = (in, lc) => {
+      val matchedFromFacts = fromExpression(LisaList(Symbol(relationName) :: params))(in, lc)
+      val matchedFromRules = QuerySeq.from(lc.rules).flatMap { case (ruleName, rule) =>
+        fromRule(rule, params, capturedEnv)(in, lc).map(_.withValue(relationName, SAtom(ruleName)))
+      }
+      concatQuerySeq(matchedFromFacts, matchedFromRules)
     }
 
     def createUnifier(left: Expression, right: Expression): Matcher = (in, _) => {
@@ -295,8 +306,8 @@ trait Queries {
         case Symbol("unique") :: x :: Nil => compile(x).unique
         case Symbol(sym) :: xs if context.hasRule(sym) =>
           Matcher.fromRule(context.getRule(sym).get, xs, inEnv)
-        case Quote(symbol@Symbol(_)) :: xs =>
-          Matcher.fromExpression(LisaList(symbol :: xs))
+        case Quote(Symbol(name)) :: xs =>
+          Matcher.fromMatchingRelationship(name, xs, inEnv)
         case Symbol(sym) :: xs =>
           Matcher.fromExpression(LisaList(SAtom(sym) :: xs))
         case xs => Matcher.fromExpression(LisaList(xs))

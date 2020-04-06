@@ -1,0 +1,76 @@
+;; Logical library of lisa language.
+;; All of them are signatures, not runnable.
+
+(import-env! logical logical)
+
+(define (logical/push-context context)
+    """Push a context to current envionment. 
+    After A valid context is pushed, you will be able to use context-specific macros.
+    """
+    (panic!))
+
+(define (logical/new-context)
+    "Create a new logical context and push it."
+    (panic!))
+
+(define (logical/unify left right)
+    "Unify match two expressions."
+    (logical.logical/unify left right))
+
+;; Contexual macros or procedures.
+;; The are available only when a logical context is availabe in current environment.
+
+(define-macro (fact f)
+    "Add a fact to current logical context."
+    (panic!))
+
+(define (add-fact f)
+    "Add a fact to current logical context (function version)."
+    (apply fact f))
+
+(define (get-facts)
+    "Get all logical facts in current context."
+    (panic!))
+
+(define-macro (define-rule (name (... args)) body)
+    "Define a rule to current context."
+    (panic!))
+(define-macro (define-rule (name (... args)))
+    "If the body of the rule is empty the rule will always match."
+    '(define-rule (~name ~~args) true))
+
+(define-macro (query q)
+    "Execute a query in current context."
+    (panic!))
+
+(define-macro (lazy-query q)
+    "Execute a query in current context when needed."
+    (panic!))
+
+(define (run-query q)
+    "Execute a query in current context (function version)."
+    (apply query q))
+
+(define (run-lazy-query q)
+    "Execute a query in current context when needed (function version)."
+    (apply lazy-query q))
+
+(define-macro (is-true? q)
+    "Test if the result of a query is not empty."
+    '(.nonEmpty (lazy-query ~q)))
+
+(define (test-is-true? q)
+    "Test if the result of a query is not empty (function version)."
+    (.nonEmpty (run-lazy-query q)))
+
+(define (current-context)
+    "Get current context in LisaRecord with rule and facts."
+    (panic!))
+
+(define (current-context/raw)
+    "Get the underlying Scala representation of the logical context."
+    (panic!))
+
+(define (pop-context!)
+    "Remove current activated logical context."
+    (panic!))

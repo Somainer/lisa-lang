@@ -175,5 +175,10 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
       invokeStaticMethod(classOf[String], "format")("%d%s", 2, "33") shouldEqual "233"
       invokeStaticMethod(classOf[String], "format")("Hello") shouldEqual "Hello"
     }
+
+    "Throw what is thrown" in {
+      an[ArithmeticException] should be thrownBy
+        invokeStaticMethod(classOf[Math], "floorDiv")(1, 0)
+    }
   }
 }

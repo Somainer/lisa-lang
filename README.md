@@ -156,6 +156,13 @@ Also, Lisa supports Rational value calculation.
 (<= 1 1 1 1) ; => true
 ```
 
+## Builtin Procedures and Macros
+Definitions can be found in `lib/lisa-predefs`.
+They are definitions signatures with doc strings. 
+Some of them have a implementation illustrating the general idea or procedure of that function.
+Initially, the interpreter imported the predef environment. 
+They are definitions in `primitives.lisa`, `testers.lisa` and `collections.lisa`.
+
 ## Interact with JavaScript
 
 Lisa can interact with javascript via ScriptEngine in JVM.

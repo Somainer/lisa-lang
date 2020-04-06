@@ -39,6 +39,7 @@ object ScalaBridge {
       evalClosure(c)(_)
     case r: LisaRecord[_] => r
     case ll: LisaListLike[_] => ll
+    case identicalLisaExpression: IdenticalLisaExpression => identicalLisaExpression
   }
 
   def fromScalaNative(any: Any): Expression = any match {

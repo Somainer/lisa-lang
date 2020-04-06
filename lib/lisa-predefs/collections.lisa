@@ -1,0 +1,130 @@
+;; Collection library of lisa language.
+;; All of them are signatures, not runnable.
+
+(import-env! predef lisa)
+
+(define (cons x y)
+    "Construct a list from x and y."
+    (cond
+        ((list? y) (.+: y x)) ; Prepend x to y
+        (else (list x y))))
+
+(define (car ls)
+    "Get the first element of a collection-like."
+    (.head ls))
+
+(define (cdr ls)
+    "Get elements other than the first element of a collection-like."
+    (.tail ls))
+
+(define (map collection mapper)
+    "map the mapper to every element of the collection."
+    (define (impl () xs) xs)
+    (define (impl (head (... tail)) xs) (impl tail (cons (mapper head) xs)))
+    (impl collection ()))
+
+(define (filter collection predictor)
+    "filter the collection with predictor."
+    (define (impl () xs) xs)
+    (define (impl (head (... tail) xs (when (predictor head))))
+        (impl tail (cons head xs)))
+    (define (impl coll xs) (impl (cdr coll) xs))
+    (impl collection ()))
+
+(define (iter coll)
+    "Convert any iterable to list."
+    (filter coll &true))
+
+(define (length x)
+    "Get the length for a collection or the arity of a procedure."
+    (cond
+        ((callable? x)
+            (let ((arity (.arity x)))
+                (.get arity)))
+        (else (.length x))))
+
+(define (list (... xs))
+    "Construct a list."
+    xs)
+
+(define (seq (... xs))
+    "Construct a IndexedSeq."
+    (.toIndexedSeq xs))
+
+(define (nth n coll (when (number? n)))
+    "Get the nth element of a collection."
+    (if (or (< n 0) (>= n (length coll))) (throw (new IndexOutOfBoundsException n)))
+    (.apply coll n))
+
+(define (nth n coll default (when (number? n)))
+    "Get the nth element of a collection. Return default if no such element."
+    (if (<= 0 n (- (length coll) 1))
+        default
+        (.apply coll n)))
+
+(define (get coll key default)
+    "Get key of the collection, otherwise default."
+    (if (number? key)
+        (nth coll key default)
+        (.getOrElse coll key default)))
+(define (get coll key)
+    (get coll key ()))
+
+(define (match-list pattern argument)
+    "Math pattern to argument."
+    (lisa.match-list pattern argument))
+
+(define (->record map-like)
+    "Convert Map or java.util.Map to Record."
+    (lisa.->record map-like))
+
+(define (range from to step)
+    "Genterate a range [from, to) with step."
+    (lisa.range from to step))
+(define (range from to)
+    (range from to 1))
+
+(define (range/inclusive from to step)
+    "Generate a range [from, to] with step."
+    (lisa.range/inclusive from to step))
+(define (range/inclusive from to)
+    (range/inclusive from to 1))
+
+(define (record name (... constructors) (when (string? name)))
+    """Construct a record with name. 
+        e.g. (record "R" 'a 1 "b" 2)
+        constructors can be key-value pairs, or single record to extend.
+    """
+    (apply lisa.record (cons name constructors)))
+(define (record (... constructors))
+    (apply record (cons "" constructors)))
+
+(define (mutable-record record)
+    "Construct a mutable record from a record."
+    (lisa.mutable-record record))
+(define (mutable-record name (... constructors))
+    "Construct a mutable record with name and constructors."
+    (apply lisa.mutable-record (cons name constructors)))
+(define (mutable-record (... constructors))
+    (apply mutable-record (cons "" constructors)))
+
+(define (record-updated record (... updaters))
+    "Construct a new record with updates from record."
+    (apply lisa.record-updated (cons record updaters)))
+
+(define (record-update! record (... updaters))
+    "Update a mutable record with updates."
+    (apply lisa.record-update! (cons record updaters)))
+
+(define (record-contains? record key)
+    "Test if such key exists on record."
+    (.containsKey record key))
+
+(define get-record-or-else get)
+
+(define-macro (define-record record-name (... attributes))
+    """Define a record with name and attributes. Also introduces two testers:
+        ${record-name}? to test if the record is constructed by constructor ${record-name}.
+        ${record-name}?? to test if the record has the same attributes.
+    """
+    (panic!))
