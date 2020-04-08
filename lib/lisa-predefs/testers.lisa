@@ -88,13 +88,13 @@
 (define (not true) false)
 
 (define-macro (and lhs rhs)
-    "Logical and, short circited."
+    "Logical and, short circuited."
     (define symbol (gen-sym))
     '(let ((~symbol ~lhs))
         (if ~symbol ~rhs ~symbol)))
 
 (define-macro (or lhs rhs)
-    "Logical or, short circited."
+    "Logical or, short circuited."
     (define symbol (gen-sym))
     '(let ((~symbol ~lhs))
         (if ~symbol ~symbol ~rhs)))

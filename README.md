@@ -700,6 +700,8 @@ in target/pack/bin
 Also, there are some examples in `src/test/lisa/`
 
 If you are using `VSCode`, I hope you will be happy with vscode-scheme and Bracket Pair Colorizer.
+Also, here is a VSCode extension [lisa-vscode](https://github.com/Somainer/lisa-vscode) available. 
+This extension brings in Syntax Highlight and Markdown code block support for Lisa.
 
 ## Awesome! How can I use it in production?
 

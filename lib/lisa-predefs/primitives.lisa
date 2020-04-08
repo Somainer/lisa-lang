@@ -10,7 +10,7 @@
     "Get opposite number of the x"
     (lisa.- x))
 (define (- head (... xs))
-    "Substract numbers."
+    "Subtract numbers."
     (+ head (apply + (map xs -))))
 
 (define (* (... xs))
@@ -26,11 +26,11 @@
     (apply lisa.< xs))
 
 (define (<= (... xs))
-    "Test if arguments are non decending-ordered."
+    "Test if arguments are non descending-ordered."
     (apply lisa.<= xs))
 
 (define (> (... xs))
-    "Test if arguments are decending-ordered."
+    "Test if arguments are descending-ordered."
     (apply < (.reverse xs)))
 
 (define (>= (... xs))
@@ -38,7 +38,7 @@
     (apply <= (.reverse xs)))
 
 (define (= x x)
-    "Test if two areguments are equal,"
+    "Test if two arguments are equal,"
     true)
 (define (= x y) false)
 
@@ -80,7 +80,7 @@
         (else true)))
 
 (define-macro (import-env! env (when (symbol? env)))
-    "Import all variables in targent environment to current scope."
+    "Import all variables in target environment to current scope."
     '(lisa.import-env! ~env))
 (define-macro (import-env! env namespace (when (and (symbol? env) (symbol? namespace))))
     "Import all variables in target environment to a namespaced scope of namespace."
@@ -179,7 +179,7 @@
     (lisa.expand-macro (cons 'macro args)))
 
 (define (gen-sym)
-    "Generate a unqiue symbol."
+    "Generate a unique symbol."
     (lisa.gen-sym))
 
 (define (write expr)
@@ -191,7 +191,7 @@
     (lisa.ast-of expr))
 
 (define (prelude-environment)
-    "Convert the prelue environment to lisa record."
+    "Convert the prelude environment to lisa record."
     (lisa.prelude-environment))
 
 (define (freeze-environment)
@@ -221,7 +221,7 @@
     '(lisa.declare ~~declares))
 
 (define (from-java coll)
-    "Conver a java collection to a scala collection."
+    "Convert a java collection to a scala collection."
     (lisa.from-java coll))
 
 (define-macro (new class-name (... arguments))

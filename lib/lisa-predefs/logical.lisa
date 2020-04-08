@@ -4,7 +4,7 @@
 (import-env! logical logical)
 
 (define (logical/push-context context)
-    """Push a context to current envionment. 
+    """Push a context to current environment.
     After A valid context is pushed, you will be able to use context-specific macros.
     """
     (panic!))
@@ -18,7 +18,7 @@
     (logical.logical/unify left right))
 
 ;; Contexual macros or procedures.
-;; The are available only when a logical context is availabe in current environment.
+;; The are available only when a logical context is available in current environment.
 
 (define-macro (fact f)
     "Add a fact to current logical context."
