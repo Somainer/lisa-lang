@@ -18,7 +18,9 @@
 
 (define (class-of x)
     "Get the class of x."
-    (lisa.class-of x))
+    (if (wrapped? x)
+        (.getClass x)
+        (.getClass (wrap x))))
 
 (define (integer? x (when? (= x (int x))))
     "Test if an expression is an integer."
@@ -32,11 +34,11 @@
 
 (define (rational? x)
     "Test if an expression is a rational number."
-    (lisa.rational? x))
+    (= (typename-of x) "Rational"))
 
 (define (float? x)
     "Test if an expression is a float."
-    (lisa.float? x))
+    (= (typename-of x) "Decimal"))
 
 (define (string? x)
     "Test if an expression is a string."

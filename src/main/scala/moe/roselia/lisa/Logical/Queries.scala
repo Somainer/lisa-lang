@@ -5,14 +5,16 @@ import moe.roselia.lisa.Evaluator
 import moe.roselia.lisa.Evaluator.{EvalFailure, EvalSuccess}
 import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, Quote, SAtom, SBool, Symbol}
 
+import scala.collection.SeqFactory
+
 
 trait Queries {
   type QuerySeq[+T] = LazyList[T]
   type OutputType = QuerySeq[Environment]
   type MatcherFunction = (QuerySeq[Environment], LogicalContext) => OutputType
 
-  val QuerySeq = LazyList
-  def concatQuerySeq[T, U >: T](first: QuerySeq[T], second: => QuerySeq[U]): QuerySeq[U] =
+  val QuerySeq: SeqFactory[QuerySeq] = LazyList
+  @`inline` def concatQuerySeq[T, U >: T](first: QuerySeq[T], second: => QuerySeq[U]): QuerySeq[U] =
     first #::: second
   def emptyResult: OutputType = QuerySeq.empty
   def makeResult(xs: Environment*): OutputType = QuerySeq.from(xs)
@@ -25,28 +27,18 @@ trait Queries {
 
     def or(that: Matcher): Matcher = (in, lc) => {
       val thisOut = this(in, lc)
-      thisOut #::: that(in, lc)
+      concatQuerySeq(thisOut, that(in, lc))
     }
 
     def not: Matcher = (in, lc) => {
-      @scala.annotation.tailrec
-      def existPart(e: Environment, p: Environment => Boolean): Boolean = e match {
-        case EmptyEnv => p(e)
-        case env@Env(_, parent) => p(env) || existPart(parent, p)
-        case mEnv@MutableEnv(_, parent) => p(mEnv) || existPart(parent, p)
-        case env@CombineEnv(envs) =>
-          if (envs.isEmpty) p(env) else p(env) || p(envs.head) || existPart(CombineEnv(envs.tail), p)
-        case _ => p(e)
-      }
-      val thisOut = this(in, lc)
-      in.filterNot(m => thisOut.exists(existPart(_, m.eq)))
+      in.filter(frame => this(makeResult(frame), lc).isEmpty)
     }
 
     def unique: Matcher = (in, lc) => {
       in.flatMap { frame =>
         val output = this(makeResult(frame), lc)
         if (output.nonEmpty && output.tail.isEmpty) output.headOption
-        else emptyResult
+        else None
       }
     }
 
@@ -105,21 +97,28 @@ trait Queries {
       in
     }
 
-    def fromRule(rule: LogicalRule, params: List[Expression], capturedEnv: Environment): Matcher = {
-      def envExtenderWithMap(map: Map[String, Expression])(env: Environment): Option[Environment] = {
-        @scala.annotation.tailrec
-        def traverse(m: collection.View[(String, Expression)], acc: Environment): Option[Environment] = {
-          if (m.isEmpty) Some(acc)
-          else m.head match { case (k, v) =>
-            acc.getValueOption(k) match {
-              case Some(`v`) => traverse(m.tail, acc)
-              case Some(_) => None
-              case None => traverse(m.tail, acc.withValue(k, v))
-            }
+    /**
+     * Extend the environment with constraints in map. If conflicts exists, the extension fails and returns [[None]].
+     * @param map the constraints map.
+     * @param env the environment to extend.
+     * @return The option of new extended environment.
+     */
+    private def envExtenderWithMap(map: Map[String, Expression])(env: Environment): Option[Environment] = {
+      @scala.annotation.tailrec
+      def traverse(m: collection.View[(String, Expression)], acc: Environment): Option[Environment] = {
+        if (m.isEmpty) Some(acc)
+        else m.head match { case (k, v) =>
+          acc.getValueOption(k) match {
+            case Some(`v`) => traverse(m.tail, acc)
+            case Some(_) => None
+            case None => traverse(m.tail, acc.withValue(k, v))
           }
         }
-        traverse(map.view, env)
       }
+      traverse(map.view, env)
+    }
+
+    def fromRule(rule: LogicalRule, params: List[Expression], capturedEnv: Environment): Matcher = {
       Matcher.or(rule.findMatch(params).map[Matcher] { case ((matched, introduced), body) =>
         body match {
           case SBool(true) =>

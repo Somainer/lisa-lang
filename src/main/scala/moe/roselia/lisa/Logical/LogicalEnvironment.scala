@@ -41,8 +41,8 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
       case (xs, _) => throw new IllegalArgumentException(s"1 argument expected but ${xs.length} found.")
     },
     "add-fact" -> PrimitiveFunction.withArityChecked(1) {
-      case (ll: LisaList[_]) :: Nil =>
-        addFact(ll)
+      case ex :: Nil =>
+        addFact(ex)
         NilObj
     },
     "get-facts" -> PrimitiveFunction.withArityChecked(0) { case _ =>
