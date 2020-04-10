@@ -61,7 +61,7 @@ object LogicalRule {
         case Symbol(name) => extend(name, data, constraints)
         case _ => data match {
           case Symbol(name) => extend(name, pattern, introduced)
-          case LisaList(ll2) => data match {
+          case LisaList(ll2) => pattern match {
             case LisaList(ll1) => matchMany(ll1, ll2)
             case _ => None
           }

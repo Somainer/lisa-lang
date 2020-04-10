@@ -73,6 +73,8 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
   def sExpression: Parser[SimpleLispTree] =
     ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | lambdaHelper | sQuote | sUnquote | sAtom | templateString | sValue
 
+  def sExpressionOrNil = sExpression | success(SList(Nil))
+
   def eof = "\\z".r named "End of line"
 
   def root[A](p: Parser[A]) = p <~ eof

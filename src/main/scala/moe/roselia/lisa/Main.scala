@@ -53,7 +53,7 @@ object Main {
       if (!concatInput.replace(" ", "").endsWith("\n\n") && needMoreInput(concatInput))
         prompt(env, concatInput, resultIndex)
       else {
-        val exp = parseAll(sExpression, concatInput)
+        val exp = parseAll(sExpressionOrNil, concatInput)
         exp match {
           case Success(expression, _) => expression match {
             case SList(List(Value("quit" | "exit"))) =>

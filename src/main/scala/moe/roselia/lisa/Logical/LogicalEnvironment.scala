@@ -1,6 +1,6 @@
 package moe.roselia.lisa.Logical
 
-import moe.roselia.lisa.Environments.{EmptyEnv, Environment}
+import moe.roselia.lisa.Environments.{EmptyEnv, Environment, SpecialEnv, TransparentLayer}
 import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, NameOnlyType, NilObj, PrimitiveFunction, PrimitiveMacro, Quote, SAtom, SBool, SString, SideEffectFunction, Symbol, TypedLisaRecord, WrappedScalaObject}
 
 case class LogicalEnvironment(var logicalContext: LogicalContext) extends Queries {
@@ -95,7 +95,26 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
       WrappedScalaObject(context)
     },
     "pop-context!" -> SideEffectFunction { case (_, e) =>
-      NilObj -> e.collectBy(_ ne implementationsEnvironment)
+      NilObj -> e.collectBy(env => (env ne implementationsEnvironment) && (env ne interopEnvironment))
+    },
+    "import-logical-context!" -> SideEffectFunction { case (Nil, e) =>
+      NilObj -> TransparentLayer(interopEnvironment, e)
     }
   ))
+
+  lazy val interopEnvironment: SpecialEnv = new SpecialEnv {
+    override def has(key: String): Boolean = {
+      logicalContext.hasRule(key) || logicalContext.facts.exists {
+        case LisaList(SAtom(`key`) :: _) => true
+        case _ => false
+      }
+    }
+
+    override def getValueOption(key: String): Option[Expression] =
+      if (has(key)) Some {
+        PrimitiveMacro { (xs, e) =>
+          executeQuery(LisaList(Symbol(key) :: xs), e) -> e
+        }
+      } else None
+  }
 }
