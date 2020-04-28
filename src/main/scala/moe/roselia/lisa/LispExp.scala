@@ -976,6 +976,8 @@ object LispExp {
 
     def wrapped: WrappedScalaObject[List[T]] = WrappedScalaObject(list)
 
+    def wrapToArray: WrappedScalaObject[Array[Any]] = WrappedScalaObject(toArray)
+
     override def equals(o: Any): Boolean = o match {
       case l: Seq[_] => l == list
       case WrappedScalaObject(l) => l == list
@@ -990,6 +992,9 @@ object LispExp {
     override def toString: String = list.mkString("(", " ", ")")
 
     override def code: String = s"${list.map(_.code).mkString("(", " ", ")")}"
+
+    def toNativeArray: WrappedScalaObject[Array[Any]] =
+      WrappedScalaObject(map(Reflect.ScalaBridge.toScalaNative).toArray)
   }
 
   object LisaList {

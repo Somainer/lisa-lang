@@ -227,3 +227,15 @@
 (define-macro (new class-name (... arguments))
     "Call the constructor of the JVM class."
     '(lisa.new ~class-name ~~arguments))
+
+(define (quoted q)
+    "Quote an expression"
+    (lisa.quoted q))
+
+(define (quit)
+    "Stop the interpreter with exit-code 0."
+    (quit 0))
+(define (quit exit-code (when (integer? exit-code)))
+    "Stop the interpreter with exit-code."
+    (System/exit exit-code))
+(define exit quit)

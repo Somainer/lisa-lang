@@ -26,7 +26,7 @@
 (define (filter collection predictor)
     "filter the collection with predictor."
     (define (impl () xs) xs)
-    (define (impl (head (... tail) xs (when (predictor head))))
+    (define (impl (head (... tail) xs) (when (predictor head)))
         (impl tail (cons head xs)))
     (define (impl coll xs) (impl (cdr coll) xs))
     (impl collection ()))
@@ -128,3 +128,16 @@
         ${record-name}?? to test if the record has the same attributes.
     """
     (panic!))
+
+(define (sort coll)
+    "Sort the collection in ascending order."
+    (sort coll <))
+(define (sort coll by-fn)
+    "Sort the collection with by-fn"
+    (define (sorted ()) '())
+    (define (sorted (head (... tail)))
+        (define left (filter tail &(by-fn # head)))
+        (define right (filter tail &(not (by-fn # head))))
+        (.++ (sorted left)
+             (cons head (sorted right))))
+    (sorted coll))

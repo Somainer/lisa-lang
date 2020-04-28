@@ -4,7 +4,7 @@ import java.io.{ByteArrayOutputStream, FileInputStream, FileOutputStream, Object
 
 import moe.roselia.lisa.Environments.{CombineEnv, NameSpacedEnv}
 import moe.roselia.lisa.Evaluator.EvalResult
-import moe.roselia.lisa.LispExp.{LisaList, NilObj, SString, SideEffectFunction, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{LisaList, NilObj, PrimitiveFunction, SNumber, SString, SideEffectFunction, WrappedScalaObject}
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -56,8 +56,8 @@ object Main {
         val exp = parseAll(sExpressionOrNil, concatInput)
         exp match {
           case Success(expression, _) => expression match {
-            case SList(List(Value("quit" | "exit"))) =>
-              println("Good bye")
+            // case SList(List(Value("quit" | "exit"))) =>
+            //   println("Good bye")
             case _ =>
               Try(Evaluator.eval(Evaluator.compile(expression), env))
                 .recover{
@@ -183,6 +183,11 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
+    val quitFn = PrimitiveFunction {
+      case Nil => sys.exit()
+      case LispExp.SInteger(n) :: Nil => sys.exit(n.toInt)
+      case _ => throw new IllegalArgumentException(s"An integer expected.")
+    }
     val preludeEnv =
       CombineEnv(
         Seq(
@@ -196,7 +201,7 @@ object Main {
             (NilObj, executeFile(f, env.withValue("__PATH__", SString(f))))
           case (els, env) =>
             (LispExp.Failure("Load error", s"Can only load 1 file but $els found."), env)
-        }).withIdentify("prelude").newFrame
+        }).withValue("quit", quitFn).withValue("exit", quitFn).withIdentify("prelude").newFrame
     if(args.isEmpty) {
       println(
         """

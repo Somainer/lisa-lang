@@ -118,7 +118,7 @@ trait Queries {
       traverse(map.view, env)
     }
 
-    def fromRule(rule: LogicalRule, params: List[Expression], capturedEnv: Environment): Matcher = {
+    def fromRuleWithArgumentComputed(rule: LogicalRule, params: List[Expression], capturedEnv: Environment): Matcher = {
       Matcher.or(rule.findMatch(params).map[Matcher] { case ((matched, introduced), body) =>
         body match {
           case SBool(true) =>
@@ -150,6 +150,13 @@ trait Queries {
           }
         }
       })
+    }
+
+    def fromRule(rule: LogicalRule, params: List[Expression], capturedEnv: Environment): Matcher = (in, lc) => {
+      in.flatMap { input =>
+        val arguments = params.map(substituteAllPossibilities(_, input))
+        fromRuleWithArgumentComputed(rule, arguments, capturedEnv)(in, lc)
+      }
     }
 
     def createAssigner(value: String, expression: Expression, environment: Environment): Matcher = (in, _) => {

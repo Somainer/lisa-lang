@@ -111,9 +111,9 @@ object Preludes extends LispExp.Implicits {
     "int" -> PrimitiveFunction {
       case v::Nil => SInteger {
         v match {
-          case SString(x) => x.toInt
+          case SString(x) => BigInt(x)
           case SInteger(x) => x
-          case SFloat(f) => f.toInt
+          case SFloat(f) => f.toBigInt
           case SBool(b) => if(b) 1 else 0
           case num: SNumber[_] => num.toIntNumber.number
         }
@@ -327,7 +327,7 @@ object Preludes extends LispExp.Implicits {
         throw new IllegalArgumentException(s"prelude-environment do not expect arguments")
     },
     "freeze-environment" -> SideEffectFunction { case (Nil, env) =>
-      new AbstractLisaRecord {
+      new LisaRecordWithMap[Expression] {
         override def selectDynamic(key: String): Expression = env.getValueOption(key).getOrElse(throw new NoSuchElementException(key))
 
         override def containsKey(key: String): Boolean = env.has(key)
@@ -341,6 +341,11 @@ object Preludes extends LispExp.Implicits {
         override def toString: String = s"#$recordTypeName [not-computed]"
 
         override def tpe: LisaType = NameOnlyType("LisaRecord")
+
+        override def updated[B >: Expression <: Expression](key: String, value: B): LisaRecordWithMap[B] =
+          LisaMapRecord(record.updated(key, value), recordTypeName)
+
+        override def record: Map[String, Expression] = env.flattenToMap
       } -> env
       case  _ => throw new IllegalArgumentException(s"freeze-environment do not expect arguments")
     },
@@ -388,6 +393,9 @@ object Preludes extends LispExp.Implicits {
     "from-java" -> PrimitiveFunction.withArityChecked(1) {
       case WrappedScalaObject(x) :: Nil => fromJVMNative(x)
       case x :: Nil => x
+    },
+    "quoted" -> PrimitiveFunction.withArityChecked(1) {
+      case x :: Nil => Quote(x)
     }
   ))
 
@@ -554,6 +562,11 @@ object Preludes extends LispExp.Implicits {
         WrappedScalaObject(Range.inclusive(from.toInt, to.toInt))
       case SInteger(from) :: SInteger(to) :: SInteger(step) :: Nil =>
         WrappedScalaObject(Range.inclusive(from.toInt, to.toInt, step.toInt))
+    },
+    "sort" -> PrimitiveFunction {
+      case coll :: Nil => Util.CollectionHelper.generalSortWith(coll, primitiveEnvironment.get("<"))
+      case coll :: fn :: Nil =>
+        Util.CollectionHelper.generalSortWith(coll, fn)
     }
   ))
 

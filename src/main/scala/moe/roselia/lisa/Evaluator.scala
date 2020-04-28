@@ -116,6 +116,7 @@ object Evaluator {
   def unQuoteList(ll: Expression): Expression = {
     def backToSimpleLispTree(ex: Expression): SimpleLispTree = ex match {
       case Symbol(sym) => Value(sym)
+      case NilObj => SList(Nil)
       case lll: LisaList[_] => SList(lll.map(backToSimpleLispTree))
       case e => PrecompiledSExpression(e)
     }
