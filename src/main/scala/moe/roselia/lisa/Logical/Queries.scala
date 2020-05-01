@@ -153,10 +153,11 @@ trait Queries {
     }
 
     def fromRule(rule: LogicalRule, params: List[Expression], capturedEnv: Environment): Matcher = (in, lc) => {
-      in.flatMap { input =>
-        val arguments = params.map(substituteAllPossibilities(_, input))
-        fromRuleWithArgumentComputed(rule, arguments, capturedEnv)(in, lc)
-      }
+//      in.flatMap { input =>
+//        val arguments = params.map(substituteAllPossibilities(_, input))
+//        fromRuleWithArgumentComputed(rule, arguments, capturedEnv)(in, lc)
+//      }
+      fromRuleWithArgumentComputed(rule, params, capturedEnv)(in, lc)
     }
 
     def createAssigner(value: String, expression: Expression, environment: Environment): Matcher = (in, _) => {
