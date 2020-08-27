@@ -112,6 +112,16 @@
     (define (func (... args)) (curried-impl fn args))
     (set-doc func (+ "Curried: " (get-doc fn)))) ; Ensure curried returns a closure when encounters 0-arity functions.
 
+(define (curried fn (when? (&true (length fn))))
+    "Curring a function according its arity via codegen."
+    (define arity (length fn))
+    (define arg-list (map (range 0 arity) (lambda (i) $"arg$i")))
+    (define symbol-list (iter (map arg-list string->symbol)))
+    (define (gen ()) (cons 'fn symbol-list))
+    (define (gen (x (... xs)))
+        (list 'lambda (list x) (gen xs)))
+    (set-doc (eval (gen symbol-list)) $"Curried ${(get-doc fn)}"))
+
 (define (flip-closure fn)
     "flip-closure :: (a -> b -> c) -> b -> a -> c"
     (lambda (x y) (fn y x)))

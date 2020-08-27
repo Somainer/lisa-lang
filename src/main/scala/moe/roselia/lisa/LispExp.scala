@@ -261,6 +261,11 @@ object LispExp {
     @RawLisa def ^(that: SInteger): SInteger = SInteger(value ^ that.value)
 
     def pow(that: Int): SInteger = SInteger(value pow that)
+
+    def asByte: WrappedScalaObject[Byte] = WrappedScalaObject(value.toByte)
+    def asChar: WrappedScalaObject[Char] = WrappedScalaObject(value.toChar)
+    def asShort: WrappedScalaObject[Short] = WrappedScalaObject(value.toShort)
+    def asLong: WrappedScalaObject[Long] = WrappedScalaObject(value.toLong)
   }
 
   object SInteger {
@@ -303,6 +308,11 @@ object LispExp {
     }
 
     override def compare(that: SString): Int = value compare that.value
+
+    def charCodeAt(index: Int): Int = {
+      value.charAt(index).toInt
+    }
+    def charCode: Int = charCodeAt(0)
   }
 
   case object NilObj extends Expression with NoExternalDependency with LisaValue with LisaListLike[Nothing] {
@@ -1009,11 +1019,16 @@ object LispExp {
 
   trait IdenticalLisaExpression extends Expression
 
-  case class SAtom(value: String) extends IdenticalLisaExpression with NoExternalDependency {
+  case class SAtom private (value: String) extends IdenticalLisaExpression with NoExternalDependency {
     lazy val valuePart: String = if (value.matches("\\S+")) value else SString(value).code
     override def toString: String = s":$valuePart"
 
     override def tpe: LisaType = NameOnlyType("Atom")
+  }
+
+  object SAtom {
+    private val cache = collection.mutable.Map.empty[String, SAtom]
+    def apply(value: String): SAtom = cache.getOrElseUpdate(value, new SAtom(value))
   }
 
   case object JVMNull extends IdenticalLisaExpression with NoExternalDependency {

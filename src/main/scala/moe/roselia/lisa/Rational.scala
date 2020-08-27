@@ -102,13 +102,11 @@ object Rational {
     override def compare(x: Rational[T], y: Rational[T]): Int = x.compare(y)
 
     override def parseString(str: String): Option[Rational[T]] = str match {
-      case s"$i" => i.toIntOption.map(integralEvidence.fromInt).map(Rational(_, integralEvidence.one))
       case s"$n/$d" => for {
-        ni <- n.toIntOption
-        di <- d.toIntOption
-        tni = integralEvidence.fromInt(ni)
-        tdi = integralEvidence.fromInt(di)
-      } yield Rational(tni, tdi)
+        ni <- integralEvidence.parseString(n)
+        di <- integralEvidence.parseString(d)
+      } yield Rational(ni, di)
+      case s"$i" => integralEvidence.parseString(i).map(Rational(_, integralEvidence.one))
       case _ => None
     }
   }
