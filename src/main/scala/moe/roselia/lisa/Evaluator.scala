@@ -10,6 +10,7 @@ object Evaluator {
   import Environments._
   import LispExp._
   import SimpleLispTree._
+  import Util.ConsoleColor.Implicits._
 
   val shouldOptimizeTailCall: Boolean = true
 
@@ -221,7 +222,12 @@ object Evaluator {
 
     val evalResult = exp match {
       case f: Failure => EvalFailure(s"${f.tp}: ${f.message}")
-      case Symbol(sym) => env.getValueOption(sym).map(pureValue).getOrElse(EvalFailure(s"Symbol $sym not found."))
+      case Symbol(sym) => env.getValueOption(sym).map(pureValue).getOrElse {
+        val message = new StringBuilder(s"Symbol $sym not found.")
+        Util.SimilarSymbolFinder.findSuitableSuggestion(sym, env)
+          .map(suggestion => s" Do you mean ${suggestion.underline}?").foreach(message.append)
+        EvalFailure(message.result())
+      }
       case bool: SBool => pureValue(bool)
       case o@WrappedScalaObject(_) => pureValue(o)
       case NilObj => pureValue(NilObj)

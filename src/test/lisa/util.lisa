@@ -11,5 +11,5 @@
         (define (ref 'get) ~x)
         (define (ref 'is-ref?) true)
         (define (ref 'set new-val) (set! ~x new-val))
-        (define (ref 'to-string) (any+ "Ref(" ~x ")"))
+        (define (ref 'to-string) $"Ref(${~x})")
         ref))

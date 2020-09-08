@@ -1,0 +1,94 @@
+(define (int->char i)
+    (.toChar (new scala.runtime.RichInt i)))
+
+(define zero 0)
+(define (to-byte n)
+    (.& (wrap n) 255))
+(define inc &(to-byte (+ # 1)))
+(define dec &(to-byte (- # 1)))
+(define (in)
+    (.read System/in))
+(define (out n)
+    (print! (int->char n)))
+
+(define-record Tape left cell right)
+(define empty-tape (Tape '() zero '()))
+(define (head-of list)
+    (if (nil? list) zero (car list)))
+(define (tail-of list)
+    (if (nil? list) '() (cdr list)))
+
+(define (zero? tape)
+    (= zero (.cell tape)))
+(define (tape-with-cell tape cell)
+    (record-updated tape 'cell cell))
+(define (execute-tape tape ch)
+    (define cell (.cell tape))
+    (define left (.left tape))
+    (define right (.right tape))
+    (cond
+        ((= ch "+") (tape-with-cell tape (inc cell)))
+        ((= ch "-") (tape-with-cell tape (dec cell)))
+        ((= ch "<") (Tape (tail-of left) (head-of left) (cons cell right)))
+        ((= ch ">") (Tape (cons cell left) (head-of right) (tail-of right)))
+        ((= ch ".") (let () (out cell) tape))
+        ((= ch ",") (tape-with-cell tape (in)))
+        ((= ch "[") tape)
+        ((= ch "]") tape)
+        (else (panic! $"Unexpected token: $ch"))))
+
+(define (brainfuck "") ())
+(define (brainfuck code)
+    (define program (filter (iter code) &(.contains "+-<>.,[]" #)))
+    (define valid-length?
+        (let ((len (length program)))
+            &(< # len)))
+    (define (get-input n) (nth program n))
+
+    (define inc &(+ # 1))
+
+    (define (get-matcher pos _ map (when (= pos (length program)))) map)
+    (define (get-matcher pos stack map (when (= (get-input pos) "["))) (get-matcher (inc pos) (cons pos stack) map))
+    (define (get-matcher pos stack map (when (= (get-input pos) "]"))) (get-matcher (inc pos) (cdr stack) (.updated map (car stack) pos)))
+    (define (get-matcher pos stack map) (get-matcher (inc pos) stack map))
+
+    (define open-to-close (get-matcher 0 '() (Map/from '())))
+    (define close-to-open 
+        (Map/from (from-java (.toNativeArray (.map (.toSeq open-to-close) .swap)))))
+
+    (define (execute index tape (when (valid-length? index)))
+        (define p (get-input index))
+        (define pos (cond
+            ((and (= p "[") (zero? tape)) (.apply open-to-close index))
+            ((and (= p "]") (not (zero? tape))) (.apply close-to-open index))
+            (else (inc index))))
+        (execute pos (execute-tape tape p)))
+    (define (execute _ _) ())
+    (execute 0 empty-tape))
+
+; Below should print Hello World!
+;(brainfuck "++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.")
+; (brainfuck """
+; >++++[>++++++<-]>-[[<+++++>>+<-]>-]<<[<]>>>>-
+; -.<<<-.>>>-.<.<.>---.<<+++.>>>++.<<---.[>]<<.
+; """)
+
+(define (time-testing program t)
+    (define time-ms &(/ # 1000000.0))
+    (define (loop 0) ())
+    (define (loop n)
+        (brainfuck program)
+        (loop (- n 1)))
+    (define begin System/nanoTime)
+    (loop t)
+    (define elapsed (- System/nanoTime begin))
+    (println! $"${(time-ms elapsed)}ms, ${(time-ms (/ elapsed t))}ms average."))
+
+(time-testing "++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>." 10)
+; (time-testing "++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>." 50)
+(time-testing ".+[.+]" 20)
+
+(define (interpreter)
+    (brainfuck (input "bf>"))
+    (interpreter))
+; (interpreter)

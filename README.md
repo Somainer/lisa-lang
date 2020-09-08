@@ -163,6 +163,88 @@ Some of them have a implementation illustrating the general idea or procedure of
 Initially, the interpreter imported the predef environment. 
 They are definitions in `primitives.lisa`, `testers.lisa` and `collections.lisa`.
 
+## Modules & Imports
+To use variables defined in other files, `import!` macro could be your option.
+Import is relative, meaning the file path is totally based in the written file.
+
+Hence we have a file: `module.lisa`.
+```scheme
+;; module.lisa
+(define a 114)
+(define b 514)
+```
+
+If we are writing a file in the same directory, we want to use a, we could:
+
+```scheme
+(import! module)
+;; Or
+(import! "module")
+;; Or
+(import! "./module.lisa")
+;; Or 
+(import! "./module")
+
+(println! a)
+```
+
+The first argument of `import!` can be a string or symbol, indicating the relative path of the source file, the extension `.lisa` is optional.
+In theese cases, both `a` and `b` will be available.
+
+If we want to import some variables only, we should declare them.
+
+```scheme
+(import! module a)
+(println! a)
+```
+
+If you do not want to shadow the variables in current scope. Prefixing them is an option, the syntax is as follows.
+
+```scheme
+(import! module * as mod)
+(println! mod.a)
+```
+
+Also, the `require` function is provided as an option to import modules as records. Note that `require` is not a macro, which means dynamic is posssible to achieve via this function.
+`require` also supports importing a `Scala` file, the last expression will be passed as the result.
+
+```scheme
+(define mod (require "module"))
+(println! (.a mod))
+(println! (get mod 'b))
+```
+
+## Auto Single Abstract Method Transforming
+`Lisa` supports auto SAM transforming, if an procedure, like `Closure`, `PolymorphicProcedure`, `PrimitiveFunction` is passed to a method, static method, or constructor whose
+argument is an Functional Interface, `Lisa` will automatically conver the argument to the correct type.
+
+Example:
+```clojure
+(define list '(1 2 3))
+(.map list &(+ # 1)) ; '(2 3 4)
+```
+The map method of list(scala class `LisaList`) is 
+```scala
+class LisaList[+T] {
+    def map[U](fn: T => U): LisaList[U]
+}
+```
+As we can see, the argument type of `map` is `T => U`, which is `Function[T, U]` during runtime. If an closure (`&(+ # 1)`, which will be expanded to `(lambda (#) (+ # 1))`), the type is mismatch but `lisa` will automatically convert the `Closure` to the desired type via a `Proxy`.
+
+### Construct an SAM instance
+```clojure
+(define empty? (new java.util.function.Predicate .isEmpty))
+(define list (new java.util.ArrayList))
+(.add list ())
+(.add list "")
+(.add list "Hello")
+
+(define stream (.stream list))
+(define empty-elements (.filter stream empty?)) ; Actually (.filter stream .isEmpty) also works
+(.count empty-elements) ; 2
+```
+This example is to demostrate constructing an SAM instance via the SAM interface and the procedure also works.
+
 ## Interact with JavaScript
 
 Lisa can interact with javascript via ScriptEngine in JVM.

@@ -1,7 +1,7 @@
 package moe.roselia.lisa.Reflect
 
 import moe.roselia.lisa.{Environments, Evaluator, LispExp}
-import moe.roselia.lisa.LispExp.PrimitiveMacro
+import moe.roselia.lisa.LispExp.{PrimitiveMacro, Procedure}
 import moe.roselia.lisa.Util.Extractors.RichOption
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
 
@@ -40,16 +40,23 @@ object ConstructorCaller {
   }
 
   def newInstanceForClass(clazz: Class[_], args: Seq[Any]): Any = DotAccessor.handleReflectionException {
+    if (args.length == 1 && args.head.isInstanceOf[Procedure] && FunctionalInterfaceAdapter.isFunctional(clazz)) {
+      return FunctionalInterfaceAdapter.createFunctionInvoker(clazz, args.head.asInstanceOf[Procedure])
+    }
     val classSymbol = getSymbolForClass(clazz)
     val constructors = getConstructorOfType(classSymbol.toType)
     val constructorSymbol = findMatchingMethod(constructors, args)
       .getOrThrow(ScalaReflectionException(s"No matching constructor for ${clazz.getName} with types: ${getTypeNames(args).mkString("(", ", ", ")")}"))
     val mirror = ru.rootMirror.reflectClass(classSymbol)
     val method = mirror.reflectConstructor(constructorSymbol)
-    method.apply(args: _*)
+    val realArguments = DotAccessor.performSAMTransform(method.symbol.paramLists.flatten)(args)
+    method.apply(realArguments: _*)
   }
 
-  @`inline` def getTypeNames(xs: Seq[Any]): Seq[String] = xs.map(_.getClass.getName)
+  @`inline` def getTypeNames(xs: Seq[Any]): Seq[String] = xs.map {
+    case null => "null"
+    case cls => cls.getClass.getName
+  }
 
   @`inline` def getSymbolForClass(clazz: Class[_]): ru.ClassSymbol = {
     val runtimeMirror = ru.rootMirror
@@ -82,7 +89,12 @@ object ConstructorCaller {
       case (LispExp.Symbol(sym) :: args, env) =>
         Evaluator.evalList(args, env) match {
           case Right(exps) =>
-            fromScalaNative(newInstanceFromClassName(sym, exps.map(toScalaNative))) -> env
+            env.getValueOption(sym) match {
+              case Some(LispExp.WrappedScalaObject(clazz: Class[_])) =>
+                fromScalaNative(newInstanceForClass(clazz, exps.map(toScalaNative))) -> env
+              case _ =>
+                fromScalaNative(newInstanceFromClassName(sym, exps.map(toScalaNative))) -> env
+            }
           case Left(reason) => throw new RuntimeException(reason)
         }
     }.withDocString("General Constructor")

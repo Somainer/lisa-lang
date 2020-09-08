@@ -4,8 +4,11 @@ import java.io.{ByteArrayOutputStream, FileInputStream, FileOutputStream, Object
 
 import moe.roselia.lisa.Environments.{CombineEnv, NameSpacedEnv}
 import moe.roselia.lisa.Evaluator.EvalResult
+import moe.roselia.lisa.Exceptions.{LisaException, LisaRuntimeException, LisaSyntaxException}
+import moe.roselia.lisa.Import.PackageImporter
 import moe.roselia.lisa.LispExp.{LisaList, NilObj, PrimitiveFunction, SNumber, SString, SideEffectFunction, WrappedScalaObject}
 
+import scala.annotation.tailrec
 import scala.util.Try
 import scala.util.control.NonFatal
 import scala.util.parsing.input.CharSequenceReader
@@ -13,7 +16,8 @@ import scala.util.parsing.input.CharSequenceReader
 object Main {
   import SimpleLispTree._
   import SExpressionParser._
-  def printlnErr[S](s: S): Unit = Console.err.println(s)
+  import Util.ConsoleColor.Implicits._
+  def printlnErr[S](s: S): Unit = Console.err.println(s.toString.foreground("#ff4a4a"))
 
   @`inline` private def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
     if (pairs < 0) pairs
@@ -45,8 +49,9 @@ object Main {
     val lastIndentLevel = indentLevel(lastInput)
     val tabs = if (shouldFixIndent && lastIndentLevel > 0) " ".repeat(lastIndentLevel << 2) else ""
     if (!shouldFixIndent && lastIndentLevel > 0) 1 to lastIndentLevel foreach (_ => sendSpace(4))
+    val inputPrompt = if(lastInput.isEmpty) "lisa>" else s"....>${tabs}"
     val s = scala.io.StdIn
-      .readLine(if(lastInput.isEmpty) "lisa>" else s"....>${tabs}")
+      .readLine(inputPrompt.foreground("#6670ED"))
     val concatInput = s"${lastInput}\n$s".trim
     if (concatInput.nonEmpty) {
       //      println(s"Input: $s")
@@ -69,7 +74,9 @@ object Main {
                       printlnErr(s"$typ: $msg")
                     case s if s eq NilObj =>
                     case s =>
-                      println(s"[$resultIndex]: ${s.tpe.name} = $s")
+                      val indexString = s"[$resultIndex]"
+                      println(s"${indexString.foreground("#00AABC")}: " +
+                        s"${s.tpe.name.bold.foreground("#890F87")} = ${coloringExpression(s)}")
                   }
                   result match {
                     case LispExp.Failure(_, _) =>
@@ -94,38 +101,81 @@ object Main {
     } else prompt(env, resultIndex = resultIndex)
   }
 
-  @throws[java.io.FileNotFoundException]()
-  def executeFile(fileName: String, env: Environments.Environment): Environments.Environment = {
+  def coloringExpression(exp: LispExp.Expression): String = {
+    val literals = "#DD2200"
+    val symbols = "#DD0087"
+    exp match {
+      case _: LispExp.SNumber[_] => exp.toString.foreground(literals)
+      case _: LispExp.SBool => exp.toString.foreground(literals)
+      case _: LispExp.SAtom => exp.toString.foreground(literals)
+      case _: LispExp.Symbol => exp.toString.foreground(symbols)
+      case LispExp.JVMNull => exp.toString.foreground(literals)
+      case LispExp.Quote(expr) => coloringExpression(expr)
+      case LispExp.LisaList(ll) => ll.map(coloringExpression).mkString("(", " ", ")")
+      case _ => exp.toString
+    }
+  }
+
+  /**
+   * Execute all lisa codes in a file.
+   * @param fileName The name of the file.
+   * @param env The starting environment.
+   * @throws java.io.FileNotFoundException when the file is not found.
+   * @return a tuple, the first element is the last [[Environments.Environment]] executed.
+   *         the second is an [[Option]], it will be [[None]] if not error is found, will be [[Some]] containing an
+   *         [[LisaException]] if some error is found.
+   */
+  @throws[java.io.FileNotFoundException]
+  def executeFileImpl(fileName: String, env: Environments.Environment): (Environments.Environment, Option[LisaException]) = {
     @scala.annotation.tailrec
     def doSeq(source: scala.util.parsing.input.Reader[Char],
-              innerEnv: Environments.Environment): Environments.Environment = {
+              innerEnv: Environments.Environment): (Environments.Environment, Option[LisaException]) = {
       if (!source.atEnd)
         parse(sExpression, source) match {
           case Success(sExpr, next) =>
-            Evaluator.eval(Evaluator.compile(sExpr), innerEnv) match {
+            val expr = Evaluator.compile(sExpr)
+            Evaluator.eval(expr, innerEnv) match {
               case Evaluator.EvalSuccess(_, nenv) => doSeq(next, nenv)
               case other =>
-                printlnErr(other)
-                printlnErr(s"\tsource: $sExpr")
-                innerEnv
+                // printlnErr(other)
+                // printlnErr(s"\tsource: $sExpr")
+                (innerEnv, Some(LisaRuntimeException(expr, new RuntimeException(other.toString))))
             }
-          case Failure(msg, next) =>
-            if(!next.atEnd) printlnErr(s"Error: $msg")
-            innerEnv
-          case Error(msg, _) =>
-            printlnErr(s"Fatal: $msg")
-            innerEnv
-        } else innerEnv
+          case NoSuccess(msg, next) =>
+            // if(!next.atEnd) printlnErr(s"Error: $msg")
+            if (next.atEnd) (innerEnv, None)
+            else (innerEnv, Some(LisaSyntaxException.LisaSyntaxExceptionInFile(msg, fileName, next)))
+        } else (innerEnv, None)
     }
-    scala.util.Using(scala.io.Source.fromFile(fileName)) {source => {
+    scala.util.Using(scala.io.Source.fromFile(fileName)) { source => {
       val fileContent = source.mkString
       val fileReader = new CharSequenceReader(fileContent match {
         case s if s.startsWith("#!") => s.dropWhile(_ != '\n')
         case s => s
       })
       val reader = parse(success(NilObj), fileReader).next
-      doSeq(reader, env.newFrame).newFrame
+      doSeq(reader, env.newFrame)
     }}.get
+  }
+
+  @throws[java.io.FileNotFoundException]()
+  def executeFile(fileName: String, env: Environments.Environment): Environments.Environment = {
+    val (environment, errors) = executeFileImpl(fileName, env)
+    errors match {
+      case Some(LisaSyntaxException(message, source)) =>
+        printlnErr(s"syntax error: $message at $source($fileName)")
+      case Some(LisaRuntimeException(source, exception)) =>
+        printlnErr(s"$exception\n\tsource: $source")
+      case _ =>
+    }
+    environment
+  }
+
+  @throws[java.io.FileNotFoundException]
+  def executeFileRegardingPath(fileName: String, env: Environments.Environment): Environments.Environment = {
+    PackageImporter.withCurrentFilePath(fileName) {
+      executeFile(fileName, PackageImporter.environmentWithMeta(fileName, env))
+    }
   }
 
   @throws[java.io.FileNotFoundException]("on wrong path")
@@ -198,10 +248,11 @@ object Main {
           NameSpacedEnv("box", Reflect.ToolboxDotAccessor.accessEnv, "")))
         .withValue("load!", SideEffectFunction {
           case (SString(f)::Nil, env) =>
-            (NilObj, executeFile(f, env.withValue("__PATH__", SString(f))))
+            (NilObj, executeFileRegardingPath(f, env.withValue("__PATH__", SString(f))))
           case (els, env) =>
             (LispExp.Failure("Load error", s"Can only load 1 file but $els found."), env)
         }).withValue("quit", quitFn).withValue("exit", quitFn).withIdentify("prelude").newFrame
+    PackageImporter.injectRuntime(preludeEnv)
     if(args.isEmpty) {
       println(
         """
@@ -230,7 +281,7 @@ object Main {
     else {
       args.toList match {
         case "repl" :: fileName :: Nil =>
-          prompt(executeFile(
+          prompt(executeFileRegardingPath(
             fileName, preludeEnv.withValue("__PATH__", SString(fileName))
           ))
         case "compile" :: fileName :: "-o" :: toFile :: Nil =>
@@ -239,7 +290,7 @@ object Main {
           val result = executeCompiled(fileName, preludeEnv)
           if(!result.isSuccess) printlnErr(s"Error: $result")
         case fileName :: arguments =>
-          executeFile(fileName,
+          executeFileRegardingPath(fileName,
             preludeEnv.withValue("__PATH__", SString(fileName)).withValue("system/arguments", LisaList(arguments.map(SString))))
         case _ => printlnErr("I could not understand your arguments.")
       }

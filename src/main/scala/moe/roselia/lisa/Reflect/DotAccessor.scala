@@ -5,7 +5,7 @@ import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
 import ScalaBridge._
 import moe.roselia.lisa.Annotation.RawLisa
-import moe.roselia.lisa.LispExp.{Expression, LisaList, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, Procedure, WrappedScalaObject}
 import moe.roselia.lisa.Util.Extractors.NeedInt
 
 object DotAccessor {
@@ -83,10 +83,33 @@ object DotAccessor {
       val clsObj = mirror.reflect(t)
 //      println(s"$t T: ${mirror.runtimeClass(clsObj.symbol.toType)}")
 //      println(s"${clsObj.symbol.toType} <:< $typ: ${clsObj.symbol.toType <:< typ}")
-      clsObj.symbol.toType <:< typ
+      if (FunctionalInterfaceAdapter.isFunctional(cls)) {
+        t.isInstanceOf[Procedure] || clsObj.symbol.toType <:< typ
+      } else {
+        clsObj.symbol.toType <:< typ
+      }
     }
     sym.lengthIs == args.length && sym.zip(args).forall {
-      case (x, y) => checkType(y)(x.typeSignature) || checkType(y)(x.typeSignature.map(boxedType))
+      case (x, y) => null == y || checkType(y)(x.typeSignature) || checkType(y)(x.typeSignature.map(boxedType))
+    }
+  }
+
+  def performSAMTransform(sym: List[Symbol])(args: Seq[Any]): Seq[Any] = {
+    if (sym.length != args.length) args // If their lengths are not equal then do nothing.
+    else {
+      args.indices.map { i =>
+        val arg = args(i)
+        val symbol = sym(i).typeSignature.typeSymbol
+        arg match {
+          case procedure: Procedure if symbol.isAbstract =>
+            val mirror = runtimeMirror(arg.getClass.getClassLoader)
+            val clazz = mirror.runtimeClass(symbol.asClass)
+            if (FunctionalInterfaceAdapter.isFunctional(clazz)) {
+              FunctionalInterfaceAdapter.createFunctionInvoker(clazz, procedure)
+            } else arg
+          case _ => arg
+        }
+      }
     }
   }
 
@@ -150,8 +173,11 @@ object DotAccessor {
 //    println(overloads)
     if (overloads.isEmpty) throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
     overloads.head match {
-      case symbol if hasRawLisaAnnotation(symbol) => classObj.reflectMethod(symbol).apply(expressionArgs: _*)
-      case symbol => classObj.reflectMethod(symbol).apply(args: _*)
+      case symbol if hasRawLisaAnnotation(symbol) =>
+        classObj.reflectMethod(symbol).apply(expressionArgs: _*)
+      case symbol =>
+        val samArgs = performSAMTransform(symbol.paramLists.flatten)(args)
+        classObj.reflectMethod(symbol).apply(samArgs: _*)
     }
   }
 
@@ -174,6 +200,7 @@ object DotAccessor {
         key.substring(1) match {
           case s"[${NeedInt(index)}]" => x match {
             case LisaList(ll) => ll(index)
+            case WrappedScalaObject(array: Array[_]) => fromScalaNative(array(index))
             case WrappedScalaObject(seq: Seq[_]) => fromScalaNative(seq(index))
             case _ => fromScalaNative(toScalaNative(x).asInstanceOf[Seq[Any]](index))
           }

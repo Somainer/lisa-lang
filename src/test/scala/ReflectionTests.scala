@@ -2,7 +2,10 @@ import org.scalatest.wordspec.AsyncWordSpec
 import org.scalatest.matchers.should.Matchers
 import moe.roselia.lisa
 import moe.roselia.lisa.Annotation.RawLisa
-import moe.roselia.lisa.LispExp.{Expression, SInteger, SString}
+import moe.roselia.lisa.LispExp.{Expression, PrimitiveFunction, Procedure, SInteger, SString, WrappedScalaObject}
+import moe.roselia.lisa.Preludes
+import moe.roselia.lisa.Reflect.FunctionalInterfaceAdapter
+import org.scalatest.Ignore
 
 class ReflectionTests extends AsyncWordSpec with Matchers {
   class Tester {
@@ -138,6 +141,32 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
         applyDot("f")(x)(1)()
       }
     }
+
+    "handle null" in {
+      import ExpressionHelper._
+      val x = new {
+        def isNull(x: String): Boolean = x eq null
+        def isNull(x: Integer): Boolean = x eq null
+      }
+
+      applyDot("isNull")(x)("")("") shouldBe false
+      applyDot("isNull")(x)(null)(lisa.LispExp.JVMNull) shouldBe true
+    }
+
+    "handle SAM transform" in {
+      val list = List(1, 2, 3)
+      val incr = PrimitiveFunction {
+        case SInteger(n) :: Nil => SInteger(n + 1)
+      }
+      val mapper = lisa.Reflect.DotAccessor.accessEnv.get(".map")
+      lisa.Evaluator.apply(
+        mapper,
+        WrappedScalaObject(list) :: incr :: Nil
+      ) match {
+        case lisa.Evaluator.EvalSuccess(exp, _) => exp shouldBe lisa.LispExp.LisaList(list.map(_ + 1).map(SInteger(_)))
+        case lisa.Evaluator.EvalFailureMessage(m) => fail(m)
+      }
+    }
   }
 
   "Reflection Constructor" should {
@@ -148,6 +177,24 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
       string shouldEqual "string"
 
       newInstanceFromClassName("Some", Seq(1)) shouldEqual Some(1)
+    }
+
+    "construct functional objects" in {
+      import java.util.function.Predicate
+      import ExpressionHelper._
+
+      val stringIsEmpty = PrimitiveFunction {
+        case SString(s) :: Nil => s.isEmpty
+      }
+      val predicate = "new"
+        .asSymbol
+        .apply("java.util.function.Predicate".asSymbol, stringIsEmpty)
+        .evalOnPrelude
+        .asInstanceOf[WrappedScalaObject[Predicate[String]]]
+        .get
+
+      predicate test "" shouldBe true
+      predicate test " " shouldBe false
     }
   }
 
@@ -179,6 +226,73 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
     "Throw what is thrown" in {
       an[ArithmeticException] should be thrownBy
         invokeStaticMethod(classOf[Math], "floorDiv")(1, 0)
+    }
+
+    "Handle null" in {
+      import java.util.Objects
+      invokeStaticMethod(classOf[Objects], "isNull")("") shouldBe false
+      invokeStaticMethod(classOf[Objects], "isNull")(null) shouldBe true
+    }
+
+    // This is currently impossible, ignoring it.
+    "Handle SAM transform" ignore {
+      import java.util.function.Predicate
+      import ExpressionHelper._
+
+      val stringIsEmpty = PrimitiveFunction {
+        case SString(s) :: Nil => s.isEmpty
+      }
+
+      val stringIsNotEmpty = invokeStaticMethod(classOf[Predicate[String]], "not")(stringIsEmpty)
+        .asInstanceOf[Predicate[String]]
+      stringIsNotEmpty test "" shouldBe false
+      stringIsNotEmpty test "114" shouldBe true
+    }
+  }
+
+  "FunctionalInterfaceAdapter" should {
+    "Adapt to a Function" in {
+      val incr = FunctionalInterfaceAdapter.createFunctionInvoker(classOf[Any => Any], PrimitiveFunction.withArityChecked(1) {
+        case SInteger(n) :: Nil => SInteger(n + 1)
+      })
+      incr(1) shouldBe 2
+    }
+    "Handle multi-arity functions" in {
+      val plus = Preludes.preludeEnvironment.get("+").asInstanceOf[Procedure]
+      val adder = FunctionalInterfaceAdapter.createFunctionInvoker(classOf[(Any, Any) => Any], plus)
+      adder(2, 3) shouldBe 5
+    }
+    "Handle SAM transform" in {
+      val product = Preludes.preludeEnvironment.get("*").asInstanceOf[Procedure]
+      val multiplexer = FunctionalInterfaceAdapter
+        .createFunctionInvoker[java.util.function.ToIntBiFunction[Int, Int]](product)
+      multiplexer.applyAsInt(2, 3) shouldBe 6
+    }
+
+    // This is impossible now.
+    "Handle default implementations" ignore {
+      import java.util.function.Predicate
+      import ExpressionHelper._
+      val stringIsEmpty = PrimitiveFunction {
+        case SString(s) :: Nil => s.isEmpty
+      }
+      val predicate = FunctionalInterfaceAdapter.createFunctionInvoker[Predicate[String]](stringIsEmpty)
+
+      predicate test "" shouldBe true
+      predicate.negate test "" shouldBe false
+    }
+
+    "Test functional interface correctly" in {
+      import FunctionalInterfaceAdapter.isFunctional
+
+      isFunctional[Any => Any] shouldBe true
+      isFunctional[java.util.function.BiConsumer[Int, Int]] shouldBe true
+      isFunctional[java.util.function.Predicate[Int]] shouldBe true
+      isFunctional[java.util.function.BiPredicate[Int, Int]] shouldBe true
+      isFunctional[Seq[Any]] shouldBe false
+      isFunctional[String] shouldBe false
+      isFunctional[lisa.LispExp.Expression] shouldBe false
+      isFunctional[lisa.LispExp.LisaValue] shouldBe false
     }
   }
 }

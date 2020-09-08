@@ -1,8 +1,8 @@
 import moe.roselia.lisa
 import lisa.LispExp._
 import moe.roselia.lisa.Environments.{CombineEnv, Environment}
-import moe.roselia.lisa.{Evaluator, Preludes}
-import moe.roselia.lisa.Evaluator.{EvalFailure, EvalSuccess}
+import moe.roselia.lisa.{Environments, Evaluator, Preludes}
+import moe.roselia.lisa.Evaluator.{EvalFailure, EvalSuccess, expandMacro}
 
 trait ExpressionHelper extends Implicits {
   def define(sym: Expression, body: Expression) = Define(sym, body)
@@ -27,6 +27,8 @@ trait ExpressionHelper extends Implicits {
         case f@EvalFailure(_, _, _) =>
           org.scalatest.Assertions.fail(f.toString)
       }
+    def evalOnPrelude = evalOn(Preludes.preludeEnvironment)
+    def evalOnEmptyEnv = evalOn(Environments.EmptyEnv)
   }
 
   implicit class ExpressionListOps(exs: List[Expression]) {
@@ -73,3 +75,5 @@ trait ExpressionHelper extends Implicits {
   }
 
 }
+
+object ExpressionHelper extends ExpressionHelper
