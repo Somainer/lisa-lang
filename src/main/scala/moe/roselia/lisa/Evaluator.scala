@@ -551,22 +551,22 @@ object Evaluator {
           }
         case _ => None
       }
-      case LisaList(Symbol("seq") :: args)::xs
-        if arguments.headOption.exists(l => l.isInstanceOf[WrappedScalaObject[Seq[Any]]] || l.isInstanceOf[LisaListLike[_]])
-      =>
-        arguments match {
-          case WrappedScalaObject(s: Seq[Any])::ys =>
-            for {
-              listMatch <- matchArgument(args, s.map(Reflect.ScalaBridge.fromScalaNative).toList, matchResult, inEnv)
-              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
-            } yield listMatch ++ restMatch
-          case (ll: LisaListLike[Expression]) :: ys =>
-            for {
-              listMatch <- matchArgument(args, ll.list, matchResult, inEnv)
-              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
-            } yield listMatch ++ restMatch
-          case _ => None
-        }
+//      case LisaList(Symbol("seq") :: args)::xs
+//        if arguments.headOption.exists(l => l.isInstanceOf[WrappedScalaObject[Seq[Any]]] || l.isInstanceOf[LisaListLike[_]])
+//      =>
+//        arguments match {
+//          case WrappedScalaObject(s: Seq[Any])::ys =>
+//            for {
+//              listMatch <- matchArgument(args, s.map(Reflect.ScalaBridge.fromScalaNative).toList, matchResult, inEnv)
+//              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
+//            } yield listMatch ++ restMatch
+//          case (ll: LisaListLike[Expression]) :: ys =>
+//            for {
+//              listMatch <- matchArgument(args, ll.list, matchResult, inEnv)
+//              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
+//            } yield listMatch ++ restMatch
+//          case _ => None
+//        }
       case LisaList(Symbol(ctrl@("?" | "when" | "when?")) :: arg::Nil)::Nil => arguments match {
         case Nil => eval(unQuoteList(arg), MutableEnv(matchResult, inEnv)) match {
           case EvalSuccess(SBool(b), _) => if (b) Some(matchResult.toMap) else None

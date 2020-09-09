@@ -103,39 +103,6 @@ go ; Error: Symbol go not found.
 (map (list 1 2 3) (lambda (i) (+ i 1)))
 ```
 
-### String Interpolation
-String Interpolation works in parse time. Such expression will be transformed
-to a procedure application. Such strings are called template strings.
-
-Template strings are literals enclosed by single or triple double quote characters (`"` or `"""`)
-followed an identifier, such as `$"Like $this."`, or`template-name"""string literals"""`.
-Note that there shouldn't be any spaces between identifier and string literal in order to
-distinguish it from an application whose procedure is an identifier and the first argument
-is a string like `(string "string")` is not `(string"string")`.
-
-Template literals can contain placeholders. 
-These are indicated by the dollar sign and curly braces (`${expression}`), 
-Or identifiers with only letters and number after a dollar sign
-(no hyphens, which are legal lisa identifiers) (`$identifier`).
-The expressions in the placeholders and the text between the quotes get passed to a function.
-
-One special template is the dollar sign `$`, this works likes normal string interpolation.
-And such string will compiled to an application of `string` which joins the arguments.
-`$"1 + 1 = ${(+ 1 1)}."` will be transformed to `(string "1 + 1 = " (+ 1 1) ".")`.
-
-Otherwise the templates and placeholders will be transform to the application of that identifier.
-Like `need-lisa"($name $age)"` will be compiled to `(need-lisa '("(" " " ")") (list name age))`.
-So, the return type of template function does not necessarily be a string.
-
-The stand interpolator is `string/interpolate`. Hence, the `need-lisa` procedure can be written as:
-```clojure
-(define (need-lisa parts args)
-    (let ((code (string/interpolate parts args)))
-        (read-string code)))
-(define name "YJSNPI")
-(define age 24)
-need-lisa"($name $age)" ; => (YJSNPI 24)
-```
 
 ## Start Playing as A Calculator
 Lisa is a good calculator because Integers are implemented in BigInt, and Floats are implemented in BigDecimal.
@@ -206,7 +173,6 @@ If you do not want to shadow the variables in current scope. Prefixing them is a
 ```
 
 Also, the `require` function is provided as an option to import modules as records. Note that `require` is not a macro, which means dynamic is posssible to achieve via this function.
-`require` also supports importing a `Scala` file, the last expression will be passed as the result.
 
 ```scheme
 (define mod (require "module"))
@@ -214,9 +180,40 @@ Also, the `require` function is provided as an option to import modules as recor
 (println! (get mod 'b))
 ```
 
+`require` also supports importing a `Scala` file, the last expression will be passed as the result. So it is very handy to extend `lisa` capabilities.
+
+```scala
+// GreatFn.scala
+object Great {
+    def greatFunction(x: Int) = x + 1
+}
+
+Great // Last expression is the return value.
+```
+```scala
+// AsLong.scala
+
+import moe.roselia.lisa.LispExp._ // You can import lisa internal scala classes.
+
+// Sometimes we need to pass a long to a method, but by default
+// lisa will convert numbers to Int. So here is an ad-hoc solution.
+PrimitiveFunction {
+  case SInteger(n) :: Nil => WrappedScalaObject(n.toLong)
+}
+```
+```clojure
+; main.lisa
+
+(define Great (require "Great.scala"))
+(.greatFunction Great 1) ; 2
+
+(define as-long (require "AsLong.scala"))
+(Thread/sleep (as-long 1000))
+```
+
 ## Auto Single Abstract Method Transforming
-`Lisa` supports auto SAM transforming, if an procedure, like `Closure`, `PolymorphicProcedure`, `PrimitiveFunction` is passed to a method, static method, or constructor whose
-argument is an Functional Interface, `Lisa` will automatically conver the argument to the correct type.
+`Lisa` supports auto SAM transforming, if a procedure, like `Closure`, `PolymorphicProcedure`, `PrimitiveFunction` is passed to a method, static method, or constructor whose
+argument is a Functional Interface, `Lisa` will automatically conver the argument to the correct type.
 
 Example:
 ```clojure
@@ -229,9 +226,9 @@ class LisaList[+T] {
     def map[U](fn: T => U): LisaList[U]
 }
 ```
-As we can see, the argument type of `map` is `T => U`, which is `Function[T, U]` during runtime. If an closure (`&(+ # 1)`, which will be expanded to `(lambda (#) (+ # 1))`), the type is mismatch but `lisa` will automatically convert the `Closure` to the desired type via a `Proxy`.
+As we can see, the argument type of `map` is `T => U`, which is `Function[T, U]` during runtime. If a closure (`&(+ # 1)`, which will be expanded to `(lambda (#) (+ # 1))`) does not match the type but `lisa` will automatically convert the `Closure` to the desired type via a `Proxy`.
 
-### Construct an SAM instance
+### Construct a SAM instance
 ```clojure
 (define empty? (new java.util.function.Predicate .isEmpty))
 (define list (new java.util.ArrayList))
@@ -243,7 +240,7 @@ As we can see, the argument type of `map` is `T => U`, which is `Function[T, U]`
 (define empty-elements (.filter stream empty?)) ; Actually (.filter stream .isEmpty) also works
 (.count empty-elements) ; 2
 ```
-This example is to demostrate constructing an SAM instance via the SAM interface and the procedure also works.
+This example is to demostrate constructing a SAM instance via the SAM interface and the procedure also works.
 
 ## Interact with JavaScript
 
@@ -328,12 +325,12 @@ plain symbol.
 This could be used to naming a symbol with illegal characters.
 
 ### Match a List
-Pattern `(seq <h1> <h2>)` matches a list or a vector.
+Pattern `(<h1> <h2>)` matches a list or a vector.
 `(... args)` matches the rest of the list.
 
 ```scheme
-(define (sum-list (seq head (... tail))) (+ head (sum-list tail)))
-(define (sum-list (seq)) 0)
+(define (sum-list (head (... tail))) (+ head (sum-list tail)))
+(define (sum-list ()) 0)
 ```
 
 Note that same variable means same value.
@@ -468,7 +465,7 @@ To implement `break` and `continue` capability, you need to use `returnable` fun
 ```
 But you **can not** use it outside returnable body.
 
-Here is an for-loop macro example inside `prelude.lisa`:
+Here is a for-loop macro example inside `prelude.lisa`:
 ```scheme
 (define-macro (for (var init) condition update (... body))
     (define continue-sym (gen-sym))
@@ -506,7 +503,41 @@ bound variable.
 (lambda (#1 #3) (- #3 #1)) ; Unlike Elixir, missing numbers are not checked!
 ```
 
-The secondary usage is to limit the arity of an va-arg function, like `+`.
+### String Interpolation
+String Interpolation works in parse time. Such expression will be transformed
+to a procedure application. Such strings are called template strings.
+
+Template strings are literals enclosed by single or triple double quote characters (`"` or `"""`)
+followed an identifier, such as `$"Like $this."`, or`template-name"""string literals"""`.
+Note that there shouldn't be any spaces between identifier and string literal in order to
+distinguish it from an application whose procedure is an identifier and the first argument
+is a string like `(string "string")` is not `(string"string")`.
+
+Template literals can contain placeholders. 
+These are indicated by the dollar sign and curly braces (`${expression}`), 
+Or identifiers with only letters and number after a dollar sign
+(no hyphens, which are legal lisa identifiers) (`$identifier`).
+The expressions in the placeholders and the text between the quotes get passed to a function.
+
+One special template is the dollar sign `$`, this works likes normal string interpolation.
+And such string will compiled to an application of `string` which joins the arguments.
+`$"1 + 1 = ${(+ 1 1)}."` will be transformed to `(string "1 + 1 = " (+ 1 1) ".")`.
+
+Otherwise the templates and placeholders will be transform to the application of that identifier.
+Like `need-lisa"($name $age)"` will be compiled to `(need-lisa '("(" " " ")") (list name age))`.
+So, the return type of template function does not necessarily be a string.
+
+The stand interpolator is `string/interpolate`. Hence, the `need-lisa` procedure can be written as:
+```clojure
+(define (need-lisa parts args)
+    (let ((code (string/interpolate parts args)))
+        (read-string code)))
+(define name "YJSNPI")
+(define age 24)
+need-lisa"($name $age)" ; => (YJSNPI 24)
+```
+
+The secondary usage is to limit the arity of a var-arg function, like `+`.
 The syntax looks like `&<func_name>/<arity>`.
 `&+/2` will be compiled to `(lambda (arg0 arg1) (+ arg0 arg1))`, limiting the arity helps to implement currying, because
 it will be possible to get function arity via `length` primitive procedure.
@@ -521,7 +552,7 @@ Macros should eventually return an expression which will be expanded where invok
 If you want to refer to a value dynamically, use `dynamic-resolve` macro which only works
 inside macros. This macro will lookup through calling chain to resolve the symbol in
 dynamic scope.
-Since code is data in Lisa, you can generate code by quote and unquote or returning an list.
+Since code is data in Lisa, you can generate code by quote and unquote or returning a list.
 To quote an expression, use syntax sugar `'<expression>`. `~<expression>` is the syntax sugar for unquoting an expression.
 
 ```scheme
