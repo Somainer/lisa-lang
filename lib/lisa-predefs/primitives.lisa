@@ -260,4 +260,4 @@
 
 (define (get-static-method class method-name)
     "Get the static method of the class."
-    (lisa.get-static-method name method-name))
+    (eval (string->symbol $"$class/${method-name}")))

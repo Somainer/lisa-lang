@@ -599,6 +599,7 @@ object Evaluator {
         arguments match {
           case Apply(yHead, yArgs)::ys => continueMatch(yHead :: yArgs, ys)
           case LisaList(llArg) :: ys => continueMatch(llArg, ys)
+          case (lll: LisaListLike[Expression]) :: ys => continueMatch(lll.list, ys)
           case WrappedScalaObject(seq: Seq[Expression]) :: ys => continueMatch(seq.toList, ys)
           case _ => None
         }
