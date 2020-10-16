@@ -20,11 +20,11 @@ jobs:
     - name: Build and pack
       run: sbt pack
     
-    - name: Release
-      uses: "marvinpinto/action-automatic-releases@latest"
+    - name: Archive Release
+      uses: thedoctor0/zip-release@master
       with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        prerelease: false
-        automatic_release_tag: latest
-        files: |
-          target/pack/**
+        filename: 'lisa.zip'
+        exclusions: '*.git* /*node_modules/* .editorconfig'
+        path: pack
+        directory: target
+        type: zip
