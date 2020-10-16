@@ -239,3 +239,25 @@
     "Stop the interpreter with exit-code."
     (System/exit exit-code))
 (define exit quit)
+
+(define (value-exists? symbol-or-string)
+    "Test if such symbol is defined in environment invoked."
+    (panic!))
+
+(define-macro (import! path)
+    "Import all defined values in file."
+    '(lisa.import! ~path))
+(define-macro (import! path (... variables))
+    "Import only variables in file."
+    '(lisa.import! ~path ~~variables))
+(define-macro (import! path '* 'as prefix)
+    "Import all variables, with prefix $prefix."
+    '(lisa.import! ~path * as ~prefix))
+
+(define (require name)
+    "Import all variable in a file, then return a record."
+    (lisa.require name))
+
+(define (get-static-method class method-name)
+    "Get the static method of the class."
+    (eval (string->symbol $"$class/${method-name}")))

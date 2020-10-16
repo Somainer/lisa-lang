@@ -2,9 +2,10 @@ package moe.roselia.lisa
 
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv, NameSpacedEnv, SpecialEnv, TransparentLayer}
 import moe.roselia.lisa.Evaluator.{EvalFailure, EvalFailureMessage, EvalResult, EvalSuccess}
+import moe.roselia.lisa.Import.PackageImporter
 import moe.roselia.lisa.LispExp._
-import moe.roselia.lisa.Reflect.{PackageAccessor, ToolboxDotAccessor, ConstructorCaller}
-import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative, fromJVMNative}
+import moe.roselia.lisa.Reflect.{ConstructorCaller, PackageAccessor, ToolboxDotAccessor}
+import moe.roselia.lisa.Reflect.ScalaBridge.{fromJVMNative, fromScalaNative, toScalaNative}
 
 import scala.util.Try
 
@@ -396,6 +397,17 @@ object Preludes extends LispExp.Implicits {
     },
     "quoted" -> PrimitiveFunction.withArityChecked(1) {
       case x :: Nil => Quote(x)
+    },
+    "value-exists?" -> SideEffectFunction {
+      case (Symbol(s) :: Nil, env) => (env.has(s), env)
+      case (SString(s) :: Nil, env) => (env.has(s), env)
+    }.withDocString("Test if such value exists in calling context."),
+    "import!" -> PackageImporter.importMacro,
+    "import" -> PackageImporter.importFunction,
+    "require" -> PackageImporter.requireFunction,
+    "get-static-method" -> PrimitiveFunction.withArityChecked(2) {
+      case WrappedScalaObject(clazz: Class[_]) :: SString(name) :: Nil =>
+        Reflect.StaticFieldAccessor.convertStaticMethodToLisa(clazz, name)
     }
   ))
 

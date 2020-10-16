@@ -10,6 +10,7 @@ object Evaluator {
   import Environments._
   import LispExp._
   import SimpleLispTree._
+  import Util.ConsoleColor.Implicits._
 
   val shouldOptimizeTailCall: Boolean = true
 
@@ -221,7 +222,12 @@ object Evaluator {
 
     val evalResult = exp match {
       case f: Failure => EvalFailure(s"${f.tp}: ${f.message}")
-      case Symbol(sym) => env.getValueOption(sym).map(pureValue).getOrElse(EvalFailure(s"Symbol $sym not found."))
+      case Symbol(sym) => env.getValueOption(sym).map(pureValue).getOrElse {
+        val message = new StringBuilder(s"Symbol $sym not found.")
+        Util.SimilarSymbolFinder.findSuitableSuggestion(sym, env)
+          .map(suggestion => s" Do you mean ${suggestion.underline}?").foreach(message.append)
+        EvalFailure(message.result())
+      }
       case bool: SBool => pureValue(bool)
       case o@WrappedScalaObject(_) => pureValue(o)
       case NilObj => pureValue(NilObj)
@@ -545,22 +551,22 @@ object Evaluator {
           }
         case _ => None
       }
-      case LisaList(Symbol("seq") :: args)::xs
-        if arguments.headOption.exists(l => l.isInstanceOf[WrappedScalaObject[Seq[Any]]] || l.isInstanceOf[LisaListLike[_]])
-      =>
-        arguments match {
-          case WrappedScalaObject(s: Seq[Any])::ys =>
-            for {
-              listMatch <- matchArgument(args, s.map(Reflect.ScalaBridge.fromScalaNative).toList, matchResult, inEnv)
-              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
-            } yield listMatch ++ restMatch
-          case (ll: LisaListLike[Expression]) :: ys =>
-            for {
-              listMatch <- matchArgument(args, ll.list, matchResult, inEnv)
-              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
-            } yield listMatch ++ restMatch
-          case _ => None
-        }
+//      case LisaList(Symbol("seq") :: args)::xs
+//        if arguments.headOption.exists(l => l.isInstanceOf[WrappedScalaObject[Seq[Any]]] || l.isInstanceOf[LisaListLike[_]])
+//      =>
+//        arguments match {
+//          case WrappedScalaObject(s: Seq[Any])::ys =>
+//            for {
+//              listMatch <- matchArgument(args, s.map(Reflect.ScalaBridge.fromScalaNative).toList, matchResult, inEnv)
+//              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
+//            } yield listMatch ++ restMatch
+//          case (ll: LisaListLike[Expression]) :: ys =>
+//            for {
+//              listMatch <- matchArgument(args, ll.list, matchResult, inEnv)
+//              restMatch <- matchArgument(xs, ys, matchResult, inEnv)
+//            } yield listMatch ++ restMatch
+//          case _ => None
+//        }
       case LisaList(Symbol(ctrl@("?" | "when" | "when?")) :: arg::Nil)::Nil => arguments match {
         case Nil => eval(unQuoteList(arg), MutableEnv(matchResult, inEnv)) match {
           case EvalSuccess(SBool(b), _) => if (b) Some(matchResult.toMap) else None
@@ -593,6 +599,7 @@ object Evaluator {
         arguments match {
           case Apply(yHead, yArgs)::ys => continueMatch(yHead :: yArgs, ys)
           case LisaList(llArg) :: ys => continueMatch(llArg, ys)
+          case (lll: LisaListLike[Expression]) :: ys => continueMatch(lll.list, ys)
           case WrappedScalaObject(seq: Seq[Expression]) :: ys => continueMatch(seq.toList, ys)
           case _ => None
         }

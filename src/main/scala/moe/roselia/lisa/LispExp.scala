@@ -362,6 +362,8 @@ object LispExp {
   case class SideEffectFunction(function: (List[Expression], Environment) => (Expression, Environment))
     extends Procedure with NoExternalDependency {
     override def toString: String = "#[Native Code!]"
+
+    def asMacro = PrimitiveMacro(function)
   }
 
   case class LambdaExpression(body: Expression, boundVariable: List[Expression],
@@ -634,6 +636,8 @@ object LispExp {
   case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment))
     extends Procedure with DeclareArityAfter with NoExternalDependency {
     override def toString: String = s"#Macro![Native Code]"
+
+    def asProcedure: SideEffectFunction = SideEffectFunction(fn)
   }
 
   case class Failure(tp: String, message: String) extends Expression with NoExternalDependency {
@@ -765,6 +769,9 @@ object LispExp {
   trait LisaRecord[+V <: Expression] extends Record[String, V] with Expression with NoExternalDependency {
     def apply(sym: Symbol) = selectDynamic(sym.value)
   }
+  trait LisaMutableRecord[+V <: Expression] extends LisaRecord[V] {
+    def updateValue(key: String, value: Expression): Unit
+  }
 
   object LisaRecord {
     def recordMaker(rec: List[Expression], name: String = "") = {
@@ -837,13 +844,13 @@ object LispExp {
           throw new IllegalArgumentException(s"Expected a record")
       },
       "record-update!" -> PrimitiveFunction.withArityChecked(3) {
-        case (r: MutableLisaMapRecord) :: key :: value :: Nil =>
+        case (r: LisaMutableRecord[_]) :: key :: value :: Nil =>
           val k = getKeyStringOf(key)
-          r.update(k, value)
+          r.updateValue(k, value)
           NilObj
       },
       "record-contains?" -> PrimitiveFunction.withArityChecked(2) {
-        case (r: LisaRecordWithMap[_]) :: key :: Nil =>
+        case (r: LisaRecord[_]) :: key :: Nil =>
           SBool(r.containsKey(getKeyStringOf(key)))
       },
       "get-record-or-else" -> PrimitiveFunction {
@@ -917,11 +924,13 @@ object LispExp {
   }
 
   case class MutableLisaMapRecord(map: mutable.Map[String, Expression], recordTypeName: String = "")
-    extends LisaRecordWithMap[Expression] {
+    extends LisaRecordWithMap[Expression] with LisaMutableRecord[Expression] {
     def update(key: String, value: Expression): MutableLisaMapRecord = {
       map.update(key, value)
       this
     }
+
+    override def updateValue(key: String, value: Expression): Unit = update(key, value)
     @`inline` def updateDynamic(key: String)(value: Expression): Unit = {
       update(key, value)
     }

@@ -4,7 +4,7 @@ import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
 import moe.roselia.lisa.Util.Extractors.RichOption
 import ScalaBridge.{fromScalaNative, toScalaNative}
-import moe.roselia.lisa.LispExp.{Expression, PrimitiveFunction}
+import moe.roselia.lisa.LispExp.{Expression, PrimitiveFunction, Procedure}
 
 object StaticFieldAccessor {
   def jvmBoxedClass(clazz: Class[_]): Class[_] = clazz match {
@@ -42,8 +42,12 @@ object StaticFieldAccessor {
     }
   }
 
+  @`inline` def isTypeFitForJava(param: Class[_], argument: Any): Boolean = {
+    null == argument || param.isInstance(argument) ||
+      (argument.isInstanceOf[Procedure] && FunctionalInterfaceAdapter.isFunctional(param))
+  }
   @`inline` def isTypeFitForJava(params: Seq[Class[_]], arguments: Seq[Any]): Boolean =
-    params.view.map(jvmBoxedClass).zip(arguments).forall(Function.tupled(_ isInstance _))
+    params.view.map(jvmBoxedClass).zip(arguments).forall { Function.tupled(isTypeFitForJava) }
 
   def matchRealArguments(params: Seq[Class[_]], arguments: Seq[Any]): Option[Seq[Any]] = {
     def loop(params: List[Class[_]], arguments: List[Any], buffer: List[Any]): Option[Seq[Any]] = params match {
@@ -54,7 +58,7 @@ object StaticFieldAccessor {
           loop(Nil, Nil, arguments.toArray :: buffer)
         else None
       case cls :: ps => arguments match {
-        case x :: xs if cls.isInstance(x) => loop(ps, xs, x :: buffer)
+        case x :: xs if isTypeFitForJava(cls, x) => loop(ps, xs, x :: buffer)
         case _ => None
       }
     }
@@ -69,8 +73,15 @@ object StaticFieldAccessor {
     })
       .filter(_.trySetAccessible())
       .map(method => {
-        if (method.isVarArgs) method.invoke(null, matchRealArguments(method.getParameterTypes, args).get: _*)
-        else method.invoke(null, args: _*)
+        val realArguments = if (method.isVarArgs) {
+          matchRealArguments(method.getParameterTypes, args).get
+        } else {
+          args
+        }
+        val transformedArguments = FunctionalInterfaceAdapter
+          .performSAMTransform(realArguments, method.getParameterTypes)
+
+        method.invoke(null, transformedArguments: _*)
       })
   }
 
@@ -102,6 +113,15 @@ object StaticFieldAccessor {
       .getOrThrow(new NoSuchFieldException(s"No such filed $name for ${clazz.getName}."))
   }
 
+  def convertStaticMethodToLisa(fromClass: Class[_], name: String): Expression = {
+    if (isFieldOrNilArityMethod(fromClass, name))
+      fromScalaNative(getFieldOrNilArityMethod(fromClass, name))
+    else if (isMethod(fromClass, name)) {
+      PrimitiveFunction {
+        xs => fromScalaNative(invokeStaticMethod(fromClass, name)(xs.map(toScalaNative): _*))
+      }
+    } else throw new NoSuchMethodException(name)
+  }
 
   object StaticFieldsAccessorEnvironment extends SpecialEnv {
     private val cache = collection.mutable.Map.empty[String, Expression]

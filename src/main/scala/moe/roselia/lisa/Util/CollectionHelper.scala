@@ -49,6 +49,8 @@ object CollectionHelper {
     case ll: LisaListLike[Expression] => ll.applyOrElse(index, lazyConst(default))
     case WrappedScalaObject(it: Iterable[_]) =>
       fromScalaNative(it.toSeq.applyOrElse(index, lazyConst(default)))
+    case WrappedScalaObject(array: Array[_]) =>
+      fromScalaNative(array.applyOrElse(index, lazyConst(default)))
     case SString(value) => SString(value.applyOrElse(index, lazyConst(default)).toString)
     case xs: Iterable[_] => fromScalaNative(xs.view.toSeq.applyOrElse(index, lazyConst(default)))
     case xs => throw new IllegalArgumentException(s"Contract violation: ${xs.tpe.name} is not seq-like.")

@@ -4,7 +4,7 @@ import moe.roselia.lisa.LispExp._
 import moe.roselia.lisa.Evaluator.applyToEither
 
 object ScalaBridge {
-  private def evalClosure(c: Procedure)(xOrxs: Any) = {
+  private[lisa] def evalClosure(c: Procedure)(xOrxs: Any) = {
 //    println(s"Received $c $xs -> ${xs.map(fromScalaNative).toList}")
 //    println(s"-> ${apply(c, xs.map(fromScalaNative).toList)}")
     val xs = ensureSeq(xOrxs)
@@ -34,9 +34,9 @@ object ScalaBridge {
         else integral
       } else rat.toDouble
     case sNumber: SNumber[_] => sNumber
-    case PrimitiveFunction(fn) => (xs: Any) => fn(ensureSeq(xs).map(fromScalaNative).toList)
-    case c@Closure(_, _, _, _) =>
-      evalClosure(c)(_)
+//    case PrimitiveFunction(fn) => (xs: Any) => fn(ensureSeq(xs).map(fromScalaNative).toList)
+    // Since we have SAM transform now, we do not need the dummy transformation here.
+    case procedure: Procedure => procedure
     case r: LisaRecord[_] => r
     case ll: LisaListLike[_] => ll
     case identicalLisaExpression: IdenticalLisaExpression => identicalLisaExpression
