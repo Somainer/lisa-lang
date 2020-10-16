@@ -17,17 +17,17 @@ jobs:
       uses: actions/setup-java@v1
       with:
         java-version: 11
+    
     - name: Build and pack
       run: sbt pack
     
     - name: Make Release Archive
-      uses: thedoctor0/zip-release@master
+      uses: papeloto/action-zip@v1
       with:
-        filename: 'lisa.zip'
-        exclusions: '*.git* /*node_modules/* .editorconfig'
-        path: pack
-        directory: target
-        type: zip
+        files: target/pack
+        recursive: true
+        dest: lisa.zip
+    
     - name: Release
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
@@ -35,4 +35,4 @@ jobs:
         prerelease: false
         automatic_release_tag: latest
         files: |
-          target/pack/lisa.zip
+          lisa.zip
