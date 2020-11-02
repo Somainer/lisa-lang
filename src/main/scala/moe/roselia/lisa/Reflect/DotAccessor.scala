@@ -211,7 +211,6 @@ object DotAccessor {
       case x::xs =>
         val field = key.substring(1)
         fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative): _*)(xs: _*))
-    }.withDocString(s"$key: Access ${key substring 1} attribute or method of a scala object. " +
-      s"If you do not care about performance, use box$key"))
+    }.withDocString(s"$key: Access ${key substring 1} attribute or method of a jvm object."))
   })
 }

@@ -275,6 +275,30 @@ object LispExp {
       case v if v >= -127 && v <= 128 => integerCache(v.toInt + 127)
       case v => new SInteger(v)
     }
+
+    trait SIntegerIsNumeric extends Numeric[SInteger] {
+      private val lisaIntegerIsNum = implicitly[Numeric[LisaInteger]]
+      import scala.language.implicitConversions
+      private[SInteger] implicit def lisaInt2SInt(li: LisaInteger): SInteger = SInteger(li)
+      private[SInteger] implicit def sInt2lisaInt(si: SInteger): LisaInteger = si.value
+      override def plus(x: SInteger, y: SInteger): SInteger = lisaIntegerIsNum.plus(x, y)
+      override def minus(x: SInteger, y: SInteger): SInteger = lisaIntegerIsNum.minus(x, y)
+      override def times(x: SInteger, y: SInteger): SInteger = lisaIntegerIsNum.times(x, y)
+      override def negate(x: SInteger): SInteger = lisaIntegerIsNum.negate(x)
+      override def fromInt(x: Int): SInteger = lisaIntegerIsNum.fromInt(x)
+      override def parseString(str: String): Option[SInteger] = lisaIntegerIsNum.parseString(str).map(lisaInt2SInt)
+      override def toInt(x: SInteger): Int = lisaIntegerIsNum.toInt(x)
+      override def toLong(x: SInteger): Long = lisaIntegerIsNum.toLong(x)
+      override def toFloat(x: SInteger): Float = lisaIntegerIsNum.toFloat(x)
+      override def toDouble(x: SInteger): Double = lisaIntegerIsNum.toDouble(x)
+      override def compare(x: SInteger, y: SInteger): Int = lisaIntegerIsNum.compare(x, y)
+    }
+
+    implicit object SIntegerIsIntegral extends Integral[SInteger] with SIntegerIsNumeric {
+      private val lisaIntegerIsIntegral: Integral[LisaInteger] = implicitly
+      override def quot(x: SInteger, y: SInteger): SInteger = lisaIntegerIsIntegral.quot(x, y)
+      override def rem(x: SInteger, y: SInteger): SInteger = lisaIntegerIsIntegral.rem(x, y)
+    }
   }
 
   case class SFloat(value: LisaDecimal) extends SNumber(value)
@@ -392,7 +416,7 @@ object LispExp {
     }
 
     override def toRawList: Expression = {
-      val list = Symbol("lambda") :: boundVariable ++ (nestedExpressions :+ body)
+      val list = List(Symbol("lambda"), LisaList(boundVariable)) ::: (nestedExpressions :+ body)
       LisaList(list.map(_.toRawList))
     }
   }
@@ -1045,6 +1069,10 @@ object LispExp {
     override def toString: String = "null"
 
     override def tpe: LisaType = NameOnlyType("Null")
+  }
+
+  case class LisaThunk(thunk: Procedure) extends Expression with NoExternalDependency {
+    lazy val value: Expression = Evaluator.applyToEither(thunk, Nil).fold(ex => throw new RuntimeException(ex), identity)
   }
 
   trait Implicits {

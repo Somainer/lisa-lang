@@ -7,6 +7,7 @@ import moe.roselia.lisa.Evaluator.EvalResult
 import moe.roselia.lisa.Exceptions.{LisaException, LisaRuntimeException, LisaSyntaxException}
 import moe.roselia.lisa.Import.PackageImporter
 import moe.roselia.lisa.LispExp.{LisaList, NilObj, PrimitiveFunction, SNumber, SString, SideEffectFunction, WrappedScalaObject}
+import moe.roselia.lisa.Repl.ReplDriver
 
 import scala.annotation.tailrec
 import scala.util.Try
@@ -19,13 +20,13 @@ object Main {
   import Util.ConsoleColor.Implicits._
   def printlnErr[S](s: S): Unit = Console.err.println(s.toString.foreground("#ff4a4a"))
 
-  @`inline` private def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
+  @`inline` private[lisa] def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
     if (pairs < 0) pairs
     else if (c == '(') pairs + 1
     else if (c == ')') pairs - 1
     else pairs
   })
-  @`inline` private def needMoreInput(input: String) = {
+  @`inline` private[lisa] def needMoreInput(input: String) = {
     indentLevel(input) > 0
   }
 
@@ -266,7 +267,8 @@ object Main {
           |Type in expressions for evaluation. (quit) to quit.
         """.stripMargin)
       try {
-        prompt(preludeEnv)
+        new ReplDriver().runUntilQuit(preludeEnv)
+//        prompt(preludeEnv)
       } catch {
         case ex: java.lang.StackOverflowError =>
           ex.printStackTrace()

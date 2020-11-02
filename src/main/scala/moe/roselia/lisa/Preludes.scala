@@ -408,6 +408,9 @@ object Preludes extends LispExp.Implicits {
     "get-static-method" -> PrimitiveFunction.withArityChecked(2) {
       case WrappedScalaObject(clazz: Class[_]) :: SString(name) :: Nil =>
         Reflect.StaticFieldAccessor.convertStaticMethodToLisa(clazz, name)
+    },
+    "thunk" -> PrimitiveFunction.withArityChecked(1) {
+      case (e: Procedure) :: Nil => LisaThunk(e)
     }
   ))
 
@@ -564,16 +567,16 @@ object Preludes extends LispExp.Implicits {
         }.toMap)
     },
     "range" -> PrimitiveFunction {
-      case SInteger(from) :: SInteger(to) :: Nil =>
-        WrappedScalaObject(Range(from.toInt, to.toInt))
-      case SInteger(from) :: SInteger(to) :: SInteger(step) :: Nil =>
-        WrappedScalaObject(Range(from.toInt, to.toInt, step.toInt))
+      case (from: SInteger) :: (to: SInteger) :: Nil =>
+        WrappedScalaObject(scala.collection.immutable.NumericRange(from, to, SInteger(1)))
+      case (from: SInteger) :: (to: SInteger) :: (step: SInteger) :: Nil =>
+        WrappedScalaObject(scala.collection.immutable.NumericRange(from, to, step))
     },
     "range/inclusive" -> PrimitiveFunction {
-      case SInteger(from) :: SInteger(to) :: Nil =>
-        WrappedScalaObject(Range.inclusive(from.toInt, to.toInt))
-      case SInteger(from) :: SInteger(to) :: SInteger(step) :: Nil =>
-        WrappedScalaObject(Range.inclusive(from.toInt, to.toInt, step.toInt))
+      case (from: SInteger) :: (to: SInteger) :: Nil =>
+        WrappedScalaObject(scala.collection.immutable.NumericRange.inclusive(from, to, SInteger(1)))
+      case (from: SInteger) :: (to: SInteger) :: (step: SInteger) :: Nil =>
+        WrappedScalaObject(scala.collection.immutable.NumericRange.inclusive(from, to, step))
     },
     "sort" -> PrimitiveFunction {
       case coll :: Nil => Util.CollectionHelper.generalSortWith(coll, primitiveEnvironment.get("<"))

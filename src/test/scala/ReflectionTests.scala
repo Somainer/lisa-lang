@@ -248,6 +248,10 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
       stringIsNotEmpty test "" shouldBe false
       stringIsNotEmpty test "114" shouldBe true
     }
+
+    "Handle arrays" in {
+      invokeStaticMethod(classOf[String], "copyValueOf")(Array[Any]('l', 'i', 's', 'a')) shouldBe "lisa"
+    }
   }
 
   "FunctionalInterfaceAdapter" should {

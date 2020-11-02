@@ -155,7 +155,7 @@ object Evaluator {
               list.map(compileToList), sExpr.init.map(compile))
           case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
         }
-        case _ => Failure("Syntax Error", "Error creating a closure.")
+        case x => Failure("Syntax Error", s"Error creating a closure, unexpected lambda body $x.")
       }
       case Value("define-macro")::xs => xs match {
         case SList(Value(name)::patterns)::sExpr =>
@@ -206,7 +206,10 @@ object Evaluator {
     case _ => Failure("Compile Error", s"Error compiling: $tree")
   }
   def evaluate(exp: Expression, env: Environment): InterpreterControlFlow = {
-    def pureValue(expression: Expression) = EvalSuccess(expression, env)
+    def pureValue(expression: Expression): EvalSuccess = expression match {
+      case thunk: LisaThunk => pureValue(thunk.value)
+      case _ => EvalSuccess(expression, env)
+    }
     def pure(evalResult: EvalResult) = evalResult flatMap pureValue
     def unit(newEnv: Environment) = EvalSuccess(NilObj, newEnv)
     def sideEffect(evalResult: EvalResult): EvalResult = evalResult match {
@@ -303,6 +306,7 @@ object Evaluator {
       case ll: LisaListLike[_] => pureValue(ll)
       case UnQuote(q) => eval(q, env)
       case pm: PrimitiveMacro => pureValue(pm)
+      case thunk: LisaThunk => pureValue(thunk.value)
 
       case Apply(func, args) => eval(func, env) flatMap {
         case SideEffectFunction(fn) =>

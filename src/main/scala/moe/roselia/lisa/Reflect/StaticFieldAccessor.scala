@@ -43,7 +43,11 @@ object StaticFieldAccessor {
   }
 
   @`inline` def isTypeFitForJava(param: Class[_], argument: Any): Boolean = {
-    null == argument || param.isInstance(argument) ||
+    null == argument || {
+      param.isArray && argument.isInstanceOf[Array[_]] && {
+        argument.asInstanceOf[Array[_]].forall(jvmBoxedClass(param.getComponentType).isInstance)
+      }
+    } || param.isInstance(argument) ||
       (argument.isInstanceOf[Procedure] && FunctionalInterfaceAdapter.isFunctional(param))
   }
   @`inline` def isTypeFitForJava(params: Seq[Class[_]], arguments: Seq[Any]): Boolean =
@@ -66,6 +70,36 @@ object StaticFieldAccessor {
     loop(params.map(jvmBoxedClass).toList, arguments.toList, Nil)
   }
 
+  def castArrays(clazz: Seq[Class[_]], arguments: Seq[Any]): Seq[Any] = {
+    arguments.indices.map { i =>
+      val expectedClass = clazz(i)
+      arguments(i) match {
+        case array: Array[_] if expectedClass.isArray =>
+          if (expectedClass.isInstance(array)) array
+          else if (expectedClass.getComponentType.isPrimitive) {
+            expectedClass.getComponentType match {
+              case java.lang.Integer.TYPE => Array.copyAs[Int](array, array.length)
+              case java.lang.Long.TYPE => Array.copyAs[Long](array, array.length)
+              case java.lang.Short.TYPE => Array.copyAs[Short](array, array.length)
+              case java.lang.Byte.TYPE => Array.copyAs[Byte](array, array.length)
+              case java.lang.Character.TYPE => Array.copyAs[Char](array, array.length)
+              case java.lang.Boolean.TYPE => Array.copyAs[Boolean](array, array.length)
+              case java.lang.Float.TYPE => Array.copyAs[Float](array, array.length)
+              case java.lang.Double.TYPE => Array.copyAs[Double](array, array.length)
+              case _ => array
+            }
+          }
+          else {
+            java.util.Arrays.copyOf(
+              array.asInstanceOf[Array[AnyRef]],
+              array.length,
+              expectedClass.asInstanceOf[Class[Array[AnyRef]]])
+          }
+        case otherwise => otherwise
+      }
+    }
+  }
+
   def invokeStaticMethodOfClass(clazz: Class[_], name: String)(args: Any*): Option[Any] = DotAccessor.handleReflectionException {
     getStaticMethodOfClassByName(clazz, name).find(method => {
       if(method.isVarArgs) matchRealArguments(method.getParameterTypes, args).isDefined
@@ -76,7 +110,7 @@ object StaticFieldAccessor {
         val realArguments = if (method.isVarArgs) {
           matchRealArguments(method.getParameterTypes, args).get
         } else {
-          args
+          castArrays(method.getParameterTypes, args)
         }
         val transformedArguments = FunctionalInterfaceAdapter
           .performSAMTransform(realArguments, method.getParameterTypes)
