@@ -82,6 +82,7 @@ class ReplDriver(inputStream: InputStream = System.in,
   }
 
   def runUntilQuit(initialState: State = this.initialState): State = {
+    savedInitialState = Some(initialState)
     val terminal = new LisaTerminal
     def readLine(state: State): String = {
       try {
