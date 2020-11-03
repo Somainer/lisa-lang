@@ -8,6 +8,8 @@ import moe.roselia.lisa.Annotation.RawLisa
 import moe.roselia.lisa.LispExp.{Expression, LisaList, Procedure, WrappedScalaObject}
 import moe.roselia.lisa.Util.Extractors.NeedInt
 
+import scala.reflect.runtime.universe
+
 object DotAccessor {
   import reflect.runtime.universe._
 
@@ -121,6 +123,13 @@ object DotAccessor {
       .map(_.decl(termName))
       .find(_.isTerm)
       .map(_.asTerm)
+  }
+
+  def getDeclaredTerms(symbol: ClassSymbol): Seq[universe.Symbol] = {
+    (symbol :: symbol.baseClasses)
+      .map(_.asClass)
+      .map(_.toType)
+      .flatMap(_.decls)
   }
 
   def toJvmName(name: String) = {

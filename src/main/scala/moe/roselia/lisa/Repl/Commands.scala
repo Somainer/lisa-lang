@@ -19,4 +19,5 @@ object Commands {
         |%%time <expression>       test the execution time of an expression
       """.stripMargin
   }
+  case object OldRepl extends InterpreterCommand
 }

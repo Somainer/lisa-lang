@@ -283,9 +283,10 @@ object Main {
     else {
       args.toList match {
         case "repl" :: fileName :: Nil =>
-          prompt(executeFileRegardingPath(
+          val finalEnv = executeFileRegardingPath(
             fileName, preludeEnv.withValue("__PATH__", SString(fileName))
-          ))
+          )
+          new ReplDriver().runUntilQuit(finalEnv)
         case "compile" :: fileName :: "-o" :: toFile :: Nil =>
           compileFile(fileName, toFile)
         case "execute" :: fileName :: Nil =>

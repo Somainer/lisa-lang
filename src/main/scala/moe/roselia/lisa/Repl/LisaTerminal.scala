@@ -58,7 +58,7 @@ class LisaTerminal extends java.io.Closeable {
       def defaultParsedLine = parsedLine("", 0)
       val openPairs = openBrackets(line)
       context match {
-        case reader.Parser.ParseContext.ACCEPT_LINE if openPairs == 0 =>
+        case reader.Parser.ParseContext.ACCEPT_LINE if openPairs <= 0 =>
           defaultParsedLine
         case reader.Parser.ParseContext.COMPLETE =>
           val parser = new reader.impl.DefaultParser()
@@ -76,7 +76,7 @@ class LisaTerminal extends java.io.Closeable {
 }
 
 object LisaTerminal {
-  val roseliaColor = "#6670ED"
+  val roseliaColor = "#6670ed"
   val keywords = Seq(
     "define", "define-macro", "lambda", "if", "cond", "let"
   )

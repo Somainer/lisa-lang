@@ -42,6 +42,13 @@ class ReplDriver(inputStream: InputStream = System.in,
         newState
       case LisaExpressionTree(tree) =>
         evaluateExpression(Evaluator.compile(tree))
+      case Commands.OldRepl =>
+        moe.roselia.lisa.Main.prompt(
+          state.environment,
+          "",
+          state.resultIndex
+        )
+        state
     }
   }
 
@@ -129,6 +136,20 @@ class ReplDriver(inputStream: InputStream = System.in,
               case _: ClassNotFoundException => // Just do nothing.
             }
           }
+
+          if (word.startsWith(".")) {
+            HintProvider
+              .provideMemberSymbols(word.substring(1), line.line().substring(line.cursor()))(state)
+              .foreach { member =>
+                val memberName = member.name.decodedName.toString
+                val typeName = HintProvider.symbolToTypeSignature(member)
+                candidates.add(new Candidate(
+                  s"$prefix.$memberName",
+                  s"$memberName: $typeName",
+                  null, null, null, null, false
+                ))
+              }
+          }
         }(state)
         line
       } catch {
@@ -165,6 +186,7 @@ class ReplDriver(inputStream: InputStream = System.in,
           | "reset" ^^^ Commands.ResetToInitial
           | "help" ^^^ Commands.Help
           | ("time" ~> sExpression ^^ Commands.ExecutionTime)
+          | "old-repl" ^^^ Commands.OldRepl
         )
     val userInput = commands | sExpressionOrNil ^^ { Commands.LisaExpressionTree }
 
