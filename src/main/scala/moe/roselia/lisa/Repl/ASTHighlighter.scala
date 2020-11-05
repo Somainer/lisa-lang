@@ -37,7 +37,7 @@ trait ASTHighlighter {
               case _ if sym.endsWith("?") => transform(tree)(_.ansiGreen)
               case _: PrimitiveMacro
                    | _: SimpleMacroClosure
-                   | PolymorphicExpression(_, _, _, false) => transform(tree)(_.ansiCyan.italic)
+                   | PolymorphicExpression(_, _, _, true) => transform(tree)(_.ansiCyan.italic)
               case _: Procedure => transform(tree)(_.ansiCyan)
               case _ =>
                 transform(tree) { token =>
