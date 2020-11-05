@@ -2,7 +2,7 @@ package moe.roselia.lisa.Repl
 
 import moe.roselia.lisa.Environments.{EmptyEnv, Environment}
 import moe.roselia.lisa.Evaluator
-import moe.roselia.lisa.LispExp.{JVMNull, PolymorphicExpression, PrimitiveMacro, Procedure, SBool, SNumber, SimpleMacroClosure, Symbol}
+import moe.roselia.lisa.LispExp.{JVMNull, PolymorphicExpression, PrimitiveMacro, Procedure, SBool, SNumber, SideEffectFunction, SimpleMacroClosure, Symbol}
 import moe.roselia.lisa.SimpleLispTree
 import moe.roselia.lisa.SimpleLispTree.SimpleLispTree
 import moe.roselia.lisa.Util.ConsoleColor.RGBColor
@@ -40,6 +40,7 @@ trait ASTHighlighter {
               case _: PrimitiveMacro
                    | _: SimpleMacroClosure
                    | PolymorphicExpression(_, _, _, true) => transform(tree)(_.ansiCyan.italic)
+              case _: SideEffectFunction => transform(tree)(_.ansiCyan.underline)
               case _: Procedure => transform(tree)(_.ansiCyan)
               case _ =>
                 transform(tree) { token =>

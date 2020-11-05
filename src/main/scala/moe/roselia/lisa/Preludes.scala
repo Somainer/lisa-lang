@@ -35,6 +35,7 @@ object Preludes extends LispExp.Implicits {
     "io-source" -> Library.IOSource.sourceLibrary,
     "logical" -> Logical.LogicalModuleEnvironment,
     "predef" -> preludeEnvironment,
+    "contextual-functions" -> Library.ContextualFunction.ContextualFunctionEnv,
   ).view.mapValues(e => () => e.withIdentify("prelude"))
   private lazy val selectablePreludeKeys = selectablePreludes.keysIterator.toSeq
 

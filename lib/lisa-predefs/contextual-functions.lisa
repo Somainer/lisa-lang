@@ -1,0 +1,7 @@
+(define (side-effect procedure)
+    """Define a SideEffectFunction from a function
+    the function will accept a list and the environment,
+    returning a list of the result and the new environment.
+    """
+    (import-env! contextual-functions ctxf)
+    (ctxf.side-effect procedure))
