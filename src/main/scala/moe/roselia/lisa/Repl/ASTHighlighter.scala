@@ -31,6 +31,8 @@ trait ASTHighlighter {
         Evaluator.compileToList(value) match {
           case _: SNumber[_] | _: SBool | JVMNull => transform(tree)(_.ansiRed) // Literal
           case Symbol(keyword) if LisaTerminal.keywords.contains(keyword) => transform(tree)(_.ansiYellow) // Keyword
+          case Symbol(dotAcc) if dotAcc.startsWith(".") =>
+            transform(tree)(_.foreground(LisaTerminal.roseliaColor).bold)
           case Symbol(sym) =>
             flattenEnv.getValueOption(sym).foreach {
               case _ if sym.endsWith("!") => transform(tree)(_.ansiMagenta)
