@@ -65,6 +65,16 @@ object LispExp {
 
   }
 
+  trait CustomHintProvider {
+    type HintType = (String, String)
+    var hintProvider: String => Seq[HintType] = Function.const(Nil)
+    def provideHint(input: String): Seq[HintType] = hintProvider(input)
+    def withHintProvider(provider: String => Seq[HintType]): this.type = {
+      hintProvider = provider
+      this
+    }
+  }
+
   sealed trait Expression extends DocumentAble with WithFreeValues {
     def valid = true
 
@@ -658,7 +668,7 @@ object LispExp {
   }
 
   case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment))
-    extends Procedure with DeclareArityAfter with NoExternalDependency {
+    extends Procedure with DeclareArityAfter with NoExternalDependency with CustomHintProvider {
     override def toString: String = s"#Macro![Native Code]"
 
     def asProcedure: SideEffectFunction = SideEffectFunction(fn)

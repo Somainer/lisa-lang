@@ -1,7 +1,20 @@
 package moe.roselia.lisa
 
 object SimpleLispTree {
-  sealed trait SimpleLispTree {
+  case class Location(source: CharSequence, startOffset: Int, endOffset: Int) {
+    def content: CharSequence = source.subSequence(startOffset, endOffset)
+  }
+  val EmptyLocation: Location = Location("", 0, 0)
+
+  trait Locational {
+    var location: Location = EmptyLocation
+    def setLocation(loc: Location): this.type = {
+      if (location eq EmptyLocation) location = loc
+      this
+    }
+  }
+
+  sealed trait SimpleLispTree extends Locational {
     def repr: String = this match {
       case Value(get) => s"Value($get)"
       case SList(children) =>

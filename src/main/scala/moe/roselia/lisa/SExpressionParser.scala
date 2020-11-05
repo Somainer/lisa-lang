@@ -9,6 +9,19 @@ import scala.util.parsing.combinator.{ImplicitConversions, RegexParsers}
 object SExpressionParser extends ImplicitConversions with RegexParsers {
   override protected val whiteSpace = """(\s|;.*)+""".r
 
+  def locational[T <: Locational](p: Parser[T]): Parser[T] = Parser { in =>
+    val offset = in.offset
+    val start = handleWhiteSpace(in.source, offset)
+    p(in.drop(start - offset)) match {
+      case Success(result, next) =>
+        Success(result.setLocation(Location(
+          in.source,
+          start, next.offset
+        )), next)
+      case ns => ns
+    }
+  }
+
   def sValue: SExpressionParser.Parser[Value] = sValueExclude("")
   def sValueExclude(ex: String): SExpressionParser.Parser[Value] =
     ("`.+`".r.map(_.drop(1).dropRight(1)).map(GraveAccentAtom) | s"[^(){} ${Regex.quote(ex)}\\s]+".r.map(PlainValue)) named "Values"
@@ -70,8 +83,9 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
     string.map(SAtomLeaf) | sValue.map { case Value(s) => SAtomLeaf(s) }
   )
 
-  def sExpression: Parser[SimpleLispTree] =
+  def sExpression: Parser[SimpleLispTree] = locational {
     ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | lambdaHelper | sQuote | sUnquote | sAtom | templateString | sValue
+  }
 
   def sExpressionOrNil = sExpression | success(SList(Nil))
 

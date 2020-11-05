@@ -1,5 +1,7 @@
 package moe.roselia.lisa.Repl
 
+import java.util.regex.Pattern
+
 import moe.roselia.lisa.Util.ConsoleColor.ConsoleColor
 import org.jline.reader
 import org.jline.reader.{Completer, EOFError, LineReader, LineReaderBuilder}
@@ -7,6 +9,7 @@ import org.jline.reader.impl.history.DefaultHistory
 import org.jline.terminal.{Terminal, TerminalBuilder}
 import moe.roselia.lisa.Util.ConsoleColor.Implicits._
 import org.jline.reader.impl.LineReaderImpl
+import org.jline.utils.AttributedString
 
 class LisaTerminal extends java.io.Closeable {
   import LisaTerminal._
@@ -30,6 +33,7 @@ class LisaTerminal extends java.io.Closeable {
       .history(history)
       .completer(completer)
       .parser(new Parser)
+      .highlighter(new Highlighter)
       .variable(WORDCHARS, LineReaderImpl.DEFAULT_WORDCHARS.filterNot("()".toSet))
       .variable(SECONDARY_PROMPT_PATTERN, "%M")
       .variable(INDENTATION, 2)
@@ -57,8 +61,17 @@ class LisaTerminal extends java.io.Closeable {
       )
       def defaultParsedLine = parsedLine("", 0)
       val openPairs = openBrackets(line)
+      def isComplete = {
+        import moe.roselia.lisa.SExpressionParser._
+        parseAll(sExpressionOrNil, line) match {
+          case _: Success[_] => true
+          case _: Failure => false
+          case _: Error => true
+        }
+      }
       context match {
-        case reader.Parser.ParseContext.ACCEPT_LINE if openPairs <= 0 =>
+//        case reader.Parser.ParseContext.ACCEPT_LINE if openPairs <= 0 =>
+        case reader.Parser.ParseContext.ACCEPT_LINE if isComplete || openPairs <= 0 =>
           defaultParsedLine
         case reader.Parser.ParseContext.COMPLETE =>
           val parser = new reader.impl.DefaultParser()
@@ -69,6 +82,25 @@ class LisaTerminal extends java.io.Closeable {
     }
   }
 
+  private class Highlighter(implicit state: State) extends reader.Highlighter {
+    override def highlight(reader: LineReader, buffer: String): AttributedString = {
+      import moe.roselia.lisa.SExpressionParser._
+
+      val sExpressions = rep(sExpression | (rep("(") ~> sExpression))
+      parse(sExpressions, buffer) match {
+        case NoSuccess(_, input) =>
+          val errorPart = buffer.substring(input.offset)
+          AttributedString.fromAnsi(buffer.substring(0, input.offset) + errorPart.ansiRed)
+        case Success(tree, input) =>
+          AttributedString fromAnsi ASTHighlighter.highlightTree(tree, buffer)(state.environment)
+      }
+    }
+
+    override def setErrorPattern(errorPattern: Pattern): Unit = ()
+
+    override def setErrorIndex(errorIndex: Int): Unit = ()
+  }
+
   def close(): Unit = {
     terminal.close()
 //    print(ConsoleColor.reset)
@@ -77,8 +109,9 @@ class LisaTerminal extends java.io.Closeable {
 
 object LisaTerminal {
   val roseliaColor = "#6670ed"
+  val errorColor = "#ff0000"
   val keywords = Seq(
-    "define", "define-macro", "lambda", "if", "cond", "let"
+    "define", "define-macro", "lambda", "if", "cond", "let", "true", "false"
   )
 
   def provideKeywordHint(word: String): Seq[String] = keywords.filter(_.startsWith(word))

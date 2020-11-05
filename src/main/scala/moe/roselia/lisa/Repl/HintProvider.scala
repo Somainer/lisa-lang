@@ -1,8 +1,11 @@
 package moe.roselia.lisa.Repl
 
+import moe.roselia.lisa.Environments.Environment
+
 import scala.reflect.runtime.universe
-import moe.roselia.lisa.LispExp.{SNumber, SString, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{CustomHintProvider, SNumber, SString, WrappedScalaObject}
 import moe.roselia.lisa.Reflect.{DotAccessor, ScalaBridge, StaticFieldAccessor}
+import moe.roselia.lisa.Util.SimilarSymbolFinder
 import moe.roselia.lisa.{Evaluator, LispExp}
 
 trait HintProvider {
@@ -29,7 +32,7 @@ trait HintProvider {
       .map(_.symbol)
       .toSeq
       .flatMap(DotAccessor.getDeclaredTerms)
-      .filter(m => symbolName(m).startsWith(word))
+      .filter(m => symbolName(m).toLowerCase.startsWith(word.toLowerCase))
       .flatMap(_.alternatives)
   }
 
@@ -46,6 +49,26 @@ trait HintProvider {
       val returnType = symbolName(method.returnType.typeSymbol)
       s"$params => $returnType"
     } else symbolTypeName(symbol)
+  }
+
+  def findSimilarSymbols(word: String, words: Seq[String]): Seq[String] = {
+    val threshold = (word.length * 0.2).toInt.max(4)
+    val lowerWord = word.toLowerCase
+    if (word.length <= 1) Nil
+    else {
+      words.filter(SimilarSymbolFinder.editDistanceWeighed(_, lowerWord) <= threshold)
+    }
+  }
+
+  def provideMacroHint(macroLike: String, word: String)(environment: Environment): Seq[(String, String)] = {
+    nextSymbol(macroLike)
+      .map(_.value)
+      .flatMap(environment.getValueOption)
+      .collect {
+        case x: CustomHintProvider => x
+      }
+      .toSeq
+      .flatMap(_.provideHint(word))
   }
 }
 

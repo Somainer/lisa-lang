@@ -35,7 +35,8 @@ object Preludes extends LispExp.Implicits {
     "io-source" -> Library.IOSource.sourceLibrary,
     "logical" -> Logical.LogicalModuleEnvironment,
     "predef" -> preludeEnvironment,
-  ).view.mapValues(_.withIdentify("prelude"))
+  ).view.mapValues(e => () => e.withIdentify("prelude"))
+  private lazy val selectablePreludeKeys = selectablePreludes.keysIterator.toSeq
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
     "+" -> PrimitiveFunction {
@@ -149,6 +150,8 @@ object Preludes extends LispExp.Implicits {
           (NilObj, CombineEnv(Seq(env, NameSpacedEnv(ns, selectablePreludes(sym)))))
         else (Failure("Import Error", s"Environment $sym not found"), env)
       case s => (Failure("Import Error", s"Cannot import ${s._1}"), s._2)
+    }.withHintProvider { input =>
+      selectablePreludeKeys.filter(_.startsWith(input)).map(key => (key, key))
     },
     "wrap-scala" -> PrimitiveFunction {
       x => WrappedScalaObject(toScalaNative(x(0)))

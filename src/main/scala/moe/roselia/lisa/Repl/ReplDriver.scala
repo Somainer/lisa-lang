@@ -54,7 +54,7 @@ class ReplDriver(inputStream: InputStream = System.in,
 
   def printlnErr[S](s: S): Unit = errorStream.println(s.toString.foreground("#ff4a4a"))
 
-  def evaluateExpression(expression: Expression)(implicit state: State): State = {
+  def evaluateExpression(expression: => Expression)(implicit state: State): State = {
     def newStateWith(index: Int = state.resultIndex, environment: Environment = state.environment) =
       state.copy(
         resultIndex = index,
@@ -103,14 +103,26 @@ class ReplDriver(inputStream: InputStream = System.in,
               null, null, null, null, true
             ))
           }
-          state.environment.collectDefinedValues.filter(_.startsWith(word)).foreach { item =>
-            val value = state.environment.get(item)
-            candidates.add(new Candidate(
-              s"$prefix$item",
-              s"$item: ${value.tpe.name}",
-              null, if (value.docString.isEmpty) null else value.docString, null, null, false
-            ))
-          }
+          val allDefinedValues = state.environment.collectDefinedValues.toSeq
+          (allDefinedValues.filter(_.toLowerCase.startsWith(word.toLowerCase)) ++
+            HintProvider.findSimilarSymbols(word, allDefinedValues))
+            .foreach { item =>
+              val value = state.environment.get(item)
+              candidates.add(new Candidate(
+                s"$prefix$item",
+                s"$item: ${value.tpe.name}",
+                null, if (value.docString.isEmpty) null else value.docString, null, null, false
+              ))
+            }
+          val beforeWord = line.line().substring(0, line.cursor()).reverseIterator.takeWhile(_ != '(').mkString.reverse
+          HintProvider
+            .provideMacroHint(beforeWord, word)(state.environment.flatten)
+            .foreach { case (value, display) =>
+              candidates.add(new Candidate(
+                s"$prefix$value", display,
+                null, null, null, null, false
+              ))
+            }
           if (word.contains("/")) {
             val (className, rawMethodName) = word.splitAt(word.indexOf('/'))
             val methodName = rawMethodName.tail
@@ -163,6 +175,7 @@ class ReplDriver(inputStream: InputStream = System.in,
       val line = readLine(state)
       parseInput(line) match {
         case SExpressionParser.Success(command, _) =>
+          if (command == Commands.OldRepl) terminal.close()
           if (command == Quit) state
           else loop(interpretCommand(command)(state))
         case f =>

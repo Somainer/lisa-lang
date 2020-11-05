@@ -15,6 +15,8 @@ trait ConsoleColor {
       }
     }
 
+    def parseHexString(hex: String): RGBColor = fromHexString(hex).get
+
     def fromSeq(seq: Seq[Short]): RGBColor = {
       val Seq(r, g, b) = seq.ensuring(_.length == 3, s"Sequence must have just 3 elements, but ${seq.length} got.")
       RGBColor(r, g, b)
@@ -35,6 +37,15 @@ trait ConsoleColor {
     final val defaultForegroundColor = 39
     final val setBackgroundTrueColor = 48
     final val defaultBackgroundColor = 49
+
+    final val ansiBlack = 30
+    final val ansiRed = 31
+    final val ansiGreen = 32
+    final val ansiYellow = 33
+    final val ansiBlue = 34
+    final val ansiMagenta = 35
+    final val ansiCyan = 36
+    final val ansiWhite = 37
 
     final val reversed = 7
     final val invisible = 8
@@ -99,6 +110,15 @@ trait ConsoleColor {
     def foreground(color: RGBColor): ConsoleColor = copy(foreground = Some(color))
     def reversed: ConsoleColor = withArgument(ANSIConstants.reversed)
     def invisible: ConsoleColor = withArgument(ANSIConstants.invisible)
+
+    def ansiBlack: ConsoleColor = withArgument(ANSIConstants.ansiBlack)
+    def ansiRed: ConsoleColor = withArgument(ANSIConstants.ansiRed)
+    def ansiGreen: ConsoleColor = withArgument(ANSIConstants.ansiGreen)
+    def ansiYellow: ConsoleColor = withArgument(ANSIConstants.ansiYellow)
+    def ansiBlue: ConsoleColor = withArgument(ANSIConstants.ansiBlue)
+    def ansiMagenta: ConsoleColor = withArgument(ANSIConstants.ansiMagenta)
+    def ansiCyan: ConsoleColor = withArgument(ANSIConstants.ansiCyan)
+    def ansiWhite: ConsoleColor = withArgument(ANSIConstants.ansiWhite)
 
     override def toString: String = toArgumentString
   }
