@@ -29,8 +29,8 @@ trait ASTHighlighter {
     def traverse(tree: SimpleLispTree): Unit = tree match {
       case value: SimpleLispTree.Value =>
         Evaluator.compileToList(value) match {
-          case _: SNumber[_] | _: SBool | JVMNull => transform(tree)(_.ansiRed)
-          case Symbol("define" | "lambda" | "define-macro") => transform(tree)(_.ansiYellow)
+          case _: SNumber[_] | _: SBool | JVMNull => transform(tree)(_.ansiRed) // Literal
+          case Symbol(keyword) if LisaTerminal.keywords.contains(keyword) => transform(tree)(_.ansiYellow) // Keyword
           case Symbol(sym) =>
             flattenEnv.getValueOption(sym).foreach {
               case _ if sym.endsWith("!") => transform(tree)(_.ansiMagenta)
