@@ -85,7 +85,7 @@ object DotAccessor {
       val clsObj = mirror.reflect(t)
 //      println(s"$t T: ${mirror.runtimeClass(clsObj.symbol.toType)}")
 //      println(s"${clsObj.symbol.toType} <:< $typ: ${clsObj.symbol.toType <:< typ}")
-      if (FunctionalInterfaceAdapter.isFunctional(cls)) {
+      if (FunctionalInterfaceAdapter.isFunctional(typ)) {
         t.isInstanceOf[Procedure] || clsObj.symbol.toType <:< typ
       } else {
         clsObj.symbol.toType <:< typ
@@ -103,6 +103,7 @@ object DotAccessor {
         val arg = args(i)
         val symbol = sym(i).typeSignature.typeSymbol
         arg match {
+          case _ if symbol == symbolOf[Any] => arg
           case procedure: Procedure if symbol.isAbstract =>
             val mirror = runtimeMirror(arg.getClass.getClassLoader)
             val clazz = mirror.runtimeClass(symbol.asClass)

@@ -75,9 +75,9 @@ object ConstructorCaller {
       .filter(_.isMethod)
       .map(_.asMethod)
       .filter(_.paramLists.flatten.length == args.length) match {
-      case xs@_ :: Nil => xs
-      case xs => xs.filter(sig => DotAccessor.checkTypeFits(sig.paramLists.flatten)(args))
-    }
+        case xs@_ :: Nil => xs
+        case xs => xs.filter(sig => DotAccessor.checkTypeFits(sig.paramLists.flatten)(args))
+      }
     overloads match {
       case x :: _ => Some(x)
       case Nil => None

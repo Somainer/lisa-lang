@@ -1,8 +1,29 @@
 package moe.roselia.lisa
 
+import scala.util.parsing.input.OffsetPosition
+
 object SimpleLispTree {
+  trait SourceFile {
+    def fileName: String
+  }
+  case class AbstractSourceFile(fileName: String) extends SourceFile
+  case class PathSourceFile(path: java.nio.file.Path) extends SourceFile {
+    override def fileName: String = path.getFileName.toString
+  }
+
   case class Location(source: CharSequence, startOffset: Int, endOffset: Int) {
     def content: CharSequence = source.subSequence(startOffset, endOffset)
+
+    private lazy val location = OffsetPosition(source, startOffset)
+    def line: Int = location.line
+    def column: Int = location.column
+    def lineContents: String = location.lineContents
+
+    var sourceFile: SourceFile = AbstractSourceFile("")
+    def setSourceFile(sourceFile: SourceFile): this.type = {
+      this.sourceFile = sourceFile
+      this
+    }
   }
   val EmptyLocation: Location = Location("", 0, 0)
 
@@ -48,8 +69,8 @@ object SimpleLispTree {
   case class StringLiteral(content: String) extends SimpleLispTree {
     override def toString: String = s"${content.replace("\"", "\\\"")}"
   }
-  case class StringTemplate(templateName: String, parts: List[String], arguments: List[SimpleLispTree]) extends SimpleLispTree {
-     override def toString: String = s"$templateName${StringContext(parts: _*).s(arguments: _*)}"
+  case class StringTemplate(templateName: Value, parts: List[StringLiteral], arguments: List[SimpleLispTree]) extends SimpleLispTree {
+     override def toString: String = s"$templateName${StringContext(parts.map(_.content): _*).s(arguments: _*)}"
   }
   case class SList(list: Seq[SimpleLispTree]) extends SimpleLispTree {
     override def toString: String =

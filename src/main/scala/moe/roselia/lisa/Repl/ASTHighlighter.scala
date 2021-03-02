@@ -20,7 +20,8 @@ trait ASTHighlighter {
     def replaceRange(from: Int, to: Int, content: String): Unit = {
       sourceBuffer(from).clear()
       sourceBuffer(from).addAll(content)
-      from.until(to).tail.foreach(sourceBuffer(_).clear())
+      val clearRange = from until to
+      if (clearRange.nonEmpty) clearRange.tail.foreach(sourceBuffer(_).clear())
     }
 
     def transform(tree: SimpleLispTree)(transformer: String => String): Unit =
@@ -54,7 +55,9 @@ trait ASTHighlighter {
       case sl @ SimpleLispTree.StringLiteral(content) =>
         transform(sl)(_.ansiRed)
       case st @ SimpleLispTree.StringTemplate(templateName, parts, arguments) =>
-        arguments.foreach(traverse)
+//        arguments.foreach(traverse)
+//        if (templateName.get == "$") transform(templateName)(_.ansiCyan.bold) else traverse(templateName)
+//        parts.foreach(traverse)
         transform(st)(_.ansiRed)
       case SimpleLispTree.SList(list) =>
         list.foreach(traverse)
