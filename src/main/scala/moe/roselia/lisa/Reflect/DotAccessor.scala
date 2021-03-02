@@ -8,6 +8,8 @@ import moe.roselia.lisa.Annotation.RawLisa
 import moe.roselia.lisa.LispExp.{Expression, LisaList, Procedure, WrappedScalaObject}
 import moe.roselia.lisa.Util.Extractors.NeedInt
 
+import scala.reflect.runtime.universe
+
 object DotAccessor {
   import reflect.runtime.universe._
 
@@ -83,7 +85,7 @@ object DotAccessor {
       val clsObj = mirror.reflect(t)
 //      println(s"$t T: ${mirror.runtimeClass(clsObj.symbol.toType)}")
 //      println(s"${clsObj.symbol.toType} <:< $typ: ${clsObj.symbol.toType <:< typ}")
-      if (FunctionalInterfaceAdapter.isFunctional(cls)) {
+      if (FunctionalInterfaceAdapter.isFunctional(typ)) {
         t.isInstanceOf[Procedure] || clsObj.symbol.toType <:< typ
       } else {
         clsObj.symbol.toType <:< typ
@@ -101,6 +103,7 @@ object DotAccessor {
         val arg = args(i)
         val symbol = sym(i).typeSignature.typeSymbol
         arg match {
+          case _ if symbol == symbolOf[Any] => arg
           case procedure: Procedure if symbol.isAbstract =>
             val mirror = runtimeMirror(arg.getClass.getClassLoader)
             val clazz = mirror.runtimeClass(symbol.asClass)
@@ -121,6 +124,13 @@ object DotAccessor {
       .map(_.decl(termName))
       .find(_.isTerm)
       .map(_.asTerm)
+  }
+
+  def getDeclaredTerms(symbol: ClassSymbol): Seq[universe.Symbol] = {
+    (symbol :: symbol.baseClasses)
+      .map(_.asClass)
+      .map(_.toType)
+      .flatMap(_.decls)
   }
 
   def toJvmName(name: String) = {
@@ -211,7 +221,6 @@ object DotAccessor {
       case x::xs =>
         val field = key.substring(1)
         fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative): _*)(xs: _*))
-    }.withDocString(s"$key: Access ${key substring 1} attribute or method of a scala object. " +
-      s"If you do not care about performance, use box$key"))
+    }.withDocString(s"$key: Access ${key substring 1} attribute or method of a jvm object."))
   })
 }

@@ -19,6 +19,10 @@ object Preludes extends LispExp.Implicits {
     engine
   }
 
+  val stringFunction: PrimitiveFunction = PrimitiveFunction { xs =>
+    xs.mkString
+  }.withArity(1)
+
   type DirtyPromise[T] = () => T
   import scala.language.implicitConversions
   implicit def wrapPromise[T](t: => T): DirtyPromise[T] = () => t
@@ -35,7 +39,9 @@ object Preludes extends LispExp.Implicits {
     "io-source" -> Library.IOSource.sourceLibrary,
     "logical" -> Logical.LogicalModuleEnvironment,
     "predef" -> preludeEnvironment,
-  ).view.mapValues(_.withIdentify("prelude"))
+    "contextual-functions" -> Library.ContextualFunction.ContextualFunctionEnv,
+  ).view.mapValues(e => () => e.withIdentify("prelude"))
+  private lazy val selectablePreludeKeys = selectablePreludes.keysIterator.toSeq
 
   private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
     "+" -> PrimitiveFunction {
@@ -149,6 +155,8 @@ object Preludes extends LispExp.Implicits {
           (NilObj, CombineEnv(Seq(env, NameSpacedEnv(ns, selectablePreludes(sym)))))
         else (Failure("Import Error", s"Environment $sym not found"), env)
       case s => (Failure("Import Error", s"Cannot import ${s._1}"), s._2)
+    }.withHintProvider { input =>
+      selectablePreludeKeys.filter(_.startsWith(input)).map(key => (key, key))
     },
     "wrap-scala" -> PrimitiveFunction {
       x => WrappedScalaObject(toScalaNative(x(0)))
@@ -275,9 +283,7 @@ object Preludes extends LispExp.Implicits {
       case SString(sym) :: Nil => SAtom(sym)
       case _ => Failure("Contract Violation", "only accept a string")
     },
-    "string" -> PrimitiveFunction { xs =>
-      xs.mkString
-    }.withArity(1),
+    "string" -> stringFunction,
     "string/interpolate" -> PrimitiveFunction.withArityChecked(2) {
       case LisaList(part :: parts) :: LisaList(arguments) :: Nil =>
         (part :: arguments.zip(parts).flatten(x => List(x._1, x._2))).mkString
@@ -408,7 +414,11 @@ object Preludes extends LispExp.Implicits {
     "get-static-method" -> PrimitiveFunction.withArityChecked(2) {
       case WrappedScalaObject(clazz: Class[_]) :: SString(name) :: Nil =>
         Reflect.StaticFieldAccessor.convertStaticMethodToLisa(clazz, name)
-    }
+    },
+    "thunk" -> PrimitiveFunction.withArityChecked(1) {
+      case (e: Procedure) :: Nil => LisaThunk(e)
+    },
+    "..." -> Symbol("...").withDocString("List expansion operator")
   ))
 
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")
@@ -564,16 +574,16 @@ object Preludes extends LispExp.Implicits {
         }.toMap)
     },
     "range" -> PrimitiveFunction {
-      case SInteger(from) :: SInteger(to) :: Nil =>
-        WrappedScalaObject(Range(from.toInt, to.toInt))
-      case SInteger(from) :: SInteger(to) :: SInteger(step) :: Nil =>
-        WrappedScalaObject(Range(from.toInt, to.toInt, step.toInt))
+      case (from: SInteger) :: (to: SInteger) :: Nil =>
+        WrappedScalaObject(scala.collection.immutable.NumericRange(from, to, SInteger(1)))
+      case (from: SInteger) :: (to: SInteger) :: (step: SInteger) :: Nil =>
+        WrappedScalaObject(scala.collection.immutable.NumericRange(from, to, step))
     },
     "range/inclusive" -> PrimitiveFunction {
-      case SInteger(from) :: SInteger(to) :: Nil =>
-        WrappedScalaObject(Range.inclusive(from.toInt, to.toInt))
-      case SInteger(from) :: SInteger(to) :: SInteger(step) :: Nil =>
-        WrappedScalaObject(Range.inclusive(from.toInt, to.toInt, step.toInt))
+      case (from: SInteger) :: (to: SInteger) :: Nil =>
+        WrappedScalaObject(scala.collection.immutable.NumericRange.inclusive(from, to, SInteger(1)))
+      case (from: SInteger) :: (to: SInteger) :: (step: SInteger) :: Nil =>
+        WrappedScalaObject(scala.collection.immutable.NumericRange.inclusive(from, to, step))
     },
     "sort" -> PrimitiveFunction {
       case coll :: Nil => Util.CollectionHelper.generalSortWith(coll, primitiveEnvironment.get("<"))
@@ -650,7 +660,7 @@ object Preludes extends LispExp.Implicits {
       case _ => false
     },
     "iterable?" -> PrimitiveFunction.withArityChecked(1) {
-      case (_: LisaRecord[_] | WrappedScalaObject(_: Iterable[_]) | SString(_)) :: Nil => true
+      case (_: LisaRecord[_] | WrappedScalaObject(_: Iterable[_]) | SString(_) | _: LisaListLike[_]) :: Nil => true
       case _ => false
     },
     "quoted?" -> PrimitiveFunction.withArityChecked(1) {

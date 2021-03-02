@@ -29,6 +29,18 @@ object LispExp {
     def docString: String = document
   }
 
+  trait WithSourceTree {
+    var sourceTree: Option[SimpleLispTree.SimpleLispTree] = None
+    def withSourceTree(source: SimpleLispTree.SimpleLispTree): this.type = {
+      sourceTree = Some(source)
+      this
+    }
+    def withSourceTree(maybeSource: Option[SimpleLispTree.SimpleLispTree]): this.type = {
+      maybeSource.foreach(withSourceTree)
+      this
+    }
+  }
+
   trait MayBeDefined {
     protected def pattern: List[List[Expression]] = Nil
 
@@ -65,7 +77,17 @@ object LispExp {
 
   }
 
-  sealed trait Expression extends DocumentAble with WithFreeValues {
+  trait CustomHintProvider {
+    type HintType = (String, String)
+    var hintProvider: String => Seq[HintType] = Function.const(Nil)
+    def provideHint(input: String): Seq[HintType] = hintProvider(input)
+    def withHintProvider(provider: String => Seq[HintType]): this.type = {
+      hintProvider = provider
+      this
+    }
+  }
+
+  sealed trait Expression extends DocumentAble with WithFreeValues with WithSourceTree {
     def valid = true
 
     def code: String = toString
@@ -275,6 +297,30 @@ object LispExp {
       case v if v >= -127 && v <= 128 => integerCache(v.toInt + 127)
       case v => new SInteger(v)
     }
+
+    trait SIntegerIsNumeric extends Numeric[SInteger] {
+      private val lisaIntegerIsNum = implicitly[Numeric[LisaInteger]]
+      import scala.language.implicitConversions
+      private[SInteger] implicit def lisaInt2SInt(li: LisaInteger): SInteger = SInteger(li)
+      private[SInteger] implicit def sInt2lisaInt(si: SInteger): LisaInteger = si.value
+      override def plus(x: SInteger, y: SInteger): SInteger = lisaIntegerIsNum.plus(x, y)
+      override def minus(x: SInteger, y: SInteger): SInteger = lisaIntegerIsNum.minus(x, y)
+      override def times(x: SInteger, y: SInteger): SInteger = lisaIntegerIsNum.times(x, y)
+      override def negate(x: SInteger): SInteger = lisaIntegerIsNum.negate(x)
+      override def fromInt(x: Int): SInteger = lisaIntegerIsNum.fromInt(x)
+      override def parseString(str: String): Option[SInteger] = lisaIntegerIsNum.parseString(str).map(lisaInt2SInt)
+      override def toInt(x: SInteger): Int = lisaIntegerIsNum.toInt(x)
+      override def toLong(x: SInteger): Long = lisaIntegerIsNum.toLong(x)
+      override def toFloat(x: SInteger): Float = lisaIntegerIsNum.toFloat(x)
+      override def toDouble(x: SInteger): Double = lisaIntegerIsNum.toDouble(x)
+      override def compare(x: SInteger, y: SInteger): Int = lisaIntegerIsNum.compare(x, y)
+    }
+
+    implicit object SIntegerIsIntegral extends Integral[SInteger] with SIntegerIsNumeric {
+      private val lisaIntegerIsIntegral: Integral[LisaInteger] = implicitly
+      override def quot(x: SInteger, y: SInteger): SInteger = lisaIntegerIsIntegral.quot(x, y)
+      override def rem(x: SInteger, y: SInteger): SInteger = lisaIntegerIsIntegral.rem(x, y)
+    }
   }
 
   case class SFloat(value: LisaDecimal) extends SNumber(value)
@@ -392,7 +438,7 @@ object LispExp {
     }
 
     override def toRawList: Expression = {
-      val list = Symbol("lambda") :: boundVariable ++ (nestedExpressions :+ body)
+      val list = List(Symbol("lambda"), LisaList(boundVariable)) ::: (nestedExpressions :+ body)
       LisaList(list.map(_.toRawList))
     }
   }
@@ -575,6 +621,7 @@ object LispExp {
   def getArityOfPattern(pat: Seq[Expression], accumulator: Int = 0): Option[Int] = pat.toList match {
     case Nil => Some(accumulator)
     case LisaList(Symbol("...") :: _) :: Nil => None // Can not count arity on va-args.
+    case Symbol(s"...$_") :: Nil => None
     case LisaList(Symbol("?" | "when?" | "when") :: _) :: Nil => Some(accumulator) // Match guards
     case _ :: xs => getArityOfPattern(xs, accumulator + 1)
   }
@@ -634,7 +681,7 @@ object LispExp {
   }
 
   case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment))
-    extends Procedure with DeclareArityAfter with NoExternalDependency {
+    extends Procedure with DeclareArityAfter with NoExternalDependency with CustomHintProvider {
     override def toString: String = s"#Macro![Native Code]"
 
     def asProcedure: SideEffectFunction = SideEffectFunction(fn)
@@ -1045,6 +1092,28 @@ object LispExp {
     override def toString: String = "null"
 
     override def tpe: LisaType = NameOnlyType("Null")
+  }
+
+  case class LisaThunk(thunk: Procedure) extends Expression with NoExternalDependency {
+    private val lazyObject = Util.Lazy.lazily {
+      Evaluator.applyToEither(thunk, Nil).fold(ex => throw new RuntimeException(ex), identity)
+    }
+
+    lazy val value: Expression = lazyObject.get
+
+    def isEvaluated: Boolean = lazyObject.isEvaluated
+
+    override def toString: String = {
+      if (isEvaluated) value.toString
+      else "Thunk(<not computed>)"
+    }
+  }
+
+  case class LisaMutableCell(var value: Expression)
+    extends Expression with NoExternalDependency with IdenticalLisaExpression {
+    def := (newValue: Expression): Unit = {
+      value = newValue
+    }
   }
 
   trait Implicits {

@@ -1,0 +1,70 @@
+(define-macro (match value ...cases)
+    (define fn-sym (gen-sym))
+    (define (handle-case (v (pred value) ...case) (when (or (= pred 'when) (or (= pred '?) (= pred 'when?)))))
+        (list 'define (list fn-sym v (list pred value)) ...case))
+    (define (handle-case (v ...case))
+        (list 'define (list fn-sym v) ...case))
+    (define (handle-case other)
+        (panic! $"$other is not a branch."))
+    (define defs (map cases handle-case))
+    '(let ()
+        ~~defs
+        (~fn-sym ~value)))
+
+(define-phrase (x 'match ...cases)
+    '(match ~x ~~cases))
+
+(define-macro (val params value)
+    (define vars (new collection.mutable.ListBuffer))
+    (define (recur-vs ('... v)) (recur-vs v))
+    (define (recur-vs v (when (symbol? v)))
+        (match $"$v"
+            ($"...$name" (.+= vars (string->symbol name)))
+            (_ (.+= vars v))))
+    (define (recur-vs (...vs))
+        (.foreach vs recur-vs))
+    (define (recur-vs _) ())
+    (define params-code (string params))
+    (define value-code (string value))
+
+    (recur-vs params)
+    (define vars (.result vars))
+    (define tmp-vars (map vars &(gen-sym)))
+    (define declares (cons 'declare vars))
+    (define zip-vars (.transpose (list vars tmp-vars) &#))
+    (define transform (record (... (.flatten zip-vars &#))))
+    (define (recur-replace ('... v)) (recur-replace v))
+    (define (recur-replace v (when (and (symbol? v) (record-contains? transform v))))
+        (transform v))
+    (define (recur-replace v (when (symbol? v)))
+        (define replaced
+            (recur-replace
+                (match (string v)
+                    ($"...$name" (string->symbol name)))))
+        (string->symbol $"...$replaced"))
+    (define (recur-replace (...v))
+        (map v recur-replace))
+    (define (recur-replace v) v)
+    (define fn-params (recur-replace params))
+    (define defs (map zip-vars (lambda ((v tmp)) (list 'define v tmp))))
+    (define redef (map vars (lambda (v) (list 'define v v))))
+    
+    '(group!
+        ~declares
+        (~match ~value
+            (~fn-params
+                () ; Ensure at least one expression.
+                ~~defs)
+            (_ (panic! $"${~params-code} not match ${~value-code}. ")))
+        ~~redef ; Make sure values are immutable.
+    ))
+
+(define-macro (or*) false)
+(define-macro (or* a) a)
+(define-macro (or* a b) 
+    (define sym (gen-sym))
+    '(let ((~sym ~a))
+        (if (truthy? ~sym) ~sym ~b)))
+(define-macro (or* ...tail)
+    (.reduceRight tail &(list 'or* #1 #2)))
+

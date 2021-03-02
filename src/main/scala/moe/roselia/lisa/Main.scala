@@ -7,6 +7,7 @@ import moe.roselia.lisa.Evaluator.EvalResult
 import moe.roselia.lisa.Exceptions.{LisaException, LisaRuntimeException, LisaSyntaxException}
 import moe.roselia.lisa.Import.PackageImporter
 import moe.roselia.lisa.LispExp.{LisaList, NilObj, PrimitiveFunction, SNumber, SString, SideEffectFunction, WrappedScalaObject}
+import moe.roselia.lisa.Repl.ReplDriver
 
 import scala.annotation.tailrec
 import scala.util.Try
@@ -19,13 +20,13 @@ object Main {
   import Util.ConsoleColor.Implicits._
   def printlnErr[S](s: S): Unit = Console.err.println(s.toString.foreground("#ff4a4a"))
 
-  @`inline` private def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
+  @`inline` private[lisa] def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
     if (pairs < 0) pairs
     else if (c == '(') pairs + 1
     else if (c == ')') pairs - 1
     else pairs
   })
-  @`inline` private def needMoreInput(input: String) = {
+  @`inline` private[lisa] def needMoreInput(input: String) = {
     indentLevel(input) > 0
   }
 
@@ -112,6 +113,7 @@ object Main {
       case LispExp.JVMNull => exp.toString.foreground(literals)
       case LispExp.Quote(expr) => coloringExpression(expr)
       case LispExp.LisaList(ll) => ll.map(coloringExpression).mkString("(", " ", ")")
+      case thunk: LispExp.LisaThunk if thunk.isEvaluated => coloringExpression(thunk.value)
       case _ => exp.toString
     }
   }
@@ -127,6 +129,10 @@ object Main {
    */
   @throws[java.io.FileNotFoundException]
   def executeFileImpl(fileName: String, env: Environments.Environment): (Environments.Environment, Option[LisaException]) = {
+    val path = java.nio.file.FileSystems.getDefault.getPath(fileName)
+    val sourceFile = PathSourceFile(path)
+    val parser = SExpressionParser.parserWithSourceFile(sourceFile)
+    import parser._
     @scala.annotation.tailrec
     def doSeq(source: scala.util.parsing.input.Reader[Char],
               innerEnv: Environments.Environment): (Environments.Environment, Option[LisaException]) = {
@@ -165,7 +171,8 @@ object Main {
       case Some(LisaSyntaxException(message, source)) =>
         printlnErr(s"syntax error: $message at $source($fileName)")
       case Some(LisaRuntimeException(source, exception)) =>
-        printlnErr(s"$exception\n\tsource: $source")
+        val sourceCode = source.sourceTree.map(_.location.lineContents.stripLeading).getOrElse(source)
+        printlnErr(s"$exception\n\tsource: $sourceCode")
       case _ =>
     }
     environment
@@ -241,10 +248,10 @@ object Main {
     val preludeEnv =
       CombineEnv(
         Seq(
+          Preludes.preludeEnvironment,
           LispExp.LisaRecord.RecordHelperEnv,
           Reflect.DotAccessor.accessEnv,
           Reflect.StaticFieldAccessor.StaticFieldsAccessorEnvironment,
-          Preludes.preludeEnvironment,
           NameSpacedEnv("box", Reflect.ToolboxDotAccessor.accessEnv, "")))
         .withValue("load!", SideEffectFunction {
           case (SString(f)::Nil, env) =>
@@ -266,7 +273,8 @@ object Main {
           |Type in expressions for evaluation. (quit) to quit.
         """.stripMargin)
       try {
-        prompt(preludeEnv)
+        new ReplDriver().runUntilQuit(preludeEnv)
+//        prompt(preludeEnv)
       } catch {
         case ex: java.lang.StackOverflowError =>
           ex.printStackTrace()
@@ -281,9 +289,10 @@ object Main {
     else {
       args.toList match {
         case "repl" :: fileName :: Nil =>
-          prompt(executeFileRegardingPath(
+          val finalEnv = executeFileRegardingPath(
             fileName, preludeEnv.withValue("__PATH__", SString(fileName))
-          ))
+          )
+          new ReplDriver().runUntilQuit(finalEnv)
         case "compile" :: fileName :: "-o" :: toFile :: Nil =>
           compileFile(fileName, toFile)
         case "execute" :: fileName :: Nil =>

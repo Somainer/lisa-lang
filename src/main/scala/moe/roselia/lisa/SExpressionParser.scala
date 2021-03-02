@@ -6,11 +6,25 @@ import moe.roselia.lisa.SimpleLispTree._
 import scala.util.matching.Regex
 import scala.util.parsing.combinator.{ImplicitConversions, RegexParsers}
 
-object SExpressionParser extends ImplicitConversions with RegexParsers {
+trait SExpressionParser extends ImplicitConversions with RegexParsers {
   override protected val whiteSpace = """(\s|;.*)+""".r
+  protected val sourceFile: SourceFile = AbstractSourceFile("")
 
-  def sValue: SExpressionParser.Parser[Value] = sValueExclude("")
-  def sValueExclude(ex: String): SExpressionParser.Parser[Value] =
+  def locational[T <: Locational](p: Parser[T]): Parser[T] = Parser { in =>
+    val offset = in.offset
+    val start = handleWhiteSpace(in.source, offset)
+    p(in.drop(start - offset)) match {
+      case Success(result, next) =>
+        Success(result.setLocation(Location(
+          in.source,
+          start, next.offset
+        ).setSourceFile(sourceFile)), next)
+      case ns => ns
+    }
+  }
+
+  def sValue: Parser[Value] = sValueExclude("")
+  def sValueExclude(ex: String): Parser[Value] =
     ("`.+`".r.map(_.drop(1).dropRight(1)).map(GraveAccentAtom) | s"[^(){} ${Regex.quote(ex)}\\s]+".r.map(PlainValue)) named "Values"
 
   private def unEscapeString(stringParser: Parser[String]): Parser[String] =
@@ -43,20 +57,38 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
       case None => p(in)
     }
   }
-  def templateString = (sValueExclude("\"") ~ noPrefixWhiteSpace(string >> parseTemplateBody)) map {
-    case Value(template) ~ ((parts, args)) => StringTemplate(template, parts, args)
+
+  def templateString = (locational(sValueExclude("\"")) ~ noPrefixWhiteSpace(parseTemplateBody(string))) map {
+    case (template: Value) ~ ((parts, args)) => StringTemplate(template, parts, args)
   }
   def templateBody = {
-    val plainString: Parser[String] = restorePrefixWhiteSpace("(?:\\$\\$|[^$])*".r.map(_.replace("$$", "$")))
-    val expressionString = ("${" ~> sExpression <~ "}") | ("$" ~> "[a-zA-Z0-9_]+".r).map(Value(_))
+    val plainString: Parser[StringLiteral] =
+      (restorePrefixWhiteSpace("(?:\\$\\$|[^$])*".r.map(_.replace("$$", "$"))) ^^ StringLiteral)
+    val expressionString = ("${" ~> sExpression <~ "}") | locational(("$" ~> "[a-zA-Z0-9_]+".r).map(Value(_)))
     plainString ~ rep(expressionString ~ plainString) map {
       case head ~ tails =>
         ((head :: tails.map(_._2)), tails.map(_._1))
     }
   }
-  private def parseTemplateBody(body: String) = parseAll(templateBody, body) match {
-    case Success(result, _) => success(result)
-    case f => err(f.toString)
+  private def parseTemplateBody(input: Parser[String]) = Parser { in =>
+    def advance[T <: Locational, U <: Locational](byLoc: T, offset: Int = 0)(loc: T): T = {
+      loc.location = byLoc.location.copy(
+        startOffset = loc.location.startOffset + byLoc.location.startOffset + offset,
+        endOffset = loc.location.endOffset + byLoc.location.startOffset + offset
+      )
+      loc
+    }
+    val literal = locational(input.map(StringLiteral))
+    literal(in) match {
+      case Success(body, next) =>
+        val offset = body.content.indexWhere(_ != '"')
+        parseAll(templateBody, body.content) match {
+          case Success((literals, bodies), _) =>
+            Success((literals.map(advance(body, offset)), bodies.map(advance(body, offset))), next)
+          case f => f
+        }
+      case ns => failure(ns.toString)(in)
+    }
   }
 
   def stringLiteral = string | ("raw" ~> rawString)
@@ -66,12 +98,13 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
 
   def sUnquote = "~" ~> sExpression map SUnQuote
 
-  def sAtom = ":" ~> (
+  def sAtom = ":" ~> noPrefixWhiteSpace(success(Nil)) ~> (
     string.map(SAtomLeaf) | sValue.map { case Value(s) => SAtomLeaf(s) }
   )
 
-  def sExpression: Parser[SimpleLispTree] =
+  def sExpression: Parser[SimpleLispTree] = locational {
     ("(" ~> rep(sExpression) <~ ")" map SList) | stringValue | lambdaHelper | sQuote | sUnquote | sAtom | templateString | sValue
+  }
 
   def sExpressionOrNil = sExpression | success(SList(Nil))
 
@@ -93,4 +126,10 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
     PrecompiledSExpression(LambdaExpression(Evaluator.compile(ex),
       if(variables.isEmpty) LisaList(Symbol("...") :: Symbol("_") :: Nil)::Nil else variables))
   }))
+}
+
+object SExpressionParser extends SExpressionParser {
+  def parserWithSourceFile(file: SourceFile): SExpressionParser = new SExpressionParser {
+    override val sourceFile: SourceFile = file
+  }
 }

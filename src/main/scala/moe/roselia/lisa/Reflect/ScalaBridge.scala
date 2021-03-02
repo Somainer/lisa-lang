@@ -36,10 +36,11 @@ object ScalaBridge {
     case sNumber: SNumber[_] => sNumber
 //    case PrimitiveFunction(fn) => (xs: Any) => fn(ensureSeq(xs).map(fromScalaNative).toList)
     // Since we have SAM transform now, we do not need the dummy transformation here.
-    case procedure: Procedure => procedure
-    case r: LisaRecord[_] => r
-    case ll: LisaListLike[_] => ll
-    case identicalLisaExpression: IdenticalLisaExpression => identicalLisaExpression
+    case x => x
+//    case procedure: Procedure => procedure
+//    case r: LisaRecord[_] => r
+//    case ll: LisaListLike[_] => ll
+//    case identicalLisaExpression: IdenticalLisaExpression => identicalLisaExpression
   }
 
   def fromScalaNative(any: Any): Expression = any match {

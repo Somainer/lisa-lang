@@ -58,7 +58,7 @@ class EvaluatorTests extends AsyncFunSuite with Matchers with ExpressionHelper {
     )
     assertResult(
       lisa""" $$"1 + 1 = $${(+ 1 1)}" """
-    )(Apply(symbol"string", "1 + 1 = " :: Apply(symbol"+", 1.asLisa :: 1.asLisa :: Nil) :: "".asLisa :: Nil))
+    )(Apply(/*symbol"string"*/Preludes.stringFunction, "1 + 1 = " :: Apply(symbol"+", 1.asLisa :: 1.asLisa :: Nil) :: "".asLisa :: Nil))
     assertThrows[Exception](lisa"""s "" """)
     assertResult(
       lisa""" s"$$a-b" """

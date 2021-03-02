@@ -61,7 +61,7 @@ class PackageImporter {
       EmptyEnv
     } else { // Import lisa file
       val sourceFile = if (fileName endsWith ".lisa") inPath else inPath.resolveSibling(s"$fileName.lisa")
-      val environment = executePath(sourceFile)
+      val environment = executePath(sourceFile.toAbsolutePath)
       if (imports.isEmpty) environment // Which means import all values.
       else selectSubEnvironment(environment, imports, sourceFile.toString)
     }
@@ -97,6 +97,25 @@ class PackageImporter {
       importAndMerge(path, imports, env, None)
     case (Symbol(path) :: imports, env) =>
       importAndMerge(path, imports, env, None)
+  }.withHintProvider { input =>
+    val pathTree = input.split("/", -1)
+    if (pathTree.isEmpty) Nil
+    else {
+      val inCompleted = pathTree.last
+      val completed = pathTree.init
+      val resolvedPath = resolvePath(completed.mkString("/")).toAbsolutePath
+      val resolvedFile = resolvedPath.toFile
+      def hintOf(file: java.io.File): (String, String) = {
+        val fileName =
+          if (file.getName.endsWith(".lisa")) file.getName.substring(0, file.getName.length - 5) else file.getName
+        val hintName = completed.appended(fileName).mkString("/")
+        if (file.isDirectory) (s"$hintName/", fileName)
+        else (hintName, fileName)
+      }
+      if (resolvedFile.exists() && resolvedFile.isDirectory) {
+        resolvedFile.listFiles((_, name) => name.startsWith(inCompleted)).map(hintOf)
+      } else Nil
+    }
   }
   val importFunction: LispExp.SideEffectFunction = importMacro.asProcedure
   val requireFunction: PrimitiveFunction = PrimitiveFunction.withArityChecked(1) {

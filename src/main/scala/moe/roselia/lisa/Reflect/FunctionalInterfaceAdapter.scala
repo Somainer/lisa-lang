@@ -6,6 +6,7 @@ import java.lang.reflect.{Method, Modifier}
 import moe.roselia.lisa.LispExp.{Expression, Procedure}
 
 import scala.reflect.{ClassTag, classTag}
+import scala.reflect.runtime.{universe => ru}
 
 object FunctionalInterfaceAdapter {
   trait AnyArgHandler {
@@ -27,6 +28,10 @@ object FunctionalInterfaceAdapter {
   }
 
   def isFunctional[T: ClassTag]: Boolean = isFunctional(classTag.runtimeClass)
+
+  def isFunctional(typ: ru.Type): Boolean = {
+    typ.typeSymbol.isAbstract && typ.decls.count(_.isAbstract) == 1
+  }
 
   def createFunctionInvoker[T](clazz: Class[T], function: Procedure): T = {
     val cl = ScalaBridge.evalClosure(function)(_)
