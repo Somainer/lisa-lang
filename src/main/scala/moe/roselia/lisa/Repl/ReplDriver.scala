@@ -41,7 +41,7 @@ class ReplDriver(inputStream: InputStream = System.in,
         }
         newState
       case LisaExpressionTree(tree) =>
-        evaluateExpression(Evaluator.compile(tree))
+        tree.foldLeft(state)((state, exprTree) => evaluateExpression(Evaluator.compile(exprTree))(state))
       case Commands.OldRepl =>
         moe.roselia.lisa.Main.prompt(
           state.environment,
@@ -201,7 +201,7 @@ class ReplDriver(inputStream: InputStream = System.in,
           | ("time" ~> sExpression ^^ Commands.ExecutionTime)
           | "old-repl" ^^^ Commands.OldRepl
         )
-    val userInput = commands | sExpressionOrNil ^^ { Commands.LisaExpressionTree }
+    val userInput = commands | (rep(sExpression) | success(Nil)) ^^ { Commands.LisaExpressionTree }
 
     parseAll(userInput, input)
   }

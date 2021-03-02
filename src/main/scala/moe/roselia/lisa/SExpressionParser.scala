@@ -79,7 +79,7 @@ object SExpressionParser extends ImplicitConversions with RegexParsers {
 
   def sUnquote = "~" ~> sExpression map SUnQuote
 
-  def sAtom = ":" ~> (
+  def sAtom = ":" ~> noPrefixWhiteSpace(success(Nil)) ~> (
     string.map(SAtomLeaf) | sValue.map { case Value(s) => SAtomLeaf(s) }
   )
 

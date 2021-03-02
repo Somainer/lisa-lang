@@ -242,10 +242,10 @@ object Main {
     val preludeEnv =
       CombineEnv(
         Seq(
+          Preludes.preludeEnvironment,
           LispExp.LisaRecord.RecordHelperEnv,
           Reflect.DotAccessor.accessEnv,
           Reflect.StaticFieldAccessor.StaticFieldsAccessorEnvironment,
-          Preludes.preludeEnvironment,
           NameSpacedEnv("box", Reflect.ToolboxDotAccessor.accessEnv, "")))
         .withValue("load!", SideEffectFunction {
           case (SString(f)::Nil, env) =>
