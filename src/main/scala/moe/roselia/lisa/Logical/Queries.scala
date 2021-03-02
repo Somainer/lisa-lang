@@ -314,7 +314,7 @@ trait Queries {
         case Symbol(sym) :: xs if context.hasRule(sym) =>
           Matcher.fromRule(context.getRule(sym).get, xs, inEnv)
             .or(Matcher.fromExpression(LisaList(SAtom(sym) :: xs)))
-        case Quote(Symbol(name)) :: xs =>
+        case Quote(Symbol(name), _) :: xs =>
           Matcher.fromMatchingRelationship(name, xs, inEnv)
         case Symbol(sym) :: xs =>
           Matcher.fromExpression(LisaList(SAtom(sym) :: xs))

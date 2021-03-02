@@ -48,7 +48,7 @@
 
 (define-macro (for v 'in 'range (n) ': do-sth) '(for ~v in range (0 , ~n) : ~do-sth))
 (define-macro (for v 'in 'range (s ', n) ': do-sth)
-    '(block 
+    `'(block 
         (define-mutable! ~v)
         (set! ~v ~s)
         (while (< ~v ~n) 
@@ -57,7 +57,7 @@
                 (set! ~v (+ ~v 1))))))
 
 (define-macro (for (v '= s ', pred ', v '= next) '{ do-sth '})
-    '(group!
+    `'(group!
         (define-mutable! ~v)
         (set! ~v ~s)
         (while ~pred
@@ -87,7 +87,7 @@
     result)
 
 (define-macro (for v from pred step body)
-    '(group!
+    `'(group!
         (define-mutable! ~v)
         (set! ~v ~from)
         (while ~pred 

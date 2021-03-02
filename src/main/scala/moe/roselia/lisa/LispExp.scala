@@ -580,20 +580,24 @@ object LispExp {
     }
   }
 
-  case class Quote(exp: Expression) extends Expression with NoExternalDependency {
+  case class Quote(exp: Expression, isQuasiQuote: Boolean = false) extends Expression with NoExternalDependency {
     override def valid: Boolean = exp.valid
 
-    override def toString: String = s"'${exp.toString}"
+    private def quotePrefix = if (isQuasiQuote) "`'" else "'"
 
-    override def code: String = s"'${exp.code}"
+    override def toString: String = s"$quotePrefix${exp.toString}"
+
+    override def code: String = s"$quotePrefix${exp.code}"
   }
 
-  case class UnQuote(quote: Expression) extends Expression with NoExternalDependency {
+  case class UnQuote(quote: Expression, splicing: Boolean = false) extends Expression with NoExternalDependency {
     override def valid: Boolean = quote.valid
 
-    override def toString: String = s"~$quote"
+    private def unquotePrefix = if (splicing) "~..." else "~"
 
-    override def code: String = s"~${quote.code}"
+    override def toString: String = s"$unquotePrefix$quote"
+
+    override def code: String = s"$unquotePrefix${quote.code}"
   }
 
   def genHead(ex: Seq[Expression]): String = {
@@ -826,7 +830,7 @@ object LispExp {
       def recurHelper(rec: List[Expression], acc: Map[String, Expression]): Map[String, Expression] = rec match {
         case Nil => acc
         case Symbol(sym) :: exp :: xs => recurHelper(xs, acc.updated(sym, exp))
-        case Quote(Symbol(sym)) :: exp :: xs => recurHelper(xs, acc.updated(sym, exp))
+        case Quote(Symbol(sym), _) :: exp :: xs => recurHelper(xs, acc.updated(sym, exp))
         case (r: LisaRecordWithMap[_]) :: xs => recurHelper(xs, acc ++ r.record)
         case x :: _ :: _ => throw new IllegalArgumentException(s"Unrecognized key type: $x: ${x.tpe.name}")
         case x :: _ => throw new IllegalArgumentException(s"No matching value for $x")
@@ -842,7 +846,7 @@ object LispExp {
       def update(args: List[Expression], acc: LisaRecordWithMap[V]): LisaRecordWithMap[V] = args match {
         case Nil => acc
         case Symbol(sym) :: exp :: xs => update(xs, acc.updated(sym, exp))
-        case Quote(Symbol(sym)) :: exp :: xs => update(xs, acc.updated(sym, exp))
+        case Quote(Symbol(sym), _) :: exp :: xs => update(xs, acc.updated(sym, exp))
         case SString(sym) :: exp :: xs => update(xs, acc.updated(sym, exp))
         case (r: LisaRecordWithMap[_]) :: xs =>
           update(xs, r.record.foldLeft(acc) { case (acc, (k, v)) => acc.updated(k, v) })
@@ -869,7 +873,7 @@ object LispExp {
     def getKeyStringOf(keyLike: Expression): String = keyLike match {
       case SString(k) => k
       case Symbol(sym) => sym
-      case Quote(Symbol(sym)) => sym
+      case Quote(Symbol(sym), _) => sym
       case x => throw new IllegalArgumentException(s"Unrecognized key $x.")
     }
 
@@ -905,7 +909,7 @@ object LispExp {
           r.getOrElse(key, alter)
         case (r: LisaRecord[_]) :: Symbol(key) :: alter :: Nil =>
           r.getOrElse(key, alter)
-        case (r: LisaRecord[_]) :: Quote(Symbol(key)) :: alter :: Nil =>
+        case (r: LisaRecord[_]) :: Quote(Symbol(key), _) :: alter :: Nil =>
           r.getOrElse(key, alter)
         case _ =>
           throw new IllegalArgumentException()

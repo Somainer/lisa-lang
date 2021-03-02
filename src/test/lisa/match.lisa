@@ -7,12 +7,12 @@
     (define (handle-case other)
         (panic! $"$other is not a branch."))
     (define defs (map cases handle-case))
-    '(let ()
-        ~~defs
+    `'(let ()
+        ~...defs
         (~fn-sym ~value)))
 
 (define-phrase (x 'match ...cases)
-    '(match ~x ~~cases))
+    `'(match ~x ~...cases))
 
 (define-macro (val params value)
     (define vars (new collection.mutable.ListBuffer))
@@ -49,21 +49,21 @@
     (define defs (map zip-vars (lambda ((v tmp)) (list 'define v tmp))))
     (define redef (map vars (lambda (v) (list 'define v v))))
     
-    '(group!
+    `'(group!
         ~declares
         (~match ~value
             (~fn-params
                 () ; Ensure at least one expression.
-                ~~defs)
+                ~...defs)
             (_ (panic! $"${~params-code} not match ${~value-code}. ")))
-        ~~redef ; Make sure values are immutable.
+        ~...redef ; Make sure values are immutable.
     ))
 
 (define-macro (or*) false)
 (define-macro (or* a) a)
 (define-macro (or* a b) 
     (define sym (gen-sym))
-    '(let ((~sym ~a))
+    `'(let ((~sym ~a))
         (if (truthy? ~sym) ~sym ~b)))
 (define-macro (or* ...tail)
     (.reduceRight tail &(list 'or* #1 #2)))

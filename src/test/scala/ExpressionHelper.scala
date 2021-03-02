@@ -3,6 +3,7 @@ import lisa.LispExp._
 import moe.roselia.lisa.Environments.{CombineEnv, Environment}
 import moe.roselia.lisa.{Environments, Evaluator, Preludes}
 import moe.roselia.lisa.Evaluator.{EvalFailure, EvalSuccess, expandMacro}
+import moe.roselia.lisa.Exceptions.LisaRuntimeException
 
 trait ExpressionHelper extends Implicits {
   def define(sym: Expression, body: Expression) = Define(sym, body)
@@ -25,7 +26,7 @@ trait ExpressionHelper extends Implicits {
       Evaluator.eval(ex, env) match {
         case EvalSuccess(expression, _) => expression
         case f@EvalFailure(_, _, _) =>
-          org.scalatest.Assertions.fail(f.toString)
+          throw LisaRuntimeException(ex, new RuntimeException(f.toString))
       }
     def evalOnPrelude = evalOn(Preludes.preludeEnvironment)
     def evalOnEmptyEnv = evalOn(Environments.EmptyEnv)
@@ -38,7 +39,7 @@ trait ExpressionHelper extends Implicits {
         case Nil => acc.reverse
         case x :: xs => Evaluator.eval(x, env) match {
           case EvalSuccess(ee, ev) => traverse(xs, ev, ee :: acc)
-          case f => org.scalatest.Assertions.fail(f.toString)
+          case f => throw LisaRuntimeException(x, new RuntimeException(f.toString))
         }
       }
       traverse(exs, env)

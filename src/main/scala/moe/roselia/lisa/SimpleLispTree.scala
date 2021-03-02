@@ -42,8 +42,10 @@ object SimpleLispTree {
         if(children.nonEmpty) s"SList(${children.map(_.repr).mkString(", ")})"
         else s"SList( )"
       case StringLiteral(value) => s"String($value)"
-      case SQuote(value) => s"Quote(${value.repr})"
-      case SUnQuote(quoted) => s"UnQuote(${quoted.repr})"
+      case SQuote(value, false) => s"Quote(${value.repr})"
+      case SQuote(value, true) => s"QuasiQuote(${value.repr})"
+      case SUnQuote(quoted, false) => s"UnQuote(${quoted.repr})"
+      case SUnQuote(quoted, true) => s"UnQuoteSplicing(${quoted.repr})"
     }
 
     def collectVariables: Set[String] = Set.empty
@@ -79,11 +81,14 @@ object SimpleLispTree {
 
     override def collectVariables: Set[String] = list.flatMap(_.collectVariables).toSet
   }
-  case class SQuote(quote: SimpleLispTree) extends SimpleLispTree {
-    override def toString: String = s"'$quote"
+
+  case class SQuote(quote: SimpleLispTree, isQuasiQuote: Boolean) extends SimpleLispTree {
+    override def toString: String = if (isQuasiQuote) s"`'$quote" else  s"'$quote"
   }
-  case class SUnQuote(quoted: SimpleLispTree) extends SimpleLispTree {
-    override def toString: String = s"~$quoted"
+
+  case class SUnQuote(quoted: SimpleLispTree, splicing: Boolean) extends SimpleLispTree {
+    override def toString: String =
+      if (splicing) s"~...$quoted" else s"~$quoted"
   }
 
   case class PrecompiledSExpression(exp: LispExp.Expression) extends SimpleLispTree {

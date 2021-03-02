@@ -61,9 +61,9 @@ trait ASTHighlighter {
         transform(st)(_.ansiRed)
       case SimpleLispTree.SList(list) =>
         list.foreach(traverse)
-      case SimpleLispTree.SQuote(quote) =>
+      case SimpleLispTree.SQuote(quote, _) =>
         traverse(quote)
-      case sq @ SimpleLispTree.SUnQuote(quoted) => transform(sq)(_.italic)
+      case sq @ SimpleLispTree.SUnQuote(quoted, _) => transform(sq)(_.italic)
       case SimpleLispTree.PrecompiledSExpression(exp) =>
       case value @ SimpleLispTree.SAtomLeaf(_) =>
         transform(value)(_.ansiRed)
