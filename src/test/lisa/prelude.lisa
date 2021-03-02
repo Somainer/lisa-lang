@@ -76,7 +76,7 @@
     (max-2 h (max t)))
 (define (max (... xs)) (max xs))
 
-(define (min-2 a b (? < a b)) a)
+(define (min-2 a b (? (< a b))) a)
 (define (min-2 _ b) b)
 (define (min ()) (panic! "Min on an empty list."))
 (define (min (x)) x)
