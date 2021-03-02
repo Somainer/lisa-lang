@@ -660,7 +660,7 @@ object Preludes extends LispExp.Implicits {
       case _ => false
     },
     "iterable?" -> PrimitiveFunction.withArityChecked(1) {
-      case (_: LisaRecord[_] | WrappedScalaObject(_: Iterable[_]) | SString(_)) :: Nil => true
+      case (_: LisaRecord[_] | WrappedScalaObject(_: Iterable[_]) | SString(_) | _: LisaListLike[_]) :: Nil => true
       case _ => false
     },
     "quoted?" -> PrimitiveFunction.withArityChecked(1) {

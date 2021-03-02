@@ -61,7 +61,7 @@ class PackageImporter {
       EmptyEnv
     } else { // Import lisa file
       val sourceFile = if (fileName endsWith ".lisa") inPath else inPath.resolveSibling(s"$fileName.lisa")
-      val environment = executePath(sourceFile)
+      val environment = executePath(sourceFile.toAbsolutePath)
       if (imports.isEmpty) environment // Which means import all values.
       else selectSubEnvironment(environment, imports, sourceFile.toString)
     }

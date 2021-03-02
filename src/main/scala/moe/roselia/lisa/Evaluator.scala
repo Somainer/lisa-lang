@@ -15,7 +15,7 @@ object Evaluator {
   val shouldOptimizeTailCall: Boolean = true
 
   trait InterpreterControlFlow {
-    def appendTrace(msg: => String): InterpreterControlFlow
+    def appendTrace(msg: => Expression): InterpreterControlFlow
   }
   trait EvalResult extends InterpreterControlFlow {
     @`inline` def flatMap[T <: InterpreterControlFlow](fn: Expression => T): T
@@ -30,16 +30,16 @@ object Evaluator {
 
     override def isSuccess: Boolean = true
 
-    override def appendTrace(msg: => String): EvalSuccess = this
+    override def appendTrace(msg: => Expression): EvalSuccess = this
 
   }
-  case class EvalFailure(message: String, jvmTrace: List[String] = Nil, lisaTrace: List[String] = Nil) extends EvalResult {
+  case class EvalFailure(message: String, jvmTrace: List[String] = Nil, lisaTrace: List[Expression] = Nil) extends EvalResult {
     override def flatMap[T <: InterpreterControlFlow](fn: Expression => T): T = this.asInstanceOf[T]
 
     override def flatMapWithEnv[T <: InterpreterControlFlow](fn: (Expression, Environment) => T): T =
       this.asInstanceOf[T]
 
-    override def appendTrace(msg: => String): EvalFailure =
+    override def appendTrace(msg: => Expression): EvalFailure =
       copy(lisaTrace = msg :: lisaTrace)
 
     override def isSuccess: Boolean = false
@@ -51,7 +51,16 @@ object Evaluator {
         sb.append("JVM Trace:\n").append(jvmTraceMessage).append("\n")
       }
       if (lisaTrace.nonEmpty) {
-        val lisaTraceMessage = lisaTrace.reverse.map(x => s"\t$x").mkString("\n")
+        val lisaTraceMessage = lisaTrace.reverse.map(expression => {
+          val content = expression.sourceTree
+            .map(_.location.lineContents.stripLeading)
+            .filterNot(_.isBlank)
+            .getOrElse(expression.code)
+          val line = expression.sourceTree.map { source =>
+            s" (${source.location.sourceFile.fileName}:${source.location.line})"
+          }.getOrElse("")
+          content + line
+        }).map(x => s"\tat $x").mkString("\n")
         sb.append("Lisa Trace:\n").append(lisaTraceMessage)
       }
       sb.result()
@@ -70,7 +79,7 @@ object Evaluator {
   }
 
   case class ReplaceStack(expression: Expression, environment: Environment) extends InterpreterControlFlow {
-    override def appendTrace(msg: => String) = this
+    override def appendTrace(msg: => Expression) = this
   }
 
   private val compilePrimitives: PartialFunction[SimpleLispTree, Expression] = {
@@ -92,18 +101,18 @@ object Evaluator {
     }
     case StringLiteral(value) =>
       SString(value)
-    case StringTemplate("$", part :: Nil, Nil) => SString(part)
+    case StringTemplate(Value("$"), part :: Nil, Nil) => SString(part.content)
   }
 
   private def compileStringTemplate(template: StringTemplate, toList: Boolean): Expression = {
     val StringTemplate(templateName, parts, arguments) = template
     val args = if (toList) arguments.map(compileToList) else arguments.map(compile)
-    val stringParts = parts.map(SString)
-    val compiled = if (templateName == "$") {
+    val stringParts = parts.map(slit => SString(slit.content))
+    val compiled = if (templateName.get == "$") {
       Apply(Preludes.stringFunction/* Symbol("string") */,
         stringParts.head :: args.zip(stringParts.tail).flatten(x => List(x._1, x._2)))
     } else {
-      Apply(Symbol(templateName), LisaList(stringParts) :: Apply(Symbol("list"), args) :: Nil)
+      Apply(Symbol(templateName.get), LisaList(stringParts) :: Apply(Symbol("list"), args) :: Nil)
     }
     if (toList) compiled.toRawList else compiled
   }
@@ -112,7 +121,7 @@ object Evaluator {
     compilePrimitives.applyOrElse[SimpleLispTree, Expression](tree, {
       case SList(ls) => LisaList(ls.map(compileToList).toList)
       case template: StringTemplate => compileStringTemplate(template, toList = true)
-    })
+    }).withSourceTree(tree)
 
   def unQuoteList(ll: Expression): Expression = {
     def backToSimpleLispTree(ex: Expression): SimpleLispTree = ex match {
@@ -124,7 +133,7 @@ object Evaluator {
     compile(backToSimpleLispTree(ll))
   }
 
-  def compile(tree: SimpleLispTree): Expression = tree match {
+  def compile(tree: SimpleLispTree): Expression = (tree match {
     case t if compilePrimitives.isDefinedAt(t) => compilePrimitives(t)
     case template: StringTemplate => compileStringTemplate(template, toList = false)
     case SList(ls) => ls match {
@@ -210,11 +219,13 @@ object Evaluator {
       case Nil => NilObj
     }
     case _ => Failure("Compile Error", s"Error compiling: $tree")
-  }
+  }).withSourceTree(tree)
+
   def evaluate(exp: Expression, env: Environment): InterpreterControlFlow = {
     def pureValue(expression: Expression): EvalSuccess = expression match {
+      case LisaMutableCell(value) => pureValue(value)
       case thunk: LisaThunk => pureValue(thunk.value)
-      case _ => EvalSuccess(expression, env)
+      case _ => EvalSuccess(expression.withSourceTree(exp.sourceTree), env)
     }
     def pure(evalResult: EvalResult) = evalResult flatMap pureValue
     def unit(newEnv: Environment) = EvalSuccess(NilObj, newEnv)
@@ -246,19 +257,20 @@ object Evaluator {
       case m@SimpleMacro(_, _, _) => pureValue(SimpleMacroClosure.fromMacro(m, env))
       case m@SimpleMacroClosure(_, _, _, _) => pureValue(m)
       case Define(Symbol(sym), expr) => eval(expr, env) flatMap { defined =>
-        def updateValue(exp: Expression, isOverride: Boolean = false): Environment = {
+        def updateValue(expr: Expression, isOverride: Boolean = false): Environment = {
           val predefined = env getValueOption sym
           val isDeclared = predefined contains PlaceHolder
+          expr.withSourceTree(exp.sourceTree)
           if ((isDeclared || isOverride) && env.isMutable(sym)) {
             // This variable is previously defined or we need to manually override it.
-            exp match {
+            expr match {
               case or: OriginalEnvironment =>
                 if(isDeclared) or.defineAtEnvironment()
                 else or.defineAtEnvironment(env)
               case _ =>
             }
-            env.forceUpdated(sym, exp)
-          } else env.withValue(sym, exp)
+            env.forceUpdated(sym, expr)
+          } else env.withValue(sym, expr)
         }
         def isPreviouslyDefined = env.getValueOption(sym).collect {
           case or: OriginalEnvironment => or.isDefinedAtEnvironment(env)
@@ -364,7 +376,7 @@ object Evaluator {
         case f => f
       }
       case SIfElse(predicate, consequence, alternative) =>
-        evaluate(predicate, env) match {
+        eval(predicate, env) match {
           case EvalSuccess(SBool(b), _) => evaluate(if(b) consequence else alternative, env)
           case EvalSuccess(other, _) => EvalFailure(s"Unexpected if predicate value: $other: ${other.tpe.name}")
           case f: EvalFailure => f
@@ -375,7 +387,7 @@ object Evaluator {
         def evCond(cond: List[(Expression, Expression)]): InterpreterControlFlow = cond match {
           case Nil => EvalFailure(s"No matching case")
           case (pred, conseq)::xs =>
-            evaluate(pred, env) match { // Not using flatMap for tailrec
+            eval(pred, env) match { // Not using flatMap for tailrec
               case EvalSuccess(res, _) => res match {
                 case SBool(true) => evaluate(conseq, env)
                 case SBool(false) => evCond(xs)
@@ -388,7 +400,7 @@ object Evaluator {
 
       case f => EvalFailure(s"Unexpected: $f")
     }
-    evalResult.appendTrace(s"at ${exp.code}")
+    evalResult.appendTrace(exp)
   }
 
   @scala.annotation.tailrec
@@ -492,7 +504,7 @@ object Evaluator {
           } match {
             case EvalSuccess(result, _) => success(result)
             case f@EvalFailureMessage(_) =>
-              f.appendTrace(s"at ${procedure.code}")
+              f.appendTrace(procedure)
             case f => f
           }
         } else reportErrorOfString(s"Match Error, ${genHead(arguments)} does not match ${genHead(boundVariable)}.")
@@ -559,13 +571,13 @@ object Evaluator {
     })
 
     val result = evalResult match {
-      case Some(f@EvalFailureMessage(_)) => Failure("Macro Expansion Error", f.appendTrace(s"in expanding: ${m.code}").message)
+      case Some(f@EvalFailureMessage(_)) => Failure("Macro Expansion Error", f.appendTrace(m).message)
       case Some(EvalSuccess(exp, _)) => exp
       case None =>
         Failure("Macro Expansion Error", s"Error expanding ${m.code}.")
     }
 //      println(s"$m expanded to $result")
-    result
+    result.withSourceTree(m.body.sourceTree)
   }
 
   def matchArgument(pattern: List[Expression],

@@ -29,6 +29,18 @@ object LispExp {
     def docString: String = document
   }
 
+  trait WithSourceTree {
+    var sourceTree: Option[SimpleLispTree.SimpleLispTree] = None
+    def withSourceTree(source: SimpleLispTree.SimpleLispTree): this.type = {
+      sourceTree = Some(source)
+      this
+    }
+    def withSourceTree(maybeSource: Option[SimpleLispTree.SimpleLispTree]): this.type = {
+      maybeSource.foreach(withSourceTree)
+      this
+    }
+  }
+
   trait MayBeDefined {
     protected def pattern: List[List[Expression]] = Nil
 
@@ -75,7 +87,7 @@ object LispExp {
     }
   }
 
-  sealed trait Expression extends DocumentAble with WithFreeValues {
+  sealed trait Expression extends DocumentAble with WithFreeValues with WithSourceTree {
     def valid = true
 
     def code: String = toString
@@ -1083,7 +1095,25 @@ object LispExp {
   }
 
   case class LisaThunk(thunk: Procedure) extends Expression with NoExternalDependency {
-    lazy val value: Expression = Evaluator.applyToEither(thunk, Nil).fold(ex => throw new RuntimeException(ex), identity)
+    private val lazyObject = Util.Lazy.lazily {
+      Evaluator.applyToEither(thunk, Nil).fold(ex => throw new RuntimeException(ex), identity)
+    }
+
+    lazy val value: Expression = lazyObject.get
+
+    def isEvaluated: Boolean = lazyObject.isEvaluated
+
+    override def toString: String = {
+      if (isEvaluated) value.toString
+      else "Thunk(<not computed>)"
+    }
+  }
+
+  case class LisaMutableCell(var value: Expression)
+    extends Expression with NoExternalDependency with IdenticalLisaExpression {
+    def := (newValue: Expression): Unit = {
+      value = newValue
+    }
   }
 
   trait Implicits {

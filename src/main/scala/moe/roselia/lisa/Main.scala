@@ -113,6 +113,7 @@ object Main {
       case LispExp.JVMNull => exp.toString.foreground(literals)
       case LispExp.Quote(expr) => coloringExpression(expr)
       case LispExp.LisaList(ll) => ll.map(coloringExpression).mkString("(", " ", ")")
+      case thunk: LispExp.LisaThunk if thunk.isEvaluated => coloringExpression(thunk.value)
       case _ => exp.toString
     }
   }
@@ -128,6 +129,10 @@ object Main {
    */
   @throws[java.io.FileNotFoundException]
   def executeFileImpl(fileName: String, env: Environments.Environment): (Environments.Environment, Option[LisaException]) = {
+    val path = java.nio.file.FileSystems.getDefault.getPath(fileName)
+    val sourceFile = PathSourceFile(path)
+    val parser = SExpressionParser.parserWithSourceFile(sourceFile)
+    import parser._
     @scala.annotation.tailrec
     def doSeq(source: scala.util.parsing.input.Reader[Char],
               innerEnv: Environments.Environment): (Environments.Environment, Option[LisaException]) = {
@@ -166,7 +171,8 @@ object Main {
       case Some(LisaSyntaxException(message, source)) =>
         printlnErr(s"syntax error: $message at $source($fileName)")
       case Some(LisaRuntimeException(source, exception)) =>
-        printlnErr(s"$exception\n\tsource: $source")
+        val sourceCode = source.sourceTree.map(_.location.lineContents.stripLeading).getOrElse(source)
+        printlnErr(s"$exception\n\tsource: $sourceCode")
       case _ =>
     }
     environment

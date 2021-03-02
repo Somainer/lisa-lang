@@ -196,6 +196,19 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
       predicate test "" shouldBe true
       predicate test " " shouldBe false
     }
+
+    "perform sam transformation in arguments" in {
+      import moe.roselia.lisa.LispExp.NilObj
+      import ExpressionHelper._
+
+      val emptyProcedure = PrimitiveFunction { _ => NilObj }
+      val thread = "new"
+        .asSymbol
+        .apply("Thread".asSymbol, emptyProcedure)
+        .evalOnPrelude
+
+      thread shouldBe a[WrappedScalaObject[Thread]]
+    }
   }
 
   "Static Field Accessor" should {
