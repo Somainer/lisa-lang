@@ -2,9 +2,12 @@
 ;; All of them are signatures, not runnable.
 
 (import-env! predef lisa)
+(import-env! contextual-functions ctxf)
+(define (+ a b)
+    (.+ (wrap a) (wrap b)))
 (define (+ (... xs))
     "Add numbers or strings."
-    (apply lisa.+ xs))
+    (.reduce xs +))
 
 (define (- x)
     "Get opposite number of the x"
@@ -65,9 +68,16 @@
         ((= n false) 0)
         ((number? n) (lisa.int n))))
 
-(define (eval exp)
-    "Evaluate the expression in the invoked environment."
-    (panic!))
+; (define (eval exp)
+;     "Evaluate the expression in the invoked environment."
+;     (panic!))
+(define eval
+    (set-doc
+        (ctxf.side-effect
+            (lambda ((exp) env)
+                (define result (Evaluator/eval (wrap (ast-of exp)) env))
+                (.toList (.productIterator result))))
+    "Evaluate the expression in the invoked environment."))
 
 (define (truthy? e)
     "Test if a value is truthy."

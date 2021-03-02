@@ -621,6 +621,7 @@ object LispExp {
   def getArityOfPattern(pat: Seq[Expression], accumulator: Int = 0): Option[Int] = pat.toList match {
     case Nil => Some(accumulator)
     case LisaList(Symbol("...") :: _) :: Nil => None // Can not count arity on va-args.
+    case Symbol(s"...$_") :: Nil => None
     case LisaList(Symbol("?" | "when?" | "when") :: _) :: Nil => Some(accumulator) // Match guards
     case _ :: xs => getArityOfPattern(xs, accumulator + 1)
   }

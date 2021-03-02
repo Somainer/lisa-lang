@@ -19,6 +19,10 @@ object Preludes extends LispExp.Implicits {
     engine
   }
 
+  val stringFunction: PrimitiveFunction = PrimitiveFunction { xs =>
+    xs.mkString
+  }.withArity(1)
+
   type DirtyPromise[T] = () => T
   import scala.language.implicitConversions
   implicit def wrapPromise[T](t: => T): DirtyPromise[T] = () => t
@@ -279,9 +283,7 @@ object Preludes extends LispExp.Implicits {
       case SString(sym) :: Nil => SAtom(sym)
       case _ => Failure("Contract Violation", "only accept a string")
     },
-    "string" -> PrimitiveFunction { xs =>
-      xs.mkString
-    }.withArity(1),
+    "string" -> stringFunction,
     "string/interpolate" -> PrimitiveFunction.withArityChecked(2) {
       case LisaList(part :: parts) :: LisaList(arguments) :: Nil =>
         (part :: arguments.zip(parts).flatten(x => List(x._1, x._2))).mkString
@@ -415,7 +417,8 @@ object Preludes extends LispExp.Implicits {
     },
     "thunk" -> PrimitiveFunction.withArityChecked(1) {
       case (e: Procedure) :: Nil => LisaThunk(e)
-    }
+    },
+    "..." -> Symbol("...").withDocString("List expansion operator")
   ))
 
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")

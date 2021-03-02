@@ -5,7 +5,7 @@ import moe.roselia.lisa.SimpleLispTree.SimpleLispTree
 object Commands {
   trait InterpreterCommand
   
-  case class LisaExpressionTree(expression: SimpleLispTree) extends InterpreterCommand
+  case class LisaExpressionTree(expression: List[SimpleLispTree]) extends InterpreterCommand
   case class ExecutionTime(expressionTree: SimpleLispTree) extends InterpreterCommand
   case object ResetToInitial extends InterpreterCommand
   case object Quit extends InterpreterCommand

@@ -1,10 +1,10 @@
 package moe.roselia.lisa
 
 import java.util.NoSuchElementException
-
 import scala.annotation.tailrec
 import scala.util.Try
 import Util.ReflectionHelpers.{collectException, tryApplyOnObjectReflective, tryToEither}
+import moe.roselia.lisa.Reflect.ScalaBridge
 
 object Evaluator {
   import Environments._
@@ -109,7 +109,7 @@ object Evaluator {
     val args = if (toList) arguments.map(compileToList) else arguments.map(compile)
     val stringParts = parts.map(slit => SString(slit.content))
     val compiled = if (templateName.get == "$") {
-      Apply(Symbol("string"),
+      Apply(Preludes.stringFunction/* Symbol("string") */,
         stringParts.head :: args.zip(stringParts.tail).flatten(x => List(x._1, x._2)))
     } else {
       Apply(Symbol(templateName.get), LisaList(stringParts) :: Apply(Symbol("list"), args) :: Nil)
@@ -155,7 +155,7 @@ object Evaluator {
                 list.map(compileToList), sExpr.init.map(compile)))
             case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
           }
-        case _ => Failure("Syntax Error", "Cannot define a variable like that.")
+        case _ => Failure("Syntax Error", s"Unexpected define body: $xs")
       }
       case Value("lambda" | "λ")::xs => xs match {
         case SList(params)::sExpr => params match {
@@ -163,6 +163,12 @@ object Evaluator {
             LambdaExpression(compile(sExpr.last),
               list.map(compileToList), sExpr.init.map(compile))
           case other => Failure("Syntax Error", s"A list of Symbol expected but $other found.")
+        }
+        case (sv: Value) :: xs => compile(sv) match {
+          case Symbol(sym) if !sym.startsWith("...") =>
+            compile(SList(Value("lambda") :: SList(Value(s"...$sym") :: Nil) :: xs))
+          case _ =>
+            Failure("Syntax Error", s"Unexpected lambda parameter $sv")
         }
         case x => Failure("Syntax Error", s"Error creating a closure, unexpected lambda body $x.")
       }
@@ -414,10 +420,45 @@ object Evaluator {
   }
 
   def evalList(exps: Seq[Expression], env: Environment): Either[String, Seq[Expression]] = {
-    val evaledExpr = exps.map(eval(_, env))
-    if(evaledExpr.forall(_.isSuccess))
-      Right(evaledExpr.map(_.asInstanceOf[EvalSuccess].expression))
-    else Left(evaledExpr.find(!_.isSuccess).get.asInstanceOf[EvalFailure].message)
+    val finalResult = collection.mutable.ListBuffer.empty[Expression]
+    var error = Left("")
+
+    val allSuccess = exps.forall { exp =>
+      def continueWith(result: EvalResult) = result match {
+        case EvalSuccess(e, _) =>
+          finalResult.addOne(e)
+          true
+        case ef: EvalFailure =>
+          error = Left(ef.message)
+          false
+      }
+      def continueWithList(result: EvalResult) = result match {
+        case EvalSuccess(NilObj, _) => true
+        case EvalSuccess(LisaList(ll), _) =>
+          finalResult.addAll(ll)
+          true
+        case EvalSuccess(WrappedScalaObject(it: Iterable[_]), _) =>
+          finalResult.addAll(it.map(ScalaBridge.fromScalaNative))
+          true
+        case EvalSuccess(ex, _) =>
+          error = Left(s"Cannot flatten a non-list object ${ex.tpe.name}")
+          false
+        case ef: EvalFailure =>
+          error = Left(ef.message)
+          false
+      }
+
+      exp match {
+        case Apply(Symbol("..."), ex :: Nil) =>
+          continueWithList(eval(ex, env))
+        case Symbol(s"...$sym") =>
+          continueWithList(eval(Symbol(sym), env))
+        case ex => continueWith(eval(ex, env))
+      }
+    }
+
+    if (allSuccess) Right(finalResult.result())
+    else error
   }
 
   def apply(procedure: Expression, arguments: List[Expression]): InterpreterControlFlow = {
@@ -549,6 +590,18 @@ object Evaluator {
         case _::ys => matchArgument(xs, ys, matchResult, inEnv)
         case Nil => None
       }
+      case Symbol(s"...$sym") :: xs => sym match {
+        case "_" | "" => matchArgument(xs, Nil, matchResult, inEnv)
+        case symbol if matchResult.contains(symbol) =>
+          matchResult(symbol) match {
+            /// Wrap a list should be deprecated.
+            case LisaList(`arguments`) => matchArgument(xs, Nil, matchResult, inEnv)
+            case _ => None
+          }
+        case _ =>
+          matchResult.update(sym, LisaList(arguments))
+          matchArgument(xs, Nil, matchResult, inEnv)
+      }
       case GraveAccentSymbol(sym)::xs
         if inEnv.has(sym) && !matchResult.contains(sym) =>
         val contextValue = inEnv.getValueOption(sym).get
@@ -605,6 +658,21 @@ object Evaluator {
           matchResult.update(sym, LisaList(arguments))
           matchArgument(xs, Nil, matchResult, inEnv)
       }
+      case LisaList(Preludes.stringFunction :: tail) :: xs =>
+        arguments match {
+          case SString(string) :: ys =>
+            val patterns = tail.collect {
+              case SString(value) => value
+            }
+
+            StringContext.glob(patterns, string).flatMap { matched =>
+              val symbols = tail.collect { case Symbol(sym) => sym }
+              if (symbols.lengthIs == matched.length) Some {
+                symbols.indices.foreach(i => matchResult.update(symbols(i), SString(matched(i))))
+              } else None
+            }.flatMap(_ => matchArgument(xs, ys, matchResult, inEnv))
+          case _ => None
+        }
       case LisaList(lls)::xs =>
         @`inline`
         def continueMatch(restArgs: List[Expression], ys: List[Expression]) =  for {

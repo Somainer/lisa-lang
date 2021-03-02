@@ -70,17 +70,17 @@
     "Otherwise should be a"
     a)
 
-(define (max (seq)) (panic! "Max on an empty list."))
-(define (max (seq x)) x)
-(define (max (seq h (... t)))
+(define (max ()) (panic! "Max on an empty list."))
+(define (max (x)) x)
+(define (max (h (... t)))
     (max-2 h (max t)))
 (define (max (... xs)) (max xs))
 
 (define (min-2 a b (? < a b)) a)
 (define (min-2 _ b) b)
-(define (min (seq)) (panic! "Min on an empty list."))
-(define (min (seq x)) x)
-(define (min (seq h (... t)))
+(define (min ()) (panic! "Min on an empty list."))
+(define (min (x)) x)
+(define (min (h (... t)))
     (min-2 h (min t)))
 (define (min (... t)) (min t))
 
@@ -102,7 +102,7 @@
     (lambda (x)
         (lambda (y) (fn x y))))
 
-(define (curried fn (when? ((constant true) (length fn))))
+(define (-curried fn (when? ((constant true) (length fn))))
     (define arity (length fn))
     (define (curried-impl f arg (when (>= (length arg) arity)))
         (apply f arg))
