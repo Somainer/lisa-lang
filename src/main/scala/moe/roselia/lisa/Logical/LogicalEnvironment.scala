@@ -10,7 +10,7 @@ case class LogicalEnvironment(var logicalContext: LogicalContext) extends Querie
     logicalContext = logicalContext.addedFact(replaceIfPossible(fact, {
       case s@Symbol("_") => s
       case Symbol(s) => SAtom(s)
-      case Quote(sym@Symbol(_)) => sym
+      case Quote(sym@Symbol(_), _) => sym
     }))
   }
   def addRule(name: String, rule: LogicalRule): Unit = {

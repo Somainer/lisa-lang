@@ -3,13 +3,13 @@
 
 (define-macro (or a b)
     "or :: (Bool, Bool) => Bool = if(truthy? a) a else b"
-    '(block
+    `'(block
         (define __a ~a)
         (if (truthy? __a) __a ~b)))
 
 (define-macro (and a b)
     "and :: (Bool, Bool) => Bool = if(truthy? a) b else a"
-    '(block
+    `'(block
         (define __a ~a)
         (if (truthy? __a) ~b __a)))
 
@@ -40,7 +40,7 @@
 
 (define-macro (delay e)
     "Construct a lazy value (named promise)."
-    '(block
+    `'(block
         (define (promise 'promise? ) true)
         (define (promise) ~e)
         promise))
@@ -86,7 +86,7 @@
 
 (define-macro (shadow function)
     "Shadow a defined function to (), in order to redefine a function rather than create a polymorphic function."
-    '(define ~function ()))
+    `'(define ~function ()))
 
 (define (constant x)
     "constant :: a, b => a -> b -> a"
@@ -129,7 +129,7 @@
 (define falsy? (compose truthy? not))
 
 (define-macro (unless pred alt cons)
-    '(if ~pred ~cons ~alt))
+    `'(if ~pred ~cons ~alt))
 
 (define (|> x (... fs))
     (define (apply-seq a (seq)) a)
@@ -161,7 +161,7 @@
     self)
 
 (define-macro (define-polymorphic self '=> (... fs))
-    '(group!
+    `'(group!
         (define ~self ())
         (define-mutable! fs)
         (set! fs (list ~fs))
@@ -198,7 +198,7 @@
     some-impl)
 
 (define-macro (option-from x)
-    '(block
+    `'(block
         (define (receive y (when? (&true (.get y)))) (some (.get y)))
         (define (receive _) none)
         (receive (try-option ~x))))
@@ -219,7 +219,7 @@
     Example: (for (i 0) (< i 10) (+ i 1) (println! i) (if (> i 4) (break)))"
     (define continue-sym (gen-sym))
     (define break-sym (gen-sym))
-    '(returnable
+    `'(returnable
         (lambda (~break-sym)
             (define (break) (~break-sym))
             (define-mutable! ~var)
@@ -234,4 +234,4 @@
 
 (define-macro (. obj meth (... args))
     (define sym (string->symbol (string "." meth)))
-    '(~sym ~obj ~args))
+    `'(~sym ~obj ~args))

@@ -171,7 +171,7 @@ class LogicalModuleTests extends AsyncWordSpec with Matchers with OptionValues w
     """
       |(define-macro (facts (... fs))
       |    (define fact-clauses (map fs &(list 'fact #)))
-      |    '(let () ~~fact-clauses))
+      |    `'(let () ~...fact-clauses))
       |
       |(facts
       |    (path 0 1 1)

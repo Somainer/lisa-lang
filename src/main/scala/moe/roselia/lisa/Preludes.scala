@@ -446,7 +446,7 @@ object Preludes extends LispExp.Implicits {
       s"get-$prefix" -> PrimitiveMacro {
         case (Symbol(sym)::Nil, e) =>
           environment.getValueOption(sym).getOrElse(Failure("Lookup Error", s"Value $sym not found in $prefix env.")) -> e
-        case (Quote(Symbol(sym))::alt::Nil, e) =>
+        case (Quote(Symbol(sym), _)::alt::Nil, e) =>
           environment.getValueOption(sym).getOrElse(alt) -> e
         case (other, e) => Failure("Argument Error", s"Invalid argument: $other") -> e
       }
@@ -664,7 +664,7 @@ object Preludes extends LispExp.Implicits {
       case _ => false
     },
     "quoted?" -> PrimitiveFunction.withArityChecked(1) {
-      case Quote(_) :: Nil => true
+      case Quote(_, _) :: Nil => true
       case _ => false
     },
     "same-reference?" -> PrimitiveFunction.withArityChecked(2) {

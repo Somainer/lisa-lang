@@ -94,9 +94,14 @@ trait SExpressionParser extends ImplicitConversions with RegexParsers {
   def stringLiteral = string | ("raw" ~> rawString)
   def stringValue = stringLiteral.map(StringLiteral) named "String Values"
 
-  def sQuote = "'" ~> sExpression map SQuote
+  def sQuote = {
+    ("'" ~> sExpression map (SQuote(_, isQuasiQuote = false))) |
+      ("`'" ~> sExpression map (SQuote(_, isQuasiQuote = true)))
+  }
 
-  def sUnquote = "~" ~> sExpression map SUnQuote
+  def sUnquote =
+    ("~..." ~> sExpression map (SUnQuote(_, splicing = true))) |
+      ("~" ~> sExpression map (SUnQuote(_, splicing = false)))
 
   def sAtom = ":" ~> noPrefixWhiteSpace(success(Nil)) ~> (
     string.map(SAtomLeaf) | sValue.map { case Value(s) => SAtomLeaf(s) }
@@ -119,7 +124,10 @@ trait SExpressionParser extends ImplicitConversions with RegexParsers {
       val argsList = (0 until i).toList map (x => s"arg$x") map (PlainSymbol)
       PrecompiledSExpression(LambdaExpression(Apply(Evaluator.compile(s), argsList), argsList))
   }) | sExpression.map(ex => {
-    val variables = ex.collectVariables.filter(_.matches("#\\d*")).toIndexedSeq.sortBy {
+    val variables = ex.collectVariables.map {
+      case s"...$sym" => sym
+      case sym => sym
+    }.filter(_.matches("#\\d*")).toIndexedSeq.sortBy {
       case "#" => -1
       case s"#$i" => i.toInt
     }.map(PlainSymbol).toList

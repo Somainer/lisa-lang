@@ -111,7 +111,7 @@ object Main {
       case _: LispExp.SAtom => exp.toString.foreground(literals)
       case _: LispExp.Symbol => exp.toString.foreground(symbols)
       case LispExp.JVMNull => exp.toString.foreground(literals)
-      case LispExp.Quote(expr) => coloringExpression(expr)
+      case LispExp.Quote(expr, _) => coloringExpression(expr)
       case LispExp.LisaList(ll) => ll.map(coloringExpression).mkString("(", " ", ")")
       case thunk: LispExp.LisaThunk if thunk.isEvaluated => coloringExpression(thunk.value)
       case _ => exp.toString

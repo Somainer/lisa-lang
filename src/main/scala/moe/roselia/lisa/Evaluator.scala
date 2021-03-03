@@ -1,9 +1,11 @@
 package moe.roselia.lisa
 
 import java.util.NoSuchElementException
+
 import scala.annotation.tailrec
 import scala.util.Try
 import Util.ReflectionHelpers.{collectException, tryApplyOnObjectReflective, tryToEither}
+import moe.roselia.lisa.Exceptions.LisaRuntimeException
 import moe.roselia.lisa.Reflect.ScalaBridge
 
 object Evaluator {
@@ -84,12 +86,12 @@ object Evaluator {
 
   private val compilePrimitives: PartialFunction[SimpleLispTree, Expression] = {
     case PrecompiledSExpression(p) => p
-    case SQuote(exp) => Quote(compileToList(exp))
+    case SQuote(exp, isQuasiQuote) => Quote(compileToList(exp), isQuasiQuote)
     case GraveAccentAtom(value) => GraveAccentSymbol(value)
     case Value("true") => SBool(true)
     case Value("false") => SBool(false)
     case Value("null") => JVMNull
-    case SUnQuote(q) => UnQuote(compileToList(q))
+    case SUnQuote(q, splicing) => UnQuote(compileToList(q), splicing)
     case SAtomLeaf(atom) => LispExp.SAtom(atom)
     case Value(value) => {
       if(value.matches("-?\\d+"))
@@ -147,7 +149,7 @@ object Evaluator {
       }
       case Value("define")::xs => xs match {
         case Value(sym)::expr::Nil => Define(Symbol(sym), compile(expr))
-        case (sym@SUnQuote(_))::expr::Nil => Define(compile(sym), compile(expr))
+        case (sym@SUnQuote(_, _))::expr::Nil => Define(compile(sym), compile(expr))
         case SList(sym::params)::sExpr =>
           params match {
             case list: List[Value] =>
@@ -320,9 +322,10 @@ object Evaluator {
       case s: SString => pureValue(s)
       case i: SInteger => pureValue(i)
 //      case q: Quote => pureValue(q)
-      case Quote(q) => pureValue(q)
+      case Quote(q, false) => pureValue(q)
+      case Quote(q, true) => pureValue(resolveQuasiQuote(q, env))
       case ll: LisaListLike[_] => pureValue(ll)
-      case UnQuote(q) => eval(q, env)
+      case UnQuote(q, _) => eval(q, env)
       case pm: PrimitiveMacro => pureValue(pm)
       case thunk: LisaThunk => pureValue(thunk.value)
 
@@ -412,8 +415,34 @@ object Evaluator {
     }
   }
 
+  def resolveQuasiQuote(quotation: Expression, environment: Environment): Expression = {
+    quotation match {
+      case UnQuote(q, false) =>
+        eval(unQuoteList(q), environment) match {
+          case EvalSuccess(e, _) => e
+          case EvalFailureMessage(message) => throw LisaRuntimeException(q, new RuntimeException(message))
+        }
+      case UnQuote(_, _) =>
+        throw LisaRuntimeException(quotation, new IllegalArgumentException("No splicing unquote in this context"))
+      case LisaList(ll) =>
+        val unquoted = ll.flatMap {
+          case UnQuote(q, true) => eval(unQuoteList(q), environment) match {
+            case EvalSuccess(e, _) => e match {
+              case LisaList(l) => l
+              case l: LisaListLike[_] => l.map(ScalaBridge.fromScalaNative)
+              case WrappedScalaObject(it: Iterable[_]) => it.map(ScalaBridge.fromScalaNative)
+              case e => throw LisaRuntimeException(q, new IllegalArgumentException(s"Quasi quote needs a list, but ${e.tpe.name} found."))
+            }
+          }
+          case q => List(resolveQuasiQuote(q, environment))
+        }
+        LisaList(unquoted)
+      case otherwise => otherwise
+    }
+  }
+
   def applyToEither(procedure: Expression, arguments: List[Expression]): Either[String, Expression] = {
-    eval(Apply(procedure, arguments.map(Quote)), EmptyEnv) match {
+    eval(Apply(procedure, arguments.map(Quote(_))), EmptyEnv) match {
       case EvalSuccess(exp, _) => Right(exp)
       case EvalFailureMessage(message) => Left(message)
     }
@@ -486,7 +515,7 @@ object Evaluator {
                     def tailCallOptimized = 
                       evalList(arguments, env)
                         // Quote to prevent duplicate execution on eval
-                        .map(_.map(Quote))
+                        .map(_.map(Quote(_)))
                         .map(seq => Apply(e, seq.toList))
                         .map(ReplaceStack(_, env)) match {
                           case Left(_) => evaluate(body, env)
@@ -518,7 +547,7 @@ object Evaluator {
           .fold(reportError, success)
       case record: LisaRecord[_] =>
         tried(arguments match {
-          case Quote(sym @ Symbol(_)) :: Nil => record.apply(sym)
+          case Quote(sym @ Symbol(_), _) :: Nil => record.apply(sym)
           case (sym@Symbol(_)) :: Nil => record.apply(sym)
         })
       case _ => reportErrorOfString(s"Cannot apply $procedure to $arguments.")
@@ -526,30 +555,6 @@ object Evaluator {
   }
 
   def expandMacro(m: SimpleMacroClosure, args: Seq[Expression], env: Environment): Expression = {
-    def unquote(expression: Expression, env: Environment): Option[Expression] = {
-      @`inline` def u(e: Expression) = unquote(e, env)
-      def liftOption[T](op: Seq[Option[T]]): Option[Seq[T]] =
-        if(op.forall(_.isDefined)) Some(op.map(_.get))
-        else None
-
-      def flattenSeq(ex: Seq[Expression]) = ex flatMap {
-        case WrappedScalaObject(seq: Seq[Expression]) => seq
-        case LisaList(ll) => ll
-        case e => Seq(e)
-      }
-
-      expression match {
-        case LisaList(ll) => liftOption(ll.map {
-            case UnQuote(LisaList(ull)) => liftOption(ull.map(u)).map(_.toList).map(LisaList(_))
-            case sym@UnQuote(UnQuote(Symbol(_))) => u(sym)
-            case ex => u(ex).map(LisaList.fromExpression(_))
-          }).map(flattenSeq).map(_.toList).map(LisaList(_))
-        case Quote(s) => u(s).map(Quote)
-        case UnQuote(Symbol(sym)) => env.getValueOption(sym)
-        case UnQuote(other) => u(other)
-        case otherwise => Some(otherwise)
-      }
-    }
     val SimpleMacroClosure(paramsPattern, body, defines, capturedEnv) = m
     val compoundEnvironment = capturedEnv.withValue("dynamic-resolve", PrimitiveMacro {
       case (Symbol(sym) :: Nil, e) => env.getValueOption(sym).getOrElse(throw new NoSuchElementException(sym)) -> e
@@ -563,9 +568,9 @@ object Evaluator {
       }.flatMapWithEnv {
         case (_, e) => eval(body, e)
       }
-    }).map(_.flatMapWithEnv {
+    }).map(_.flatMapWithEnv[EvalResult] {
       case (exp, env) => exp match {
-        case e => unquote(e, env).map(unQuoteList).map(EvalSuccess(_, env)).getOrElse(EvalFailure("Can not expand macro."))
+        case e => EvalSuccess(unQuoteList(e), env)
 //        case _ => EvalSuccess(exp, env)
       }
     })
@@ -687,9 +692,9 @@ object Evaluator {
           case WrappedScalaObject(seq: Seq[Expression]) :: ys => continueMatch(seq.toList, ys)
           case _ => None
         }
-      case Quote(Symbol(sym))::xs => arguments match {
+      case Quote(Symbol(sym), _)::xs => arguments match {
         case Symbol(`sym`)::ys => matchArgument(xs, ys, matchResult, inEnv)
-        case Quote(Symbol(`sym`))::ys => matchArgument(xs, ys, matchResult, inEnv)
+        case Quote(Symbol(`sym`), _)::ys => matchArgument(xs, ys, matchResult, inEnv)
         case _ => None
       }
       case otherwise::xs => arguments match {

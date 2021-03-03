@@ -6,12 +6,12 @@
 (define (people name age (? (>= age 0)))
     (define-mutable! age)
     (define-macro (getter s) 
-        '(define (select '~s ) ~s))
+        `'(define (select ~(quoted s)) ~s))
     (define-macro (setter s)
-        '(define (select '~s __s) (set! ~s __s)))
+        `'(define (select ~(quoted s) __s) (set! ~s __s)))
     
     (define-macro (setter s 'when pred)
-        '(define (select '~s __s (? (~pred __s))) (set! ~s __s)))
+        `'(define (select ~(quoted s) __s (? (~pred __s))) (set! ~s __s)))
     (getter name)
     (getter age)
     (setter name) ; Setter should fail because name is not mutable.
