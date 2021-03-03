@@ -97,7 +97,7 @@ go ; Error: Symbol go not found.
 
 (define-macro 
     (gen x 'for y 'in ls) ; Define a macro.
-        '(map ~ls (lambda (~y) ~x)))
+        `'(map ~ls (lambda (~y) ~x)))
 
 (gen (+ i 1) for i in (list 1 2 3)); <=>
 (map (list 1 2 3) (lambda (i) (+ i 1)))
@@ -134,7 +134,7 @@ They are definitions in `primitives.lisa`, `testers.lisa` and `collections.lisa`
 To use variables defined in other files, `import!` macro could be your option.
 Import is relative, meaning the file path is totally based in the written file.
 
-Hence we have a file: `module.lisa`.
+Hence, we have a file: `module.lisa`.
 ```scheme
 ;; module.lisa
 (define a 114)
@@ -445,7 +445,7 @@ Let's write a factorial function.
 You can even write a for-loop macro.
 ```scheme
 (define-macro (for v from pred step body)
-    '(group!
+    `'(group!
         (define-mutable! ~v)
         (set! ~v ~from)
         (while ~pred 
@@ -470,7 +470,7 @@ Here is a for-loop macro example inside `prelude.lisa`:
 (define-macro (for (var init) condition update (... body))
     (define continue-sym (gen-sym))
     (define break-sym (gen-sym))
-    '(returnable
+    `'(returnable
         (lambda (~break-sym)
             (define (break) (~break-sym)) ; To make sure break does not accept any arguments.
             (define-mutable! ~var)
@@ -553,31 +553,34 @@ If you want to refer to a value dynamically, use `dynamic-resolve` macro which o
 inside macros. This macro will lookup through calling chain to resolve the symbol in
 dynamic scope.
 Since code is data in Lisa, you can generate code by quote and unquote or returning a list.
-To quote an expression, use syntax sugar `'<expression>`. `~<expression>` is the syntax sugar for unquoting an expression.
+To quote an expression, use syntax sugar `'<expression>`.
+To quasi-quote an expression, use `&#96;'<expression>`  
+`~<expression>` is the syntax sugar for unquoting an expression.
+`~...<expression>` to splice unquote an expression.
 
 ```scheme
 (define-macro (unless predicate consequence alternative)
-    '(if ~predicate ~alternative ~consequence))
+    `'(if ~predicate ~alternative ~consequence))
 
 ; It is also possible to define a polymorphic macro using pattern matching.
 
 (define-macro (reversed-apply (f x y))
-    '(~f ~y ~x))
+    `'(~f ~y ~x))
 (define-macro (reversed-apply (f x))
-    '(~f ~x))
+    `'(~f ~x))
 
 (reversed-apply (- 2 3)) ; => (- 3 2) => 1
 (reversed-apply (- 2)) ; => -2
 
 ; And because of pattern matching, a literal symbol in argument can be treated as a keyword.
-(define-macro (is a 'equals 'to b) '(= ~a ~b))
-(define-macro (is a 'not 'equals 'to b) '(if (is ~a equals to ~b) false true)) 
+(define-macro (is a 'equals 'to b) `'(= ~a ~b))
+(define-macro (is a 'not 'equals 'to b) `'(if (is ~a equals to ~b) false true)) 
 
 (is 1 equals to 1) ;=> (= 1 1) => true
 (is 1 not equals to 2) ;=> (if (is 1 equals to 2) false true) => true
 
 (define-macro (unless pred conseq alter)
-    (list 'if pred alter conseq)) ; Can also be '(if ~pred ~alter ~conseq)
+    (list 'if pred alter conseq)) ; Can also be `'(if ~pred ~alter ~conseq)
 (unless (< 3 2) (println! "3 > 2") (println! "Impossible"))
 
 (define-macro (dirty-nth ls n)
@@ -613,8 +616,8 @@ a new scope will not shadow previously defined phrases,
 and it will create a new polymorphic variant. 
 
 ```scheme
-(define-phrase (a '+ b) '(+ ~a ~b)) ; <==>
-(define-macro (`&__PHRASE__` a '+ b) '(+ ~a ~b))
+(define-phrase (a '+ b) `'(+ ~a ~b)) ; <==>
+(define-macro (`&__PHRASE__` a '+ b) `'(+ ~a ~b))
 
 (3 + 2) ; Will be transformed to 
 (`&__PHRASE__` 3 + 2) ; because 3 can not be applied to (+ 2)
@@ -663,9 +666,9 @@ If you miss `doto` macro, you can just write one as example below.
     (define sym (gen-sym))
     (define ops-with-obj 
         (map ops (lambda ((fn (... args))) (cons fn (cons sym args)))))
-    '(let ()
+    `'(let ()
         (define ~sym ~ex)
-        ~~ops-with-obj
+        ~...ops-with-obj
         ~sym))
 ```
 Hence, you can write code like:

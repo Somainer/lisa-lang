@@ -124,7 +124,10 @@ trait SExpressionParser extends ImplicitConversions with RegexParsers {
       val argsList = (0 until i).toList map (x => s"arg$x") map (PlainSymbol)
       PrecompiledSExpression(LambdaExpression(Apply(Evaluator.compile(s), argsList), argsList))
   }) | sExpression.map(ex => {
-    val variables = ex.collectVariables.filter(_.matches("#\\d*")).toIndexedSeq.sortBy {
+    val variables = ex.collectVariables.map {
+      case s"...$sym" => sym
+      case sym => sym
+    }.filter(_.matches("#\\d*")).toIndexedSeq.sortBy {
       case "#" => -1
       case s"#$i" => i.toInt
     }.map(PlainSymbol).toList

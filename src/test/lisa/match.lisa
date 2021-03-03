@@ -68,3 +68,14 @@
 (define-macro (or* ...tail)
     (.reduceRight tail &(list 'or* #1 #2)))
 
+(define-macro (lambda* ...cases)
+    (define sym (gen-sym))
+    `'(let ()
+        ~...(map cases &`'(define ~sym (lambda ~...#)))
+        ~sym))
+
+(define-macro (||> x ...fns)
+    (.foldLeft fns x
+        (lambda*
+            ((x (fn ...args)) `'(~fn ~x ~...args))
+            ((x fn) `'(~fn ~x)))))

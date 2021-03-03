@@ -580,7 +580,7 @@ object LispExp {
     }
   }
 
-  case class Quote(exp: Expression, isQuasiQuote: Boolean = false) extends Expression with NoExternalDependency {
+  case class Quote(exp: Expression, isQuasiQuote: Boolean = false) extends Expression with WithFreeValues {
     override def valid: Boolean = exp.valid
 
     private def quotePrefix = if (isQuasiQuote) "`'" else "'"
@@ -588,6 +588,16 @@ object LispExp {
     override def toString: String = s"$quotePrefix${exp.toString}"
 
     override def code: String = s"$quotePrefix${exp.code}"
+
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
+      if (isQuasiQuote) {
+        val deps = exp match {
+          case LisaList(ll) => ll.flatMap(_.collectEnvDependency(defined)._1)
+          case e => e.collectEnvDependency(defined)._1
+        }
+
+        (deps.toSet, defined)
+      } else (Set.empty, defined)
   }
 
   case class UnQuote(quote: Expression, splicing: Boolean = false) extends Expression with NoExternalDependency {
@@ -598,6 +608,9 @@ object LispExp {
     override def toString: String = s"$unquotePrefix$quote"
 
     override def code: String = s"$unquotePrefix${quote.code}"
+
+    override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
+      quote.collectEnvDependency(defined)
   }
 
   def genHead(ex: Seq[Expression]): String = {

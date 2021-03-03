@@ -73,6 +73,8 @@ object SimpleLispTree {
   }
   case class StringTemplate(templateName: Value, parts: List[StringLiteral], arguments: List[SimpleLispTree]) extends SimpleLispTree {
      override def toString: String = s"$templateName${StringContext(parts.map(_.content): _*).s(arguments: _*)}"
+
+    override def collectVariables: Set[String] = SList(arguments).collectVariables
   }
   case class SList(list: Seq[SimpleLispTree]) extends SimpleLispTree {
     override def toString: String =
@@ -84,11 +86,17 @@ object SimpleLispTree {
 
   case class SQuote(quote: SimpleLispTree, isQuasiQuote: Boolean) extends SimpleLispTree {
     override def toString: String = if (isQuasiQuote) s"`'$quote" else  s"'$quote"
+
+    override def collectVariables: Set[String] =
+      if (isQuasiQuote) quote.collectVariables
+      else Set.empty
   }
 
   case class SUnQuote(quoted: SimpleLispTree, splicing: Boolean) extends SimpleLispTree {
     override def toString: String =
       if (splicing) s"~...$quoted" else s"~$quoted"
+
+    override def collectVariables: Set[String] = quoted.collectVariables
   }
 
   case class PrecompiledSExpression(exp: LispExp.Expression) extends SimpleLispTree {
