@@ -8,6 +8,7 @@ import moe.roselia.lisa.Exceptions.{LisaException, LisaRuntimeException, LisaSyn
 import moe.roselia.lisa.Import.PackageImporter
 import moe.roselia.lisa.LispExp.{LisaList, NilObj, PrimitiveFunction, SNumber, SString, SideEffectFunction, WrappedScalaObject}
 import moe.roselia.lisa.Repl.ReplDriver
+import moe.roselia.lisa.Util.Extractors.SourceExtension
 
 import scala.annotation.tailrec
 import scala.util.Try
@@ -171,7 +172,7 @@ object Main {
       case Some(LisaSyntaxException(message, source)) =>
         printlnErr(s"syntax error: $message at $source($fileName)")
       case Some(LisaRuntimeException(source, exception)) =>
-        val sourceCode = source.sourceTree.map(_.location.lineContents.stripLeading).getOrElse(source)
+        val sourceCode = source.sourceLineContent
         printlnErr(s"$exception\n\tsource: $sourceCode")
       case _ =>
     }

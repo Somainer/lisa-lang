@@ -87,7 +87,7 @@ object LispExp {
     }
   }
 
-  sealed trait Expression extends DocumentAble with WithFreeValues with WithSourceTree {
+  trait Expression extends DocumentAble with WithFreeValues with WithSourceTree {
     def valid = true
 
     def code: String = toString

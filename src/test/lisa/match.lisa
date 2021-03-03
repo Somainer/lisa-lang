@@ -79,3 +79,9 @@
         (lambda*
             ((x (fn ...args)) `'(~fn ~x ~...args))
             ((x fn) `'(~fn ~x)))))
+
+(define-macro (let* ((var val) ...binds) ...exprs)
+    `'(let ((~var ~val))
+        (let* ~binds ~...exprs)))
+(define-macro (let* () ...exprs)
+    `'(let () ~...exprs))

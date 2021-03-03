@@ -7,6 +7,7 @@ import scala.util.Try
 import Util.ReflectionHelpers.{collectException, tryApplyOnObjectReflective, tryToEither}
 import moe.roselia.lisa.Exceptions.LisaRuntimeException
 import moe.roselia.lisa.Reflect.ScalaBridge
+import moe.roselia.lisa.Util.Extractors.SourceExtension
 
 object Evaluator {
   import Environments._
@@ -72,7 +73,12 @@ object Evaluator {
   object EvalFailure {
     def fromThrowable(throwable: Throwable): EvalFailure = {
       // throwable.printStackTrace()
-      EvalFailure(throwable.toString, throwable.getStackTrace.map(_.toString).toList)
+      throwable match {
+        case ex @ LisaRuntimeException(source, _) =>
+          EvalFailure(s"$ex\n\tsource: ${source.sourceLineContent}")
+        case _ =>
+          EvalFailure(throwable.toString, throwable.getStackTrace.map(_.toString).toList)
+      }
     }
   }
 
@@ -417,6 +423,8 @@ object Evaluator {
 
   def resolveQuasiQuote(quotation: Expression, environment: Environment): Expression = {
     quotation match {
+      case Quote(q, isQuasiQuote) =>
+        Quote(resolveQuasiQuote(q, environment), isQuasiQuote)
       case UnQuote(q, false) =>
         eval(unQuoteList(q), environment) match {
           case EvalSuccess(e, _) => e
