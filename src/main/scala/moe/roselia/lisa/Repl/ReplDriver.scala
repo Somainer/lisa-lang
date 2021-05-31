@@ -1,12 +1,10 @@
 package moe.roselia.lisa.Repl
 
 import java.io.{InputStream, PrintStream}
-
 import scala.jdk.CollectionConverters._
-import jline.console.UserInterruptException
 import moe.roselia.lisa.Environments.Environment
 import moe.roselia.lisa.Repl.Commands.{ExecutionTime, Help, InterpreterCommand, LisaExpressionTree, Quit, ResetToInitial}
-import org.jline.reader.{Candidate, EndOfFileException}
+import org.jline.reader.{Candidate, EndOfFileException, UserInterruptException}
 import moe.roselia.lisa.Evaluator
 import moe.roselia.lisa.Reflect.{ConstructorCaller, StaticFieldAccessor}
 import moe.roselia.lisa.SExpressionParser

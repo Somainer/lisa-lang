@@ -1,10 +1,10 @@
 package moe.roselia.lisa
 
 import java.util.NoSuchElementException
-
 import scala.annotation.tailrec
 import scala.util.Try
 import Util.ReflectionHelpers.{collectException, tryApplyOnObjectReflective, tryToEither}
+import moe.roselia.lisa.Compile.Phases.ConstantValueExpansion
 import moe.roselia.lisa.Exceptions.LisaRuntimeException
 import moe.roselia.lisa.Reflect.ScalaBridge
 import moe.roselia.lisa.Util.Extractors.SourceExtension
@@ -547,8 +547,8 @@ object Evaluator {
         } else reportErrorOfString(s"Match Error, ${genHead(arguments)} does not match ${genHead(boundVariable)}.")
       }
 
-      case PrimitiveFunction(fn) =>
-        tried(fn(arguments))
+      case fn: InvokableProcedure =>
+        tried(fn.invoke(arguments))
       case WrappedScalaObject(obj) =>
         tryApplyOnObjectReflective(obj, arguments)
           .map(Reflect.ScalaBridge.fromScalaNative)
@@ -591,6 +591,12 @@ object Evaluator {
     }
 //      println(s"$m expanded to $result")
     result.withSourceTree(m.body.sourceTree)
+  }
+
+  def fullyExpandMacro(ex: Expression, env: Environment): Expression = {
+    import moe.roselia.lisa.Compile.Phases.{MacroExpansion, IifeInline, Pipeline}
+    import Pipeline._
+    MacroExpansion andThen IifeInline transform (ex, env)
   }
 
   def matchArgument(pattern: List[Expression],
@@ -694,6 +700,8 @@ object Evaluator {
         } yield argsMatch ++ rest
 
         arguments match {
+          case (lt: LisaThunk) :: ys =>
+            matchArgument(pattern, lt.value :: ys, matchResult, inEnv)
           case Apply(yHead, yArgs)::ys => continueMatch(yHead :: yArgs, ys)
           case LisaList(llArg) :: ys => continueMatch(llArg, ys)
           case (lll: LisaListLike[Expression]) :: ys => continueMatch(lll.list, ys)

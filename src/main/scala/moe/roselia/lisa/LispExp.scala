@@ -3,19 +3,13 @@ package moe.roselia.lisa
 import moe.roselia.lisa.Annotation.RawLisa
 import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, MutableEnv}
 import moe.roselia.lisa.RecordType.{MapRecord, Record}
+import moe.roselia.lisa.Typing.{ClassType, InferrableTyped, LisaType, LisaTyped, NameOnlyType, NullType, StaticTyped, ValueType}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.ref.WeakReference
 
 object LispExp {
-
-  trait LisaType {
-    def name: String
-  }
-
-  case class NameOnlyType(name: String) extends LisaType
-
   trait DocumentAble {
     var document = ""
 
@@ -87,7 +81,7 @@ object LispExp {
     }
   }
 
-  trait Expression extends DocumentAble with WithFreeValues with WithSourceTree {
+  sealed trait Expression extends DocumentAble with WithFreeValues with WithSourceTree with LisaTyped {
     def valid = true
 
     def code: String = toString
@@ -99,7 +93,7 @@ object LispExp {
 
   trait LisaValue
 
-  trait Symbol extends Expression with LisaValue {
+  trait Symbol extends Expression with LisaValue with InferrableTyped {
     def value: String
 
     override def toString: String = value
@@ -140,7 +134,7 @@ object LispExp {
   import LisaInteger.int2bigInt
 
   class SNumber[T](val number: T)(implicit evidence: scala.math.Numeric[T])
-    extends Expression with Ordered[SNumber[T]] with NoExternalDependency with LisaValue {
+    extends Expression with Ordered[SNumber[T]] with NoExternalDependency with LisaValue with StaticTyped {
     override def toString: String = number.toString
 
     def mapTo[U: Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
@@ -211,6 +205,15 @@ object LispExp {
         case TypeFlags.Integer => "Integer"
         case TypeFlags.Rational => "Rational"
         case TypeFlags.Double => "Decimal"
+      }
+    }
+
+    override def lisaType: LisaType = {
+      import SNumber.NumberTypes._
+      getTypeOrder(number) match {
+        case TypeFlags.Integer => LisaType.of[LisaInteger]
+        case TypeFlags.Rational => LisaType.of[Rational[LisaInteger]]
+        case TypeFlags.Double => LisaType.of[LisaDecimal]
       }
     }
   }
@@ -331,6 +334,8 @@ object LispExp {
     override def toString: String = value.toString
 
     override def tpe: LisaType = NameOnlyType("Boolean")
+
+    override def lisaType: LisaType = ValueType.Boolean
   }
 
   object SBool {
@@ -359,6 +364,8 @@ object LispExp {
       value.charAt(index).toInt
     }
     def charCode: Int = charCodeAt(0)
+
+    override def lisaType: LisaType = LisaType.of[String]
   }
 
   case object NilObj extends Expression with NoExternalDependency with LisaValue with LisaListLike[Nothing] {
@@ -367,6 +374,8 @@ object LispExp {
     override def toString: String = "( )"
 
     override def tpe: LisaType = NameOnlyType("Nil")
+
+    override def lisaType: LisaType = LisaType.nil
   }
 
   case class WrappedScalaObject[+T](obj: T) extends Expression with NoExternalDependency with LisaValue {
@@ -378,6 +387,8 @@ object LispExp {
       NameOnlyType(s"${getClass.getSimpleName}[${reflect.NameTransformer.decode(obj.getClass.getSimpleName)}]")
 
     override def equals(obj: Any): Boolean = super.equals(obj) || this.obj == obj
+
+    override def lisaType: LisaType = LisaType.of(obj.getClass)
   }
 
   object WrappedScalaObject {
@@ -390,10 +401,19 @@ object LispExp {
   }
 
   trait Procedure extends Expression
+  trait InvokableProcedure extends Procedure {
+    def invoke(args: List[Expression]): Expression
+
+    def asMacro: PrimitiveMacro = PrimitiveMacro {
+      case (exp, env) => invoke(exp) -> env
+    }
+  }
 
   case class PrimitiveFunction(function: List[Expression] => Expression)
-    extends Procedure with DeclareArityAfter with NoExternalDependency {
+    extends InvokableProcedure with DeclareArityAfter with NoExternalDependency with InferrableTyped {
     override def toString: String = s"#[Native Code]($function)"
+
+    override def invoke(args: List[Expression]): Expression = function(args)
   }
 
   object PrimitiveFunction {
@@ -406,14 +426,14 @@ object LispExp {
   }
 
   case class SideEffectFunction(function: (List[Expression], Environment) => (Expression, Environment))
-    extends Procedure with NoExternalDependency {
+    extends Procedure with NoExternalDependency with InferrableTyped {
     override def toString: String = "#[Native Code!]"
 
     def asMacro = PrimitiveMacro(function)
   }
 
   case class LambdaExpression(body: Expression, boundVariable: List[Expression],
-                              nestedExpressions: List[Expression] = List.empty) extends Expression {
+                              nestedExpressions: List[Expression] = List.empty) extends Expression with InferrableTyped {
     override def valid: Boolean = body.valid
 
     override def code: String =
@@ -483,7 +503,7 @@ object LispExp {
                      body: Expression,
                      capturedEnv: Environments.Environment,
                      sideEffects: List[Expression] = List.empty)
-    extends Procedure with MayHaveArity with MayBeDefined with SelfReferencable with OriginalEnvironment {
+    extends Procedure with MayHaveArity with MayBeDefined with SelfReferencable with OriginalEnvironment with InferrableTyped {
     override def valid: Boolean = body.valid
 
     override def toString: String = s"#Closure[${genHead(boundVariable)}]"
@@ -513,7 +533,8 @@ object LispExp {
     def flattenCaptured: Closure = copy(capturedEnv = capturedEnv.collectValues(freeVariables.toList))
   }
 
-  case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression) extends Expression {
+  case class SIfElse(predicate: Expression, consequence: Expression, alternative: Expression)
+    extends Expression with InferrableTyped {
     override def valid: Boolean = predicate.valid && consequence.valid && alternative.valid
 
     override def code: String = s"(if ${predicate.code} ${consequence.code} ${alternative.code})"
@@ -525,7 +546,7 @@ object LispExp {
       LisaList.fromExpression(Symbol("if"), predicate.toRawList, consequence.toRawList, alternative.toRawList)
   }
 
-  case class SCond(conditions: List[(Expression, Expression)]) extends Expression {
+  case class SCond(conditions: List[(Expression, Expression)]) extends Expression with InferrableTyped {
     override def collectEnvDependency(defined: Set[String]): (Set[String], Set[String]) =
       accumulateDependencies(conditions.flatMap(it => it._1 :: it._2 :: Nil), defined)
 
@@ -538,7 +559,7 @@ object LispExp {
     }
   }
 
-  case class Apply(head: Expression, args: List[Expression]) extends Expression {
+  case class Apply(head: Expression, args: List[Expression]) extends Expression with InferrableTyped {
     override def valid: Boolean = head.valid && args.forall(_.valid)
 
     override def code: String =
@@ -578,9 +599,12 @@ object LispExp {
       }
       deps -> newDef
     }
+
+    override def lisaType: LisaType = LisaType.nil
   }
 
-  case class Quote(exp: Expression, isQuasiQuote: Boolean = false) extends Expression with WithFreeValues {
+  case class Quote(exp: Expression, isQuasiQuote: Boolean = false)
+    extends Expression with WithFreeValues with InferrableTyped {
     override def valid: Boolean = exp.valid
 
     private def quotePrefix = if (isQuasiQuote) "`'" else "'"
@@ -600,7 +624,8 @@ object LispExp {
       } else (Set.empty, defined)
   }
 
-  case class UnQuote(quote: Expression, splicing: Boolean = false) extends Expression with NoExternalDependency {
+  case class UnQuote(quote: Expression, splicing: Boolean = false)
+    extends Expression with NoExternalDependency with InferrableTyped {
     override def valid: Boolean = quote.valid
 
     private def unquotePrefix = if (splicing) "~..." else "~"
@@ -661,7 +686,7 @@ object LispExp {
   case class SimpleMacro(paramsPattern: Seq[Expression],
                          body: Expression,
                          defines: Seq[Expression])
-    extends Procedure with MayHaveArity with MayBeDefined with NoExternalDependency {
+    extends Procedure with MayHaveArity with MayBeDefined with NoExternalDependency with InferrableTyped {
     override def valid: Boolean = paramsPattern.forall(_.valid) && body.valid && defines.forall(_.valid)
 
     override def toString: String = s"#Macro(${paramsPattern.mkString(" ")})"
@@ -677,7 +702,7 @@ object LispExp {
                                 body: Expression,
                                 defines: Seq[Expression],
                                 capturedEnv: Environment)
-  extends Procedure with MayHaveArity with MayBeDefined with NoExternalDependency with OriginalEnvironment {
+  extends Procedure with MayHaveArity with MayBeDefined with NoExternalDependency with OriginalEnvironment with InferrableTyped {
     private lazy val relatingMacro = SimpleMacro(paramsPattern, body, defines)
     override lazy val arity: Option[Int] = relatingMacro.arity
 
@@ -698,7 +723,7 @@ object LispExp {
   }
 
   case class PrimitiveMacro(fn: (List[Expression], Environment) => (Expression, Environment))
-    extends Procedure with DeclareArityAfter with NoExternalDependency with CustomHintProvider {
+    extends Procedure with DeclareArityAfter with NoExternalDependency with CustomHintProvider with InferrableTyped {
     override def toString: String = s"#Macro![Native Code]"
 
     def asProcedure: SideEffectFunction = SideEffectFunction(fn)
@@ -706,12 +731,14 @@ object LispExp {
 
   case class Failure(tp: String, message: String) extends Expression with NoExternalDependency {
     override def valid: Boolean = false
+
+    override def lisaType: LisaType = LisaType.nothing
   }
 
   case class PolymorphicExpression(name: String,
                                    variants: Seq[(Expression, Seq[Expression])],
                                    innerEnvironment: MutableEnv, byName: Boolean = false)
-    extends Procedure with MayHaveArity with MayBeDefined with OriginalEnvironment {
+    extends Procedure with MayHaveArity with MayBeDefined with OriginalEnvironment with InferrableTyped {
     def findMatch(args: Seq[Expression],
                   inEnv: Environment = EmptyEnv): Option[(Expression, Map[String, Expression])] = {
       @annotation.tailrec
@@ -830,7 +857,7 @@ object LispExp {
     }
   }
 
-  trait LisaRecord[+V <: Expression] extends Record[String, V] with Expression with NoExternalDependency {
+  trait LisaRecord[+V <: Expression] extends Record[String, V] with Expression with NoExternalDependency with InferrableTyped {
     def apply(sym: Symbol) = selectDynamic(sym.value)
   }
   trait LisaMutableRecord[+V <: Expression] extends LisaRecord[V] {
@@ -1069,7 +1096,7 @@ object LispExp {
   }
 
   case class LisaList[+T <: Expression](list: List[T])
-    extends LisaListLike[T] {
+    extends LisaListLike[T] with InferrableTyped {
     override def tpe: LisaType = NameOnlyType("List")
 
     override def toString: String = list.mkString("(", " ", ")")
@@ -1088,7 +1115,7 @@ object LispExp {
     def newBuilder[A <: Expression]: mutable.Builder[A, LisaList[A]] = List.newBuilder.mapResult(apply)
   }
 
-  case object PlaceHolder extends Expression
+  case object PlaceHolder extends Expression with InferrableTyped
 
   trait IdenticalLisaExpression extends Expression
 
@@ -1097,6 +1124,8 @@ object LispExp {
     override def toString: String = s":$valuePart"
 
     override def tpe: LisaType = NameOnlyType("Atom")
+
+    override def lisaType: LisaType = LisaType.of[SAtom]
   }
 
   object SAtom {
@@ -1109,9 +1138,12 @@ object LispExp {
     override def toString: String = "null"
 
     override def tpe: LisaType = NameOnlyType("Null")
+
+    override def lisaType: LisaType = NullType
   }
 
-  case class LisaThunk(thunk: Procedure) extends Expression with NoExternalDependency {
+  case class LisaThunk(thunk: Procedure)
+    extends Expression with NoExternalDependency with InferrableTyped {
     private val lazyObject = Util.Lazy.lazily {
       Evaluator.applyToEither(thunk, Nil).fold(ex => throw new RuntimeException(ex), identity)
     }
@@ -1127,7 +1159,7 @@ object LispExp {
   }
 
   case class LisaMutableCell(var value: Expression)
-    extends Expression with NoExternalDependency with IdenticalLisaExpression {
+    extends Expression with NoExternalDependency with IdenticalLisaExpression with InferrableTyped {
     def := (newValue: Expression): Unit = {
       value = newValue
     }

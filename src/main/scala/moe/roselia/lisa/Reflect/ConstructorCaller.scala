@@ -1,9 +1,11 @@
 package moe.roselia.lisa.Reflect
 
+import moe.roselia.lisa.Exceptions.LisaRuntimeException
 import moe.roselia.lisa.{Environments, Evaluator, LispExp}
 import moe.roselia.lisa.LispExp.{PrimitiveMacro, Procedure}
 import moe.roselia.lisa.Util.Extractors.RichOption
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromScalaNative, toScalaNative}
+import moe.roselia.lisa.Typing
 
 object ConstructorCaller {
 
@@ -21,7 +23,8 @@ object ConstructorCaller {
     getConstructorOfType(tpe.toType)
   }
 
-  def resolveClassBySimpleName(name: String): Class[_] = {
+  def resolveClassBySimpleName(name: String): Class[_] = resolveClassBySimpleName(name, searchInPackages)
+  def resolveClassBySimpleName(name: String, searchInPackages: Seq[String]): Class[_] = {
     try {
       Class.forName(name)
     } catch {
@@ -86,14 +89,21 @@ object ConstructorCaller {
 
   val ConstructorEnvironment: Environments.Env = Environments.EmptyEnv.withValues(Seq(
     "new" -> PrimitiveMacro {
-      case (LispExp.Symbol(sym) :: args, env) =>
+      case (ctor :: args, env) =>
         Evaluator.evalList(args, env) match {
           case Right(exps) =>
-            env.getValueOption(sym) match {
-              case Some(LispExp.WrappedScalaObject(clazz: Class[_])) =>
+            Evaluator.eval(ctor, env) match {
+              case Evaluator.EvalSuccess(LispExp.WrappedScalaObject(clazz: Class[_]), _) =>
                 fromScalaNative(newInstanceForClass(clazz, exps.map(toScalaNative))) -> env
+              case Evaluator.EvalSuccess(typ: Typing.ConstructableType[_], _) =>
+                fromScalaNative(typ.newInstance(exps.map(toScalaNative))) -> env
               case _ =>
-                fromScalaNative(newInstanceFromClassName(sym, exps.map(toScalaNative))) -> env
+                ctor match {
+                  case LispExp.Symbol(sym) =>
+                    fromScalaNative(newInstanceFromClassName(sym, exps.map(toScalaNative))) -> env
+                  case _ =>
+                    throw LisaRuntimeException(ctor, new RuntimeException(s"$ctor does not refer to a type."))
+                }
             }
           case Left(reason) => throw new RuntimeException(reason)
         }

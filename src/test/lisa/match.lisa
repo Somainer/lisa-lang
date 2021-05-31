@@ -1,9 +1,9 @@
 (define-macro (match value ...cases)
     (define fn-sym (gen-sym))
     (define (handle-case (v (pred value) ...case) (when (or (= pred 'when) (or (= pred '?) (= pred 'when?)))))
-        (list 'define (list fn-sym v (list pred value)) ...case))
+        `'(define (~fn-sym ~v (~pred ~value)) ~...case))
     (define (handle-case (v ...case))
-        (list 'define (list fn-sym v) ...case))
+        `'(define (~fn-sym ~v) ~...case))
     (define (handle-case other)
         (panic! $"$other is not a branch."))
     (define defs (map cases handle-case))
@@ -68,6 +68,15 @@
 (define-macro (or* ...tail)
     (.reduceRight tail &(list 'or* #1 #2)))
 
+(define-macro (and*) true)
+(define-macro (and* a) a)
+(define-macro (and* a b)
+    (define sym (gen-sym))
+    `'(let ((~sym ~a))
+        (if (truthy? ~sym) ~b ~sym)))
+(define-macro (and* ...tail)
+    (.reduceRight tail &`'(and* ~#1 ~#2)))
+
 (define-macro (lambda* ...cases)
     (define sym (gen-sym))
     `'(let ()
@@ -79,6 +88,15 @@
         (lambda*
             ((x (fn ...args)) `'(~fn ~x ~...args))
             ((x fn) `'(~fn ~x)))))
+
+(define-macro (doto x ...ops)
+    (define sym (gen-sym))
+    `'(let ((~sym ~x))
+        ~...(.map ops
+            (lambda*
+                (((fn ...args)) `'(~fn ~sym ~...args))
+                ((fn) `'(~fn ~sym))))
+        ~sym))
 
 (define-macro (let* ((var val) ...binds) ...exprs)
     `'(let ((~var ~val))

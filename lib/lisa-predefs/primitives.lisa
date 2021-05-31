@@ -91,10 +91,10 @@
 
 (define-macro (import-env! env (when (symbol? env)))
     "Import all variables in target environment to current scope."
-    '(lisa.import-env! ~env))
+    `'(lisa.import-env! ~env))
 (define-macro (import-env! env namespace (when (and (symbol? env) (symbol? namespace))))
     "Import all variables in target environment to a namespaced scope of namespace."
-    '(lisa.import-env! ~env ~namespace))
+    `'(lisa.import-env! ~env ~namespace))
 
 (define (load! file-name (when (string? file-name)))
     "Load lisa file directly to current scope."
@@ -110,23 +110,23 @@
 
 (define-macro (set! symbol value (when (symbol? symbol)))
     "Set a mutable variable symbol to value."
-    '(lisa.set! ~symbol ~value))
+    `'(lisa.set! ~symbol ~value))
 
 (define-macro (define-mutable! symbol (when (symbol? symbol)))
     "Define a mutable value symbol."
-    '(lisa.define-mutable! ~symbol))
+    `'(lisa.define-mutable! ~symbol))
 
 (define-macro (group! (... block))
     "Inline all code where invoked."
-    '(lisa.group! ~~block))
+    `'(lisa.group! ~...block))
 
 (define-macro (block (... block))
     "Execute all code in a new scope."
-    '(let () ~~block))
+    `'(let () ~...block))
 
 (define-macro (while predicate body)
     "Just works like while clause in imperative languages, but you won't miss while in lisa."
-    '(lisa.while ~predicate ~body))
+    `'(lisa.while ~predicate ~body))
 
 (define (help expr)
     "Get the docstring of an expression, if empty, get the code."
@@ -155,14 +155,14 @@
 
 (define-macro (define-phrase (((... args)) (... body)))
     "Define a phrase with arguments and body."
-    '(define-macro (`&__PHRASE__` ~~args) ~~body))
+    `'(define-macro (`&__PHRASE__` ~...args) ~...body))
 (define-macro (define-phrase defined (when (symbol? defined)))
     "Define a phrase with a defined macro."
-    '(lisa.define-phrase ~defined))
+    `'(lisa.define-phrase ~defined))
 
 (define-macro (try-option x)
     "If x evaluated successfully, get scala.Some(x) otherwise scala.None."
-    '(lisa.try-option ~x))
+    `'(lisa.try-option ~x))
 
 (define (string->symbol value (when (string? value)))
     "Convert a string to a symbol."
@@ -228,7 +228,7 @@
 
 (define-macro (declare (... declares))
     "Declare procedures, can be used before implemented."
-    '(lisa.declare ~~declares))
+    `'(lisa.declare ~...declares))
 
 (define (from-java coll)
     "Convert a java collection to a scala collection."
@@ -236,7 +236,7 @@
 
 (define-macro (new class-name (... arguments))
     "Call the constructor of the JVM class."
-    '(lisa.new ~class-name ~~arguments))
+    `'(lisa.new ~class-name ~...arguments))
 
 (define (quoted q)
     "Quote an expression"

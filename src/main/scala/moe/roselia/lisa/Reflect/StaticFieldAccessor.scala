@@ -5,6 +5,7 @@ import moe.roselia.lisa.LispExp
 import moe.roselia.lisa.Util.Extractors.RichOption
 import ScalaBridge.{fromScalaNative, toScalaNative}
 import moe.roselia.lisa.LispExp.{Expression, PrimitiveFunction, Procedure}
+import moe.roselia.lisa.Typing.{InstantiatedType, TypingEnvironment}
 
 object StaticFieldAccessor {
   def jvmBoxedClass(clazz: Class[_]): Class[_] = clazz match {
@@ -100,22 +101,25 @@ object StaticFieldAccessor {
     }
   }
 
-  def invokeStaticMethodOfClass(clazz: Class[_], name: String)(args: Any*): Option[Any] = DotAccessor.handleReflectionException {
-    getStaticMethodOfClassByName(clazz, name).find(method => {
+  def invokeStaticMethodOfClass(clazz: Class[_], name: String)(args: Any*): Option[Any] =
+    invokeMethod(null, getStaticMethodOfClassByName(clazz, name))(args: _*)
+
+  def invokeMethod(obj: Any, methods: Seq[java.lang.reflect.Method])(args: Any*): Option[Any] = DotAccessor.handleReflectionException {
+    methods.find(method => {
       if(method.isVarArgs) matchRealArguments(method.getParameterTypes, args).isDefined
       else method.getParameterCount == args.length && isTypeFitForJava(method.getParameterTypes, args)
     })
       .filter(_.trySetAccessible())
       .map(method => {
         val realArguments = if (method.isVarArgs) {
-          matchRealArguments(method.getParameterTypes, args).get
+          castArrays(method.getParameterTypes, matchRealArguments(method.getParameterTypes, args).get)
         } else {
           castArrays(method.getParameterTypes, args)
         }
         val transformedArguments = FunctionalInterfaceAdapter
           .performSAMTransform(realArguments, method.getParameterTypes)
 
-        method.invoke(null, transformedArguments: _*)
+        method.invoke(obj, transformedArguments: _*)
       })
   }
 
@@ -177,7 +181,14 @@ object StaticFieldAccessor {
     private def getValueByReflection(key: String): Option[LispExp.Expression] = {
       key.split('/') match {
         case Array(className, fieldName) => scala.util.Try {
-          val clazz = classCache.getOrElseUpdate(className, ConstructorCaller.resolveClassBySimpleName(className))
+          val clazz =
+            classCache.getOrElseUpdate(className, {
+              TypingEnvironment.getValueOption(className).collect {
+                case lt: InstantiatedType => lt.runtimeClass
+              }.getOrElse {
+                ConstructorCaller.resolveClassBySimpleName(className)
+              }
+            })
           if (isFieldOrNilArityMethod(clazz, fieldName)) // We can not cache fields because they are potentially mutable.
             fromScalaNative(getFieldOrNilArityMethod(clazz, fieldName))
           else if(isMethod(clazz, fieldName)) {

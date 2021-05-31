@@ -6,6 +6,7 @@ import moe.roselia.lisa.Import.PackageImporter
 import moe.roselia.lisa.LispExp._
 import moe.roselia.lisa.Reflect.{ConstructorCaller, PackageAccessor, ToolboxDotAccessor}
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromJVMNative, fromScalaNative, toScalaNative}
+import moe.roselia.lisa.Typing.{LisaType, NameOnlyType, TypingEnvironment}
 
 import scala.util.Try
 
@@ -40,10 +41,11 @@ object Preludes extends LispExp.Implicits {
     "logical" -> Logical.LogicalModuleEnvironment,
     "predef" -> preludeEnvironment,
     "contextual-functions" -> Library.ContextualFunction.ContextualFunctionEnv,
+    "typing" -> TypingEnvironment
   ).view.mapValues(e => () => e.withIdentify("prelude"))
   private lazy val selectablePreludeKeys = selectablePreludes.keysIterator.toSeq
 
-  private lazy val primitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
+  private lazy val purePrimitiveFunctions: Map[String, Expression] = Map(
     "+" -> PrimitiveFunction {
       case ls@x :: _ if x.isInstanceOf[SNumber[_]] =>
         ls.asInstanceOf[List[SNumber[_]]].reduce(SNumber.performComputation(_ + _))
@@ -97,24 +99,6 @@ object Preludes extends LispExp.Implicits {
         SNumber.performComputation(_ equalsTo _)(lhs, rhs)
       case lhs::rhs::Nil => lhs == rhs
     }.withArity(2),
-    "print!" -> PrimitiveFunction {
-      case x::Nil =>
-        print(x)
-        NilObj
-      case x =>
-        print(s"${x.mkString(" ")}")
-        NilObj
-    },
-    "println!" -> PrimitiveFunction {
-      case x::Nil =>
-        println(x)
-      case x =>
-        println(s"${x.mkString(" ")}")
-    },
-    "input" -> PrimitiveFunction {
-      x =>
-        SString(scala.io.StdIn.readLine(x.mkString(" ")))
-    },
     "int" -> PrimitiveFunction {
       case v::Nil => SInteger {
         v match {
@@ -145,6 +129,147 @@ object Preludes extends LispExp.Implicits {
       }
       case _ => LispExp.Failure("Runtime Error", "truthy? can only apply to one value")
     }.withArity(1),
+    "wrap-scala" -> PrimitiveFunction {
+      x => WrappedScalaObject(toScalaNative(x(0)))
+    }.withArity(1),
+    "wrap" -> PrimitiveFunction { x => WrappedScalaObject(x.head) }.withArity(1),
+    "group!" -> PrimitiveMacro {
+      case (xs, e) => xs.foldLeft[EvalResult](EvalSuccess(NilObj, e)) {
+        case (EvalSuccess(_, env), x) => Evaluator.eval(x, env)
+        case (f, _) => f
+      } match {
+        case EvalSuccess(expression, env) => expression -> env
+        case EvalFailureMessage(msg) => Failure("Group Code Execution Failure", msg) -> e
+      }
+    },
+    "block" -> PrimitiveMacro {
+      case (xs, e) => xs.foldLeft[EvalResult](EvalSuccess(NilObj, e.newFrame)) {
+        case (EvalSuccess(_, env), x) => Evaluator.eval(x, env)
+        case (f, _) => f
+      } match {
+        case EvalSuccess(expression, _) => expression -> e
+        case EvalFailureMessage(msg) => Failure("Block Code Execution Failure", msg) -> e
+      }
+    },
+    "help" -> PrimitiveFunction {
+      case exp::Nil =>
+        val docString = exp.docString
+        if(docString.nonEmpty) docString else exp.code
+      case _ => Failure("Help error", "You can only get help from one object.")
+    }.withDocString("help :: Any => String\nGet document string from a object.").withArity(1),
+    "apply" -> PrimitiveFunction {
+      case fn::WrappedScalaObject(s: Seq[Expression])::Nil =>
+        Evaluator.applyToEither(fn, s.toList).fold(Failure("Apply Failure", _), x => x)
+      case fn :: LisaList(s) :: Nil =>
+        Evaluator.applyToEither(fn, s).fold(Failure("Apply Failure", _), x => x)
+      case _ => Failure("Apply Failure", "Apply expects 2 arguments.")
+    }.withArity(2),
+    "limit-arity" -> PrimitiveFunction {
+      case SInteger(n)::fn::Nil =>
+        val argList = 0.until(n.toInt).map(i => s"arg$i").map(PlainSymbol).toList
+        Closure(argList, Apply(fn, argList), EmptyEnv).copyDocString(fn)
+    }.withArity(2).withDocString("Limit va-arg function to accept n arguments"),
+    "get-doc" -> PrimitiveFunction {
+      case f1::Nil => f1.docString
+    }.withArity(1),
+    "try-option" -> PrimitiveMacro {
+      case (expr::Nil, e) => Evaluator.eval(expr, e) match {
+        case EvalSuccess(obj, _) => WrappedScalaObject(Some(obj)) -> e
+        case _ => WrappedScalaObject(None) -> e
+      }
+      case (_, e) => Failure("Arity Error", "try-option only accepts one argument.") -> e
+    }.withArity(1),
+    "string->symbol" -> PrimitiveFunction {
+      case SString(sym)::Nil => Symbol(sym)
+      case _ => Failure("Contract Violation", "only accept a string")
+    }.withArity(1),
+    "string->atom" -> PrimitiveFunction.withArityChecked(1) {
+      case SString(sym) :: Nil => SAtom(sym)
+      case _ => Failure("Contract Violation", "only accept a string")
+    },
+    "string" -> stringFunction,
+    "string/interpolate" -> PrimitiveFunction.withArityChecked(2) {
+      case LisaList(part :: parts) :: LisaList(arguments) :: Nil =>
+        (part :: arguments.zip(parts).flatten(x => List(x._1, x._2))).mkString
+    },
+    "expand-macro" -> SideEffectFunction {
+      case (LisaList(m :: args) :: Nil, env) =>
+        Evaluator.eval(m, env) match {
+          case EvalSuccess(mac: SimpleMacroClosure, _) =>
+            Quote(Evaluator.expandMacro(mac, args, env)) -> env
+          case EvalSuccess(pm@PolymorphicExpression(_, _, _, true), _) =>
+            pm.findMatch(args, env).map {
+              case ((mac: SimpleMacroClosure), _) =>
+                Quote(Evaluator.expandMacro(mac, args, env)) -> env
+            }.get
+        }
+    },
+    "expand-macro/full" -> SideEffectFunction {
+      case (ex :: Nil, env) =>
+        Evaluator.fullyExpandMacro(Evaluator.unQuoteList(ex), env) -> env
+    },
+    "write" -> PrimitiveFunction {
+      case x :: Nil => x.code
+    }.withArity(1),
+    "ast-of" -> PrimitiveFunction {
+      case x :: Nil => Evaluator.unQuoteList(x)
+    }.withArity(1),
+    "read-string" -> PrimitiveFunction.withArityChecked(1) {
+      case SString(s) :: Nil =>
+        import SExpressionParser._
+        parseAll(sExpression, s).map(Evaluator.compileToList) match {
+          case Success(result, _) => result
+          case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
+        }
+    },
+    "read-many-from-string" -> PrimitiveFunction.withArityChecked(1) {
+      case SString(s) :: Nil =>
+        import SExpressionParser._
+        parseAll(rep(sExpression), s).map(_.map(Evaluator.compileToList)) match {
+          case Success(result, _) => LisaList(result)
+          case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
+        }
+    },
+    "from-java" -> PrimitiveFunction.withArityChecked(1) {
+      case WrappedScalaObject(x) :: Nil => fromJVMNative(x)
+      case x :: Nil => x
+    },
+    "quoted" -> PrimitiveFunction.withArityChecked(1) {
+      case x :: Nil => Quote(x)
+    },
+    "thunk" -> PrimitiveFunction.withArityChecked(1) {
+      case (e: Procedure) :: Nil => LisaThunk(e)
+    },
+    "..." -> Symbol("...").withDocString("List expansion operator")
+  )
+
+  private lazy val purePrimitiveEnvironment: Environment = Environments.Env(purePrimitiveFunctions, EmptyEnv)
+
+  private lazy val impurePrimitiveEnvironment: Environment = EmptyEnv.withValues(Seq(
+    "print!" -> PrimitiveFunction {
+      case x::Nil =>
+        print(x)
+        NilObj
+      case x =>
+        print(s"${x.mkString(" ")}")
+        NilObj
+    },
+    "println!" -> PrimitiveFunction {
+      case x::Nil =>
+        println(x)
+      case x =>
+        println(s"${x.mkString(" ")}")
+    },
+    "input" -> PrimitiveFunction {
+      x =>
+        SString(scala.io.StdIn.readLine(x.mkString(" ")))
+    },
+    "eval" -> SideEffectFunction {
+      case (x::Nil, env) => Evaluator.eval(Evaluator.unQuoteList(x), env) match {
+        case EvalSuccess(expression, newEnv) => expression -> newEnv
+        case EvalFailureMessage(msg) => Failure("Eval Failure", msg) -> env
+      }
+    },
     "import-env!" -> PrimitiveMacro {
       case (Symbol(sym)::Nil, env) =>
         if (selectablePreludes.contains(sym))
@@ -158,10 +283,6 @@ object Preludes extends LispExp.Implicits {
     }.withHintProvider { input =>
       selectablePreludeKeys.filter(_.startsWith(input)).map(key => (key, key))
     },
-    "wrap-scala" -> PrimitiveFunction {
-      x => WrappedScalaObject(toScalaNative(x(0)))
-    }.withArity(1),
-    "wrap" -> PrimitiveFunction { x => WrappedScalaObject(x.head) }.withArity(1),
     "set!" -> new PrimitiveMacro({
       case (Symbol(x)::va::Nil, e) =>
         if (e.isMutable(x))
@@ -189,24 +310,6 @@ object Preludes extends LispExp.Implicits {
           case _ => throw new IllegalArgumentException(s"Can not define mutable value: $context")
         }
     }.withArity(1),
-    "group!" -> PrimitiveMacro {
-      case (xs, e) => xs.foldLeft[EvalResult](EvalSuccess(NilObj, e)) {
-        case (EvalSuccess(_, env), x) => Evaluator.eval(x, env)
-        case (f, _) => f
-      } match {
-        case EvalSuccess(expression, env) => expression -> env
-        case EvalFailureMessage(msg) => Failure("Group Code Execution Failure", msg) -> e
-      }
-    },
-    "block" -> PrimitiveMacro {
-      case (xs, e) => xs.foldLeft[EvalResult](EvalSuccess(NilObj, e.newFrame)) {
-        case (EvalSuccess(_, env), x) => Evaluator.eval(x, env)
-        case (f, _) => f
-      } match {
-        case EvalSuccess(expression, _) => expression -> e
-        case EvalFailureMessage(msg) => Failure("Block Code Execution Failure", msg) -> e
-      }
-    },
     "while" -> PrimitiveMacro {
       case (predicate::body::Nil, e) =>
         @annotation.tailrec
@@ -225,30 +328,9 @@ object Preludes extends LispExp.Implicits {
           case EvalFailureMessage(msg) => Failure("While execution failure", msg) -> e
         }
     }.withArity(2),
-    "help" -> PrimitiveFunction {
-      case exp::Nil =>
-        val docString = exp.docString
-        if(docString.nonEmpty) docString else exp.code
-      case _ => Failure("Help error", "You can only get help from one object.")
-    }.withDocString("help :: Any => String\nGet document string from a object.").withArity(1),
     "panic!" -> PrimitiveFunction {
       exp => throw new RuntimeException(exp.mkString(" "))
     },
-    "apply" -> PrimitiveFunction {
-      case fn::WrappedScalaObject(s: Seq[Expression])::Nil =>
-        Evaluator.applyToEither(fn, s.toList).fold(Failure("Apply Failure", _), x => x)
-      case fn :: LisaList(s) :: Nil =>
-        Evaluator.applyToEither(fn, s).fold(Failure("Apply Failure", _), x => x)
-      case _ => Failure("Apply Failure", "Apply expects 2 arguments.")
-    }.withArity(2),
-    "limit-arity" -> PrimitiveFunction {
-      case SInteger(n)::fn::Nil =>
-        val argList = 0.until(n.toInt).map(i => s"arg$i").map(PlainSymbol).toList
-        Closure(argList, Apply(fn, argList), EmptyEnv).copyDocString(fn)
-    }.withArity(2).withDocString("Limit va-arg function to accept n arguments"),
-    "get-doc" -> PrimitiveFunction {
-      case f1::Nil => f1.docString
-    }.withArity(1),
     "set-doc" -> PrimitiveFunction {
       case f1::SString(s)::Nil => f1.withDocString(s)
     }.withArity(2),
@@ -268,26 +350,6 @@ object Preludes extends LispExp.Implicits {
           defineHelper(e.getValueOption(defined).get.asInstanceOf[SimpleMacroClosure])
       }
     },
-    "try-option" -> PrimitiveMacro {
-      case (expr::Nil, e) => Evaluator.eval(expr, e) match {
-        case EvalSuccess(obj, _) => WrappedScalaObject(Some(obj)) -> e
-        case _ => WrappedScalaObject(None) -> e
-      }
-      case (_, e) => Failure("Arity Error", "try-option only accepts one argument.") -> e
-    }.withArity(1),
-    "string->symbol" -> PrimitiveFunction {
-      case SString(sym)::Nil => Symbol(sym)
-      case _ => Failure("Contract Violation", "only accept a string")
-    }.withArity(1),
-    "string->atom" -> PrimitiveFunction.withArityChecked(1) {
-      case SString(sym) :: Nil => SAtom(sym)
-      case _ => Failure("Contract Violation", "only accept a string")
-    },
-    "string" -> stringFunction,
-    "string/interpolate" -> PrimitiveFunction.withArityChecked(2) {
-      case LisaList(part :: parts) :: LisaList(arguments) :: Nil =>
-        (part :: arguments.zip(parts).flatten(x => List(x._1, x._2))).mkString
-    },
     "returnable" -> PrimitiveFunction {
       case fn :: Nil =>
         val returnable = new Util.ReturnControlFlow.Returns
@@ -304,28 +366,10 @@ object Preludes extends LispExp.Implicits {
           }
         }
     },
-    "expand-macro" -> SideEffectFunction {
-      case (LisaList(m :: args) :: Nil, env) =>
-        Evaluator.eval(m, env) match {
-          case EvalSuccess(mac: SimpleMacroClosure, _) =>
-            Quote(Evaluator.expandMacro(mac, args, env)) -> env
-          case EvalSuccess(pm@PolymorphicExpression(_, _, _, true), _) =>
-            pm.findMatch(args, env).map {
-              case ((mac: SimpleMacroClosure), _) =>
-                Quote(Evaluator.expandMacro(mac, args, env)) -> env
-            }.get
-        }
-    },
     "gen-sym" -> PrimitiveFunction {
       case Nil => Util.SymGenerator.nextSym
       case _ => throw new IllegalArgumentException("gen-sym does not accept arguments.")
     }.withArity(0),
-    "write" -> PrimitiveFunction {
-      case x :: Nil => x.code
-    }.withArity(1),
-    "ast-of" -> PrimitiveFunction {
-      case x :: Nil => Evaluator.unQuoteList(x)
-    }.withArity(1),
     "prelude-environment" -> PrimitiveFunction.withArityChecked(0) {
       case _ =>
         LisaMapRecord(preludeEnvironment.
@@ -356,22 +400,6 @@ object Preludes extends LispExp.Implicits {
       } -> env
       case  _ => throw new IllegalArgumentException(s"freeze-environment do not expect arguments")
     },
-    "read-string" -> PrimitiveFunction.withArityChecked(1) {
-      case SString(s) :: Nil =>
-        import SExpressionParser._
-        parseAll(sExpression, s).map(Evaluator.compileToList) match {
-          case Success(result, _) => result
-          case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
-        }
-    },
-    "read-many-from-string" -> PrimitiveFunction.withArityChecked(1) {
-      case SString(s) :: Nil =>
-        import SExpressionParser._
-        parseAll(rep(sExpression), s).map(_.map(Evaluator.compileToList)) match {
-          case Success(result, _) => LisaList(result)
-          case f@NoSuccess(_, _) => throw new IllegalArgumentException(s"Bad syntax: $f")
-        }
-    },
     "read" -> PrimitiveFunction { xs =>
       import SExpressionParser._
       parseAll(sExpression, io.StdIn.readLine(xs.mkString(" "))).map(Evaluator.compileToList) match {
@@ -397,13 +425,6 @@ object Preludes extends LispExp.Implicits {
       declares.foreach(sym => mutableEnv.addValue(sym.asInstanceOf[Symbol].value, PlaceHolder))
       NilObj -> mutableEnv
     },
-    "from-java" -> PrimitiveFunction.withArityChecked(1) {
-      case WrappedScalaObject(x) :: Nil => fromJVMNative(x)
-      case x :: Nil => x
-    },
-    "quoted" -> PrimitiveFunction.withArityChecked(1) {
-      case x :: Nil => Quote(x)
-    },
     "value-exists?" -> SideEffectFunction {
       case (Symbol(s) :: Nil, env) => (env.has(s), env)
       case (SString(s) :: Nil, env) => (env.has(s), env)
@@ -414,12 +435,10 @@ object Preludes extends LispExp.Implicits {
     "get-static-method" -> PrimitiveFunction.withArityChecked(2) {
       case WrappedScalaObject(clazz: Class[_]) :: SString(name) :: Nil =>
         Reflect.StaticFieldAccessor.convertStaticMethodToLisa(clazz, name)
-    },
-    "thunk" -> PrimitiveFunction.withArityChecked(1) {
-      case (e: Procedure) :: Nil => LisaThunk(e)
-    },
-    "..." -> Symbol("...").withDocString("List expansion operator")
+    }
   ))
+
+  private val primitiveEnvironment = purePrimitiveEnvironment.withValues(impurePrimitiveEnvironment.flattenToMap.toSeq)
 
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")
 
@@ -462,12 +481,14 @@ object Preludes extends LispExp.Implicits {
     },
     "car" -> PrimitiveFunction.withArityChecked(1) {
       case LisaList(x :: _) :: Nil => x
+      case ll: LisaListLike[_] => fromScalaNative(ll.head)
       case WrappedScalaObject(ls: Seq[_]) :: Nil => fromScalaNative(ls.head)
       case SString(s) :: Nil => s.head.toString
       case x :: Nil => throw new UnsupportedOperationException(s"car on $x")
     },
     "cdr" -> PrimitiveFunction.withArityChecked(1) {
       case LisaList(_ :: t) :: Nil => LisaList(t)
+      case ll: LisaListLike[_] => fromScalaNative(ll.tail)
       case WrappedScalaObject(ls: Seq[_]) :: Nil => WrappedScalaObject(ls.tail)
       case SString(s) :: Nil => s.tail
       case x :: Nil => throw new UnsupportedOperationException(s"cdr on $x")
@@ -598,10 +619,10 @@ object Preludes extends LispExp.Implicits {
       case _ :: Nil => false
     }.withDocString("Test if an expression is an empty list."),
     "type-of" -> PrimitiveFunction.withArityChecked(1) {
-      case x :: Nil => WrappedScalaObject(x.tpe)
+      case x :: Nil => x.lisaType
     },
     "typename-of" -> PrimitiveFunction.withArityChecked(1) {
-      case x :: Nil => x.tpe.name
+      case x :: Nil => x.lisaType.name
     },
     "class-of" -> PrimitiveFunction.withArityChecked(1) {
       case WrappedScalaObject(o) :: Nil => WrappedScalaObject(o.getClass)
@@ -686,6 +707,14 @@ object Preludes extends LispExp.Implicits {
       Apply(LambdaExpression(SIfElse(orSymbol, orSymbol, rhs), orSymbol :: Nil), lhs :: Nil) -> env
     }
   ))
+
+  lazy val purePreludeEnvironment: CombineEnv = CombineEnv(Seq(
+    purePrimitiveEnvironment,
+    collectionEnvironment,
+    testerEnvironment
+  ))
+  lazy val pureFunctionsMap: Map[String, Expression] = purePreludeEnvironment.flattenToMap
+  lazy val pureFunctions: Set[Expression] = pureFunctionsMap.values.toSet
 
   lazy val preludeEnvironment: CombineEnv = CombineEnv(Seq(
     primitiveEnvironment,

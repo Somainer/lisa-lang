@@ -154,7 +154,7 @@ object DotAccessor {
   }
 
   @throws[ScalaReflectionException]("When no underlying method")
-  def applyDotOfPlainObject[A : ClassTag](acc: String)(obj: A)(args: Any*)(expressionArgs: Expression*) = {
+  def applyDotOfPlainObject[A : ClassTag](acc: String)(obj: A)(args: Any*)(expressionArgs: Expression*): Any = {
     val classObj = getClassObject(obj)
 //    val decl = classObj.symbol.toType.decl(TermName(acc))
     val decl = lookUpForTerm(classObj.symbol, acc)
@@ -181,7 +181,13 @@ object DotAccessor {
 //    println(s"$acc has ${overloads.length} overloads and received ${args.length} args")
 //    println(classObj.symbol)
 //    println(overloads)
-    if (overloads.isEmpty) throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
+    if (overloads.isEmpty) {
+      if (classObj.symbol.isJava) {
+        val application = applyJavaMethodOfPlainObject(obj, acc)(args: _*)
+        if (application.isDefined) return application.get
+      }
+      throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
+    }
     overloads.head match {
       case symbol if hasRawLisaAnnotation(symbol) =>
         classObj.reflectMethod(symbol).apply(expressionArgs: _*)
@@ -189,6 +195,11 @@ object DotAccessor {
         val samArgs = performSAMTransform(symbol.paramLists.flatten)(args)
         classObj.reflectMethod(symbol).apply(samArgs: _*)
     }
+  }
+
+  def applyJavaMethodOfPlainObject(obj: Any, acc: String)(args: Any*): Option[Any] = {
+    val methods = obj.getClass.getMethods.filter(_.getName == acc)
+    StaticFieldAccessor.invokeMethod(obj, methods)(args: _*)
   }
 
   @throws[ScalaReflectionException]("When no underlying method")

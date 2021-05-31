@@ -1,7 +1,8 @@
 package moe.roselia.lisa.Logical
 
 import moe.roselia.lisa.Environments.{EmptyEnv, Environment, SpecialEnv, TransparentLayer}
-import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, NameOnlyType, NilObj, PrimitiveFunction, PrimitiveMacro, Quote, SAtom, SBool, SString, SideEffectFunction, Symbol, TypedLisaRecord, WrappedScalaObject}
+import moe.roselia.lisa.LispExp.{Expression, LisaList, LisaMapRecord, NilObj, PrimitiveFunction, PrimitiveMacro, Quote, SAtom, SBool, SString, SideEffectFunction, Symbol, TypedLisaRecord, WrappedScalaObject}
+import moe.roselia.lisa.Typing.NameOnlyType
 
 case class LogicalEnvironment(var logicalContext: LogicalContext) extends Queries {
   implicit def context: LogicalContext = logicalContext

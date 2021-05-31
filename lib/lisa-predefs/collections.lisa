@@ -127,7 +127,7 @@
         ${record-name}? to test if the record is constructed by constructor ${record-name}.
         ${record-name}?? to test if the record has the same attributes.
     """
-    '(lisa.define-record ~record-name ~~attributes))
+    `'(lisa.define-record ~record-name ~...attributes))
 
 (define (sort coll)
     "Sort the collection in ascending order."

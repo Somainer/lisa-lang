@@ -37,7 +37,7 @@
     (panic!))
 (define-macro (define-rule (name (... args)))
     "If the body of the rule is empty the rule will always match."
-    '(define-rule (~name ~~args) true))
+    `'(define-rule (~name ~...args) true))
 
 (define-macro (query q)
     "Execute a query in current context."
@@ -57,7 +57,7 @@
 
 (define-macro (is-true? q)
     "Test if the result of a query is not empty."
-    '(.nonEmpty (lazy-query ~q)))
+    `'(.nonEmpty (lazy-query ~q)))
 
 (define (test-is-true? q)
     "Test if the result of a query is not empty (function version)."

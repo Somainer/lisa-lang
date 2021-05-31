@@ -2,7 +2,7 @@ name := "lisa"
 
 version := "2.7.2"
 
-scalaVersion := "2.13.0"
+scalaVersion := "2.13.6"
 
 libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.2"
 

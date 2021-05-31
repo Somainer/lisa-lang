@@ -19,7 +19,7 @@ class PackageImporter {
     import moe.roselia.lisa.LispExp._
     import Implicits._
     environment.withValues(Seq(
-      "**PATH**" -> path.getParent.toAbsolutePath.toString,
+      "**PATH**" -> path.toAbsolutePath.getParent.toString,
       "**PATH-OBJ**" -> WrappedScalaObject(path),
       "**FILE**" -> path.getFileName.toString,
     ))
