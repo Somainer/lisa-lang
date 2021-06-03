@@ -11,3 +11,7 @@ out/*
 
 .bloop
 .metals
+.bsp
+.vscode
+.idea
+project/metals.sbt
