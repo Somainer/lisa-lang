@@ -105,7 +105,7 @@ object StaticFieldAccessor {
       if(method.isVarArgs) matchRealArguments(method.getParameterTypes, args).isDefined
       else method.getParameterCount == args.length && isTypeFitForJava(method.getParameterTypes, args)
     })
-      .filter(_.trySetAccessible())
+      .map(scala.reflect.ensureAccessible)
       .map(method => {
         val realArguments = if (method.isVarArgs) {
           matchRealArguments(method.getParameterTypes, args).get
@@ -127,7 +127,7 @@ object StaticFieldAccessor {
 
   def getStaticFieldValueOfClass(clazz: Class[_], name: String): Option[Any] = {
     getStaticFiledOfClassByName(clazz, name)
-      .filter(_.trySetAccessible())
+      .map(scala.reflect.ensureAccessible)
       .map(_.get(null))
       // .getOrThrow(new NoSuchFieldException(s"No such filed $name for ${clazz.getName}."))
   }
