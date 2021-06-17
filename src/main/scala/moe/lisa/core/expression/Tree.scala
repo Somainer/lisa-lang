@@ -16,7 +16,7 @@ object Tree {
   import Properties._
 
   type Untyped = Null
-  trait Tree[-T >: Untyped](using source: SourceFile) extends Positioned, Attachment.Container:
+  trait Tree[-T >: Untyped](using source: SourceFile) extends Positioned, Attachment.Container, FromLisaList[T]:
     type SelfType[T >: Untyped] <: Tree[Untyped]
 
     private var myType: T @uncheckedVariance = uninitialized
@@ -39,6 +39,14 @@ object Tree {
     def foreachInThicket(op: Tree[T] => Unit): Unit = op(this)
     def hasNoChild: Boolean = false
   end Tree
+
+  trait FromLisaList[-T >: Untyped] {
+    var sourceLisaList: Option[Tree[T]] @ uncheckedVariance = None
+    def withSourceLisaList[B >: Untyped <: T](ll: Tree[B]): this.type = {
+      sourceLisaList = Some(ll.asInstanceOf[Tree[T]])
+      this
+    }
+  }
 
   case class Symbol[-T >: Untyped](name: LSymbol)(using SourceFile)
     extends Tree[T]:
@@ -143,6 +151,9 @@ object Tree {
       trees foreach (_ foreachInThicket op)
 
   end Thicket
+  
+  case class PackageDef[-T >: Untyped](pid: Symbol[T], stats: List[Tree[T]])(using SourceFile) extends Tree[T]:
+    override type SelfType[-T >: Untyped] = PackageDef[T]
 
   def flatten[T >: Untyped](trees: List[Tree[T]]): List[Tree[T]] =
     def recur(buf: ListBuffer[Tree[T]], remaining: List[Tree[T]]): ListBuffer[Tree[T]] =
@@ -190,5 +201,6 @@ trait TreeInstance[T >: Untyped]:
   type Select = Tree.Select[T]
   type Typed = Tree.Typed[T]
   type Thicket = Tree.Thicket[T]
+  type PackageDef = Tree.PackageDef[T]
 
   import Tree._

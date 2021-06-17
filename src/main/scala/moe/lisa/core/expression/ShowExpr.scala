@@ -1,7 +1,8 @@
 package moe.lisa.core.expression
 
 import Tree._
-import moe.lisa.lang.{Symbol as LSymbol}
+import moe.lisa.lang.{Symbol => LSymbol}
+import moe.lisa.util.{StringLiteral, ThrowHelper}
 
 object ShowExpr {
   def showSource(tree: Tree[?]): String =
@@ -17,7 +18,9 @@ object ShowExpr {
       else ll.map(show).mkString("[", " ", "]")
     case RecordLiteral(values) =>
       values.map(show).mkString("{", " ", "}")
-    case Literal(const) => const.stringValue
+    case Literal(const) =>
+      if const.isString then StringLiteral.toLiteralCode(const.stringValue)
+      else const.stringValue
     case x => x.toString
   def showIndented(tree: Tree[?])(margin: Int = 2)(index: Int = 0): String =
     val indent = " ".repeat(margin * index)
@@ -37,7 +40,7 @@ object ShowExpr {
             showIndented(h)(margin)(index + 1) + " " + showIndented(t)(margin)(index + 1).stripLeading()
           case h :: Nil =>
             showIndented(h)(margin)(index + 1)
-          case _ => ??? // Make dotc happy.
+          case _ => ThrowHelper.unreachable() // Make dotc happy.
         }.mkString("\n")
         s"$indent{\n$body\n$indent}"
       case t => indent + show(tree)

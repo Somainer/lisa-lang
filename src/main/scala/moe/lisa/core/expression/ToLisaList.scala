@@ -8,6 +8,8 @@ trait ToLisaList[T >: Tree.Untyped] extends TreeInstance[T] {
       copied.asInstanceOf[copied.SelfType[T]]
 
   def toLisaList(tree: Tree): Tree = tree match
+    case t if t.sourceLisaList.isDefined => t.sourceLisaList.get
+    case n if n.hasNoChild => n
     case s @ Symbol(_) => s
     case LisaList(values) => cpy.LisaList(tree)(values.mapConserve(toLisaList))
     case RecordLiteral(values) => cpy.RecordLiteral(tree)(values.mapConserve(toLisaList))
@@ -18,12 +20,26 @@ trait ToLisaList[T >: Tree.Untyped] extends TreeInstance[T] {
     case Spread(tree) =>
       cpy.LisaList(tree)(List(cpy.Symbol(tree)("..."), tree))
     case LambdaExpression(CaseDef(pattern, guard, body)) =>
-      // TODO: Add guard
+      val guardList = toLisaList(guard)
+      val patList = toLisaList(pattern) match {
+        case l @ LisaList(values) => cpy.LisaList(l)(values ::: {
+          if guardList.hasNoChild then Nil
+          else List(cpy.LisaList(guard)(List(cpy.Symbol(guard)("if"), guardList)))
+        })
+      }
       cpy.LisaList(tree)(List(
         cpy.Symbol(tree)("lambda"),
-        toLisaList(pattern),
+        patList,
       ) ::: toLisaList(body).toTreeList)
     case t => t
+    
+  def toValueList(tree: Tree): Any = tree match {
+    case Literal(const) => const.value
+    case Symbol(sym) => sym
+    case LisaList(values) => values.map(toLisaList)
+    case x => x
+  }
 }
 
-object ToLisaList extends ToLisaList[?]
+object ToLisaList extends ToLisaList[?]:
+  def of[T >: Untyped] = new ToLisaList[T] {}

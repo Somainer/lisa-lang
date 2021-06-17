@@ -1,14 +1,19 @@
 package moe.lisa.lang
 
-import scala.io.StdIn
+import moe.lisa.core.SourceFile
+import moe.lisa.core.expression.ToLisaList
+import moe.lisa.core.expression.Tree
 
+import scala.io.StdIn
+import scala.collection.immutable.NumericRange
 import moe.lisa.parsing.LisaParser
 import moe.lisa.runtime.constructs.LisaObjects
 
-object Predef { predef =>
+trait Predef {
+  type Rational = moe.lisa.lang.Rational[BigInt]
+  def ratio(num: BigInt, denom: BigInt = 1): Rational = Rational(num, denom)
   def int(n: String): Int = n.toInt
-  def int(n: Int): Int = n
-  def int(n: Long): Int = n.toInt
+  def int[T](n: T)(using num: Numeric[T]): Int = num.toInt(n)
   def int(n: Boolean): Int = if n then 1 else 0
 
   def `truthy?`(n: String): Boolean = !n.isEmpty
@@ -18,6 +23,8 @@ object Predef { predef =>
   def `string->symbol`(s: String) = Symbol(s)
   def `string->atom`(s: String) = Atom(s)
 
+  def string(parts: Any*): String = parts.mkString
+
   def `string/interpolate`(parts: Seq[String], arguments: Seq[Any]): String =
     StringContext(parts*).s(arguments)
 
@@ -26,44 +33,63 @@ object Predef { predef =>
   def exit() = scala.sys.exit()
   def exit(code: Int) = scala.sys.exit(code)
 
-  def `read-string`(s: String): Any = ???
+  def range[T: Integral](from: T, to: T) =
+    NumericRange(from, to, summon.one)
+  def range[T: Integral](from: T, to: T, step: T) =
+    NumericRange(from, to, step)
+  def range(from: Int, to: Int) =
+    Range(from, to, 1)
+  def range(from: Int, to: Int, step: Int) =
+    Range(from, to, step)
 
-  def `read-many-from-string`(s: String): Seq[Any] = ???
+  def list(xs: Any*): List[Any] = xs.toList
+
+  def `range/inclusive`[T: Integral](from: T, to: T) =
+    NumericRange.inclusive(from, to, summon.one)
+  def `range/inclusive`[T: Integral](from: T, to: T, step: T) =
+    NumericRange.inclusive(from, to, step)
+
+  def `read-string`(s: String): Any =
+    val parser = LisaParser.ofSource(using SourceFile.SourceFile.virtual("<read-string>", s))
+    parser.parseAll(parser.sExpression, s) match
+      case parser.Success(exp, _) =>
+        val converter = ToLisaList.of[Tree.Untyped]
+        val ls = converter.toLisaList(exp)
+        converter.toValueList(ls)
+      case f =>
+        throw new RuntimeException(f.toString)
+
+  def `read-many-from-string`(s: String): List[Any] =
+    val parser = LisaParser.ofSource(using SourceFile.SourceFile.virtual("<read-string>", s))
+    import parser._
+    parseAll(rep(sExpression) | success(Nil), s) match
+      case Success(exp, _) =>
+        val converter = ToLisaList.of[Tree.Untyped]
+        val ls = exp.map(converter.toLisaList)
+        ls.map(converter.toValueList)
+      case f =>
+        throw new RuntimeException(f.toString)
 
   def read(): Any =
     `read-string`(StdIn.readLine())
   def `read-many`(): Seq[Any] =
     val input = Iterator.continually(StdIn.readLine).takeWhile(_ ne null)
     `read-many-from-string`(input.mkString)
+
+  def panic(msg: String) = throw new RuntimeException(msg)
+  def `panic!`(msg: Any*) = throw new RuntimeException(msg.mkString(" "))
+  def `print!`(xs: Any*): Unit =
+    print(xs.mkString(" "))
+  def `println!`(xs: Any*): Unit =
+    println(xs.mkString(" "))
+  def input(xs: Any*): String =
+    print(xs.mkString(" "))
+    StdIn.readLine()
 }
 
-object DynamicPredef {
-  object `print!` extends IInvokable:
-    override def invoke(xs: Seq[Any]): Any =
-      print(xs.mkString(" "))
-      Nil
+object Predef extends Predef
 
-  object `println!` extends IInvokable:
-    override def invoke(xs: Seq[Any]): Any =
-      println(xs.mkString(" "))
-      Nil
-
-  object input extends IInvokable:
-    override def invoke(xs: Seq[Any]): Any =
-      `println!`.invoke(xs)
-      StdIn.readLine()
-
-  object `panic!` extends IInvokable:
-    override def invoke(xs: Seq[Any]): Any =
-      throw new RuntimeException(xs.mkString(" "))
-
-  object `string` extends IInvokable:
-    override def invoke(xs: Seq[Any]): Any =
-      xs.mkString
-
-  object int extends IDynamicInvokable:
-    override def apply(arg: Any): Any = arg match
-      case n: String => Predef.int(n)
-      case n: Int => Predef.int(n)
-      case n: Boolean => Predef.int(n)
+trait DynamicPredef {
 }
+
+object DynamicPredef extends DynamicPredef

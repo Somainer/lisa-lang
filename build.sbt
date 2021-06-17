@@ -23,6 +23,5 @@ libraryDependencies += "org.scalatest" % "scalatest_3" % "3.2.9" % Test
 
 libraryDependencies += "com.somainer" % "scala3-nameof_3" % "0.0.1"
 
-packMain := Map("lisa" -> "moe.lisa.Main")
-
 enablePlugins(PackPlugin)
+packMain := Map("lisa" -> "moe.lisa.ReplMain", "lisac" -> "moe.lisa.Main")

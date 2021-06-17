@@ -1,5 +1,6 @@
 package moe.lisa.lang
 
+import moe.lisa.core.expression.UntypedTree
 import moe.lisa.util.ThrowHelper
 
 trait IInvokable:
@@ -24,3 +25,7 @@ trait IDynamicInvokable extends IInvokable:
       case 3 => apply(xs(0), xs(1), xs(2))
       case 4 => apply(xs(0), xs(1), xs(2), xs(3))
       case 5 => apply(xs(0), xs(1), xs(2), xs(3), xs(4))
+
+trait IMacro:
+  import UntypedTree._
+  def expand(arg: Tree): Tree

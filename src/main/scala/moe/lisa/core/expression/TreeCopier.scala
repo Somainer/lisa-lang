@@ -9,6 +9,8 @@ trait TreeCopier[T >: Tree.Untyped] extends TreeInstance[T] {
   inline def sourceFile(tree: Tree): SourceFile = tree.source
 
   def finalize(tree: Tree, copied: UntypedTree.Tree): copied.SelfType[T] =
+    if tree.isInstanceOf[LisaList] && !copied.isInstanceOf[UntypedTree.LisaList] then
+      copied.withSourceLisaList(tree)
     postProcess(tree, copied.withSpan(tree.span).withAttachmentsFrom(tree))
 
   def Symbol(tree: Tree)(name: LSymbol): Symbol = tree match {
@@ -83,5 +85,9 @@ trait TreeCopier[T >: Tree.Untyped] extends TreeInstance[T] {
   def Thicket(tree: Tree)(trees: List[Tree]): Thicket = tree match {
     case tree: Thicket if (trees eq tree.trees) => tree
     case _ => finalize(tree, UntypedTree.Thicket(trees)(using sourceFile(tree)))
+  }
+  def PackageDef(tree: Tree)(pid: Symbol, stats: List[Tree]): PackageDef = tree match {
+    case tree: PackageDef if (tree.pid eq pid) && (tree.stats eq stats) => tree
+    case _ => finalize(tree, UntypedTree.PackageDef(pid, stats)(using sourceFile(tree)))
   }
 }

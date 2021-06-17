@@ -4,7 +4,7 @@ import com.somainer.nameof.NameOf._
 
 import moe.lisa.lang.Atom
 
-class Constant(val value: Any, tag: Constant.TypeTag) {
+class Constant(val value: Any, val tag: Constant.TypeTag) {
   import Constant._
 
   def booleanValue: Boolean =
@@ -108,6 +108,8 @@ class Constant(val value: Any, tag: Constant.TypeTag) {
 
   def isBigInt: Boolean = tag == BigIntTag
   def isBigDecimal: Boolean = tag == BigDecimalTag
+  def isAtom: Boolean = tag == AtomTag
+  def isString: Boolean = tag == StringTag
   def isNull: Boolean = tag == NullTag
   def isByteRange: Boolean     = isIntRange && Byte.MinValue <= intValue && intValue <= Byte.MaxValue
   def isShortRange: Boolean    = isIntRange && Short.MinValue <= intValue && intValue <= Short.MaxValue
@@ -161,4 +163,6 @@ object Constant {
     case _: Atom => new Constant(value, AtomTag)
     case null => new Constant(value, NullTag)
     case _: Class[?] => new Constant(value, ClassTag)
+    
+  def unapply(value: Constant): Option[Any] = Some(value.value)
 }

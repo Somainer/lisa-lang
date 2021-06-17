@@ -149,8 +149,8 @@ trait LisaParser(using SourceFile) extends RegexParsers {
     | sRecordLiteral
     | sQuote
     | sUnquote
-    | templateString
     | lambdaLiteral
+    | templateString
 
   def typedTree: Parser[Tree] =
     "(" ~> (sExpression <~ ":") ~ sExpression <~ ")" map {
@@ -160,6 +160,10 @@ trait LisaParser(using SourceFile) extends RegexParsers {
   def sExpression: Parser[Tree] = locational {
 //    ("(" ~> rep(sExpression) <~ ")" map LisaList) | stringValue | lambdaHelper | sQuote | sUnquote | sAtom | templateString | sValue
     literals | typedTree | sSymbol
+  }
+
+  def compilationUnit: Parser[PackageDef] = locational {
+    rep(sExpression).map(UntypedTree.PackageDef(_))
   }
 
   def boolean: Parser[Boolean] = ("true" ^^^ true) | ("false" ^^^ false)
@@ -201,5 +205,10 @@ object LisaParser:
   def ofSource(using SourceFile): LisaParser = new StringLisaParser
 
   def dummy: LisaParser = new StringLisaParser(using NoSourceFile)
+
+  extension(parser: LisaParser)
+    def parsePakcage(sourceFile: SourceFile): parser.ParseResult[PackageDef] =
+      val content = sourceFile.content()
+      parser.parseAll(parser.compilationUnit, new String(content))
 
 class StringLisaParser(using SourceFile) extends LisaParser

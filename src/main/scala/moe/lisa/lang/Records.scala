@@ -2,18 +2,18 @@ package moe.lisa.lang
 
 import moe.lisa.lang
 
-trait IRecord extends ILookupable, IDynamicInvokable:
+trait IRecord extends ILookupable, IDynamicInvokable, Map[Any, Any]:
   type Self <: IRecord
   override def apply(arg: Any): Any = lookup(arg)
   override def apply(arg1: Any, arg2: Any): Any = lookup(arg1, arg2)
 
-  def updated(key: Any, value: Any): Self
+  def updatedOne(key: Any, value: Any): Self
   def removed(key: Any): Self
 
   def keys: Iterable[Any]
   def updatedMany(that: IRecord): Self =
     that.keys.foldLeft(this) { case (r, k) =>
-      r.updated(k, that.lookup(k))
+      r.updatedOne(k, that.lookup(k))
     }.asInstanceOf[Self]
 
 trait IMapRecord extends IRecord:
@@ -22,11 +22,13 @@ trait IMapRecord extends IRecord:
 
   override def keys: Iterable[Any] = map.keys
   override def lookupOption(v: Any): Option[Any] = map.get(v)
+  override def toString: String = s"{${map.iterator.map((k, v) => s"$k $v").mkString(" ")}}"
 
 case class LisaRecord(map: Map[Any, Any]) extends IMapRecord:
+  export map.{iterator, get, updated}
   override type Self = LisaRecord
 
-  override def updated(key: Any, value: Any): LisaRecord =
+  override def updatedOne(key: Any, value: Any): LisaRecord =
     copy(map.updated(key, value))
 
   override def removed(key: Any): LisaRecord =

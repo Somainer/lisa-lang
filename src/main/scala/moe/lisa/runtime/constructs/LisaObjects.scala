@@ -12,4 +12,7 @@ object LisaObjects {
     case LisaList(values) => values.map(listFromAst)
     case Literal(c) => c.value
     case x => x
+    
+  def bigInt(digits: String): BigInt = BigInt(digits)
+  def bigDecimal(digits: String): BigDecimal = BigDecimal(digits)
 }

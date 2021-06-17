@@ -8,4 +8,6 @@ object PathUtil {
     
     if i < 0 then ""
     else name.substring(i + 1).toLowerCase()
+    
+  def getClassPath = System.getProperty("java.class.path")
 }

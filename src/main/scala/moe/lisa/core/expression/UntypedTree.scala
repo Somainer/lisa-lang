@@ -64,5 +64,8 @@ object UntypedTree extends TreeInstance[Tree.Untyped]:
   def Select(qualifier: Tree, name: Symbol)(using SourceFile) = new Select(qualifier, name)
   def Typed(expr: Tree, tpt: Tree)(using SourceFile) = new Typed(expr, tpt)
   def Thicket(trees: List[Tree])(using SourceFile) = new Thicket(trees)
+  def ThicketOf(trees: List[Tree]) = Thicket(trees)(using NoSourceFile)
+  def PackageDef(pid: Symbol, trees: List[Tree])(using SourceFile): PackageDef = new PackageDef(pid, trees)
+  def PackageDef(trees: List[Tree])(using SourceFile): PackageDef = PackageDef(Symbol("")(using NoSourceFile), trees)
 
 export moe.lisa.core.expression.{UntypedTree => untpd}

@@ -9,6 +9,10 @@ trait ParseTimeAccumulator[X] {
 
   def foldOver(x: X, tree: Tree): X = tree match
     case LisaList(values) => this(x, values)
+    case PackageDef(pid, stats) =>
+      stats.foldLeft(x)(this(_, _))
+    case StringTemplate(templateName, parts, arguments) =>
+      arguments.foldLeft(x)(this(_, _))
     case RecordLiteral(values) => this(x, values)
     case q @ Quote(expr) if q.quasi => this(x, expr)
     case uq @ UnQuote(expr) => this(x, expr)

@@ -6,6 +6,7 @@ import Context._
 import moe.lisa.core.CompilationUnit
 import moe.lisa.core.Phases.Phase
 import moe.lisa.parsing.LisaParser
+import moe.lisa.util.ThrowHelper
 
 object Parsing extends Phase {
   override def name: String = nameOf(Parsing)
@@ -17,6 +18,6 @@ object Parsing extends Phase {
       case Success(tree, _) => unit.untypedTree = tree
       case parser.NoSuccess(reason, next) =>
         throw new RuntimeException(reason)
-      case _ => ??? // This case never match.
+      case _ => ThrowHelper.unreachable() // This case never match.
     }
 }
