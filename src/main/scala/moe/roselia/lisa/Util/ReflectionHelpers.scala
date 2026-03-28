@@ -1,6 +1,7 @@
 package moe.roselia.lisa.Util
 
 import scala.util.Try
+import scala.language.reflectiveCalls
 
 object ReflectionHelpers {
   def collectException[Ex <: Throwable](ex: Ex): String = {
@@ -23,7 +24,7 @@ object ReflectionHelpers {
         arguments match {
           case x::Nil => obj.asInstanceOf[{def apply(any: Any): Any}].apply(x)
           case x::y::Nil => obj.asInstanceOf[{def apply(a1: Any, a2: Any): Any}].apply(x, y)
-          case x::y::z::Nil => obj.asInstanceOf[{def apply(a1: Any, a2: Any, a3: Any)}].apply(x, y, z)
+          case x::y::z::Nil => obj.asInstanceOf[{def apply(a1: Any, a2: Any, a3: Any): Any}].apply(x, y, z)
         }
       }
     }

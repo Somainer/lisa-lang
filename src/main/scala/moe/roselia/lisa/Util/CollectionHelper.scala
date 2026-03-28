@@ -3,6 +3,7 @@ package moe.roselia.lisa.Util
 import moe.roselia.lisa.Evaluator
 import moe.roselia.lisa.LispExp.{Closure, Expression, Failure, LisaList, LisaListLike, PolymorphicExpression, PrimitiveFunction, Procedure, SBool, SString, WrappedScalaObject}
 import moe.roselia.lisa.Reflect.ScalaBridge.fromScalaNative
+import scala.language.reflectiveCalls
 
 object CollectionHelper {
   /**

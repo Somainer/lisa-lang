@@ -53,7 +53,7 @@ trait SExpressionParser extends ImplicitConversions with RegexParsers {
     val whiteSpace = """\s+""".r
     val source = in.source
     whiteSpace.findPrefixMatchOf(source.subSequence(in.offset, source.length())) match {
-      case Some(matched) => p(in.drop(matched.end)).map(source.subSequence(in.offset, in.offset + matched.end).+)
+      case Some(matched) => p(in.drop(matched.end)).map(source.subSequence(in.offset, in.offset + matched.end).toString.+)
       case None => p(in)
     }
   }

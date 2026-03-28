@@ -1,7 +1,7 @@
 package moe.roselia.lisa
 
 import scala.annotation.tailrec
-import languageFeature.implicitConversions
+import scala.language.implicitConversions
 import Integral.Implicits._
 
 case class Rational[T: Integral] private (numerator: T, denominator: T) extends Ordered[Rational[T]] {

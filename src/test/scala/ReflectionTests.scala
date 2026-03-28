@@ -21,7 +21,7 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
     import lisa.Reflect.DotAccessor.accessDot
     "get nil-arity function" in {
       class DistinctValue
-      val o = new {
+      class TestObj {
         def a = "233"
         val b = new DistinctValue
         var c = new DistinctValue
@@ -29,6 +29,7 @@ class ReflectionTests extends AsyncWordSpec with Matchers {
         lazy val longNameImpl = new DistinctValue
         private def `a-long-name` = longNameImpl
       }
+      val o = new TestObj
       accessDot("a")(o) shouldEqual o.a
       accessDot("b")(o) shouldEqual o.b
       a[ScalaReflectionException] should be thrownBy {

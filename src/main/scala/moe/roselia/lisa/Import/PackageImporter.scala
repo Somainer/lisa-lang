@@ -84,8 +84,8 @@ class PackageImporter {
   def setCurrentPath(path: String): Unit = setCurrentPath(FileSystems.getDefault.getPath(path))
   def withCurrentPath[T](path: String)(thunk: => T): T = currentPath.withValue(FileSystems.getDefault.getPath(path))(thunk)
   def withCurrentPath[T](path: Path)(thunk: => T): T = currentPath.withValue(path)(thunk)
-  @`inline` def withCurrentFilePath[T](path: Path)(thunk: => T): T = withCurrentPath(path.getParent)(thunk)
-  @`inline` def withCurrentFilePath[T](path: String)(thunk: => T): T = withCurrentFilePath(FileSystems.getDefault.getPath(path))(thunk)
+  @inline def withCurrentFilePath[T](path: Path)(thunk: => T): T = withCurrentPath(path.getParent)(thunk)
+  @inline def withCurrentFilePath[T](path: String)(thunk: => T): T = withCurrentFilePath(FileSystems.getDefault.getPath(path))(thunk)
   def injectRuntime(runtimeEnvironment: Environment): Unit = preludeEnv.value = runtimeEnvironment
 
   val importMacro: PrimitiveMacro = PrimitiveMacro {

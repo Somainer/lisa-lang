@@ -18,16 +18,16 @@ import scala.util.parsing.input.CharSequenceReader
 object Main {
   import SimpleLispTree._
   import SExpressionParser._
-  import Util.ConsoleColor.Implicits._
+  import Util.ConsoleColor.Implicits.*
   def printlnErr[S](s: S): Unit = Console.err.println(s.toString.foreground("#ff4a4a"))
 
-  @`inline` private[lisa] def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
+  @inline private[lisa] def indentLevel(input: String) = input.foldLeft(0)((pairs, c) => {
     if (pairs < 0) pairs
     else if (c == '(') pairs + 1
     else if (c == ')') pairs - 1
     else pairs
   })
-  @`inline` private[lisa] def needMoreInput(input: String) = {
+  @inline private[lisa] def needMoreInput(input: String) = {
     indentLevel(input) > 0
   }
 

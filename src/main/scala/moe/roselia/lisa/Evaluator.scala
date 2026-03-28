@@ -21,8 +21,8 @@ object Evaluator {
     def appendTrace(msg: => Expression): InterpreterControlFlow
   }
   trait EvalResult extends InterpreterControlFlow {
-    @`inline` def flatMap[T <: InterpreterControlFlow](fn: Expression => T): T
-    @`inline` def flatMapWithEnv[T <: InterpreterControlFlow](fn: (Expression, Environment) => T): T
+    @inline def flatMap[T <: InterpreterControlFlow](fn: Expression => T): T
+    @inline def flatMapWithEnv[T <: InterpreterControlFlow](fn: (Expression, Environment) => T): T
     def isSuccess: Boolean
   }
   case class EvalSuccess(expression: Expression, env: Environment) extends EvalResult {
@@ -241,7 +241,7 @@ object Evaluator {
       case EvalSuccess(_, newEnvironment) => unit(newEnvironment)
       case f => f
     }
-    @`inline` def fillEnv(result: InterpreterControlFlow, env: Environment = env) = result match {
+    @inline def fillEnv(result: InterpreterControlFlow, env: Environment = env) = result match {
       case EvalSuccess(exp, _) => EvalSuccess(exp, env)
       case e => e
     }
@@ -507,6 +507,11 @@ object Evaluator {
 //    println(s"EVAL: $procedure => ${eval(procedure, env)}")
     procedure match {
       case closure@Closure(boundVariable, body, capturedEnv, sideEffects) => {
+        // JIT: check if a compiled version is available or should be triggered
+        JIT.HotPathDetector.recordCall(closure) match {
+          case Some(compiled) => return apply(compiled, arguments)
+          case None =>
+        }
 //          val boundEnv = capturedEnv.newFrame
 //            .withValues(boundVariable.map(_.asInstanceOf[Symbol].value).zip(arguments))
         val boundEnv = matchArgument(boundVariable, arguments, inEnv = capturedEnv).map(Env(_, capturedEnv))
@@ -515,7 +520,7 @@ object Evaluator {
             (accumulator, sideEffect) => accumulator flatMapWithEnv {
               (_, env) => eval(sideEffect, env)
             }
-          } flatMapWithEnv[InterpreterControlFlow] {
+          }.flatMapWithEnv[InterpreterControlFlow] {
             (_, env) =>
               body match {
                 case Apply(fun, arguments) =>
@@ -687,7 +692,7 @@ object Evaluator {
           case _ => None
         }
       case LisaList(lls)::xs =>
-        @`inline`
+        @inline
         def continueMatch(restArgs: List[Expression], ys: List[Expression]) =  for {
           argsMatch <- matchArgument(lls, restArgs, matchResult, inEnv)
           rest <- matchArgument(xs, ys, matchResult, inEnv)

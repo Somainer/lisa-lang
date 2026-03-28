@@ -1,64 +1,62 @@
 package moe.roselia.lisa.Reflect
-import scala.tools.reflect.ToolBox
-import moe.roselia.lisa.Environments._
-import moe.roselia.lisa.LispExp._
-import ScalaBridge._
-import moe.roselia.lisa.Annotation.RawLisa
 
 import scala.reflect.ClassTag
 import scala.util.Try
+import moe.roselia.lisa.Environments.*
+import moe.roselia.lisa.LispExp.*
+import ScalaBridge.*
+import moe.roselia.lisa.Annotation.RawLisa
 
-object PackageAccessor {
-  private lazy val toolBox = scala.reflect.runtime.currentMirror.mkToolBox()
-  private[lisa] val rootScalaEnv = new SpecialEnv {
+object PackageAccessor:
+  // In Scala 3, the ToolBox-based rootScalaEnv is replaced with a Java reflection-based approach
+  private[lisa] val rootScalaEnv = new SpecialEnv:
     override def getValueOption(key: String): Option[Expression] =
-      Try {toolBox.eval(toolBox.parse(key))}.toOption.map(fromScalaNative)
-  }
+      // Try to resolve as a static field or class
+      Try {
+        val lastDot = key.lastIndexOf('.')
+        if lastDot > 0 then
+          val className = key.substring(0, lastDot)
+          val fieldName = key.substring(lastDot + 1)
+          val clazz = Class.forName(className)
+          StaticFieldAccessor.getFieldOrNilArityMethod(clazz, fieldName)
+        else
+          Class.forName(key)
+      }.toOption.map(fromScalaNative)
 
-  case class ObjectEnv[T : ClassTag](obj: T) extends SpecialEnv {
-    private lazy val classMirror = DotAccessor.getClassObject(obj)
-    private lazy val shouldPassRawExpression = DotAccessor.hasRawLisaAnnotation(classMirror.symbol)
+  case class ObjectEnv[T: ClassTag](obj: T) extends SpecialEnv:
+    private lazy val clazz = obj.getClass
+    private lazy val shouldPassRawExpression = DotAccessor.hasRawLisaAnnotation(clazz)
 
-    private def mapRealArguments(xs: Seq[Expression]): Seq[Any] = {
-      if (shouldPassRawExpression) xs
+    private def mapRealArguments(xs: Seq[Expression]): Seq[Any] =
+      if shouldPassRawExpression then xs
       else xs.map(toScalaNative)
-    }
 
     override def getValueOption(key: String): Option[Expression] =
       Try[Expression] {
-        val clsObj = classMirror
-//        val decl = clsObj.symbol.toType.decl(name)
-        val decl = DotAccessor.lookUpForTerm(clsObj.symbol, key)
-        if (decl.isDefined) {
-          val nilArityMethod = decl.get.alternatives
-            .filter(_.isMethod)
-            .map(_.asMethod)
-            .find(_.paramLists == Nil)
-            .map(clsObj.reflectMethod)
-          if (nilArityMethod.isDefined) nilArityMethod.map(_.apply()).map(fromScalaNative).get
-          else PrimitiveFunction {
-            xs => fromScalaNative(DotAccessor.applyDot(key)(obj)(mapRealArguments(xs): _*)(xs: _*))
-          }
+        val methods = DotAccessor.lookUpForMethod(clazz, key)
+        val nilArityMethod = methods.find(_.getParameterCount == 0)
+        if nilArityMethod.isDefined then
+          nilArityMethod.map { m =>
+            m.setAccessible(true)
+            m.invoke(obj)
+          }.map(fromScalaNative).get
+        else PrimitiveFunction { xs =>
+          fromScalaNative(DotAccessor.applyDot(key)(obj)(mapRealArguments(xs)*)(xs*))
         }
-        else throw ScalaReflectionException(s"$key is not a method")
       }.toOption
-  }
 
-  object ObjectEnv {
-    def cachedOf[T : ClassTag](obj: T) = SpecialEnv.cached(ObjectEnv(obj))
+  object ObjectEnv:
+    def cachedOf[T: ClassTag](obj: T): SpecialEnv = SpecialEnv.cached(ObjectEnv(obj))
 
-    def withKeyTransformer(env: Environment, transformer: String => String): SpecialEnv = new SpecialEnv {
+    def withKeyTransformer(env: Environment, transformer: String => String): SpecialEnv = new SpecialEnv:
       override def getValueOption(key: String): Option[Expression] =
         env.getValueOption(transformer(key))
 
       override def has(key: String): Boolean = env.has(transformer(key))
-    }
 
-    def ofKebabCase[T : ClassTag](obj: T): SpecialEnv =
+    def ofKebabCase[T: ClassTag](obj: T): SpecialEnv =
       withKeyTransformer(ObjectEnv(obj), s => {
         val splitByHyphen = s.split("-")
         splitByHyphen.head + splitByHyphen.tail.map(_.capitalize).mkString
       })
-  }
-
-}
+end PackageAccessor

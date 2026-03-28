@@ -16,10 +16,10 @@ object Environments {
       _identify = id
       this
     }
-    @`inline` def =:=(that: Identifiable): Boolean = identify == that.identify
-    @`inline` def =:=(that: String): Boolean = identify == that
-    @`inline` def =/=(that: Identifiable): Boolean = ! =:=(that)
-    @`inline` def =/=(that: String): Boolean = ! =:=(that)
+    @inline def =:=(that: Identifiable): Boolean = identify == that.identify
+    @inline def =:=(that: String): Boolean = identify == that
+    @inline def =/=(that: Identifiable): Boolean = ! =:=(that)
+    @inline def =/=(that: String): Boolean = ! =:=(that)
   }
   sealed trait Environment extends Identifiable {
     def has(key: String): Boolean = getValueOption(key).isDefined
