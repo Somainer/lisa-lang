@@ -7,6 +7,7 @@ import moe.roselia.lisa.RecordType.{MapRecord, Record}
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.ref.WeakReference
+import scala.language.implicitConversions
 
 object LispExp {
 
@@ -143,7 +144,7 @@ object LispExp {
     extends Expression with Ordered[SNumber[T]] with NoExternalDependency with LisaValue {
     override def toString: String = number.toString
 
-    def mapTo[U: Numeric](implicit transform: T => U): SNumber[U] = SNumber(number)
+    def mapTo[U: Numeric](implicit transform: T => U): SNumber[U] = SNumber(transform(number))
 
     def toIntNumber: SNumber[LisaInteger] = number match {
       case _: LisaInteger => this.asInstanceOf[SNumber[LisaInteger]]
@@ -256,8 +257,8 @@ object LispExp {
         }
       }
 
-      def commonLargestType[T, U](a: SNumber[T], b: SNumber[U]) =
-        getTypeOrder(a.number) max getTypeOrder(b.number)
+      def commonLargestType[T, U](a: SNumber[T], b: SNumber[U]): Int =
+        math.max(getTypeOrder(a.number), getTypeOrder(b.number))
 
       def handleCommonLargestType[T, U](a: SNumber[T], b: SNumber[U]) = {
         val flag = commonLargestType(a, b)
@@ -291,7 +292,8 @@ object LispExp {
   }
 
   object SInteger {
-    private val integerCache = (-127 to 128).map(LisaInteger(_)).map(new SInteger(_))
+    private val integerCache: IndexedSeq[SInteger] =
+      Vector.tabulate(256)(i => new SInteger(BigInt.apply(i - 127)))
 
     def apply(value: LisaInteger): SInteger = value match {
       case v if v >= -127 && v <= 128 => integerCache(v.toInt + 127)
@@ -349,8 +351,15 @@ object LispExp {
     override def toString: String = value.toString
 
     override def code: String = {
-      import scala.reflect.runtime.universe._
-      Literal(Constant(value)).toString()
+      // Escape string for code representation
+      "\"" + value.flatMap {
+        case '\n' => "\\n"
+        case '\t' => "\\t"
+        case '\r' => "\\r"
+        case '\\' => "\\\\"
+        case '"' => "\\\""
+        case c => c.toString
+      } + "\""
     }
 
     override def compare(that: SString): Int = value compare that.value
@@ -995,7 +1004,7 @@ object LispExp {
     }
 
     override def updateValue(key: String, value: Expression): Unit = update(key, value)
-    @`inline` def updateDynamic(key: String)(value: Expression): Unit = {
+    @inline def updateDynamic(key: String)(value: Expression): Unit = {
       update(key, value)
     }
     @RawLisa def update(key: SString, value: Expression): MutableLisaMapRecord = update(key.value, value)

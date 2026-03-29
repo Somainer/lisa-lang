@@ -14,7 +14,7 @@ trait Queries {
   type MatcherFunction = (QuerySeq[Environment], LogicalContext) => OutputType
 
   val QuerySeq: SeqFactory[QuerySeq] = LazyList
-  @`inline` def concatQuerySeq[T, U >: T](first: QuerySeq[T], second: => QuerySeq[U]): QuerySeq[U] =
+  @inline def concatQuerySeq[T, U >: T](first: QuerySeq[T], second: => QuerySeq[U]): QuerySeq[U] =
     first #::: second
   def emptyResult: OutputType = QuerySeq.empty
   def makeResult(xs: Environment*): OutputType = QuerySeq.from(xs)
@@ -300,7 +300,7 @@ trait Queries {
   def compileExpressionToMatcher(expression: Expression,
                                  context: LogicalContext,
                                  inEnv: Environment): Matcher = {
-    @`inline` def compile(exp: Expression): Matcher = compileExpressionToMatcher(exp, context, inEnv)
+    @inline def compile(exp: Expression): Matcher = compileExpressionToMatcher(exp, context, inEnv)
     expression match {
       case LisaList(ll) => ll match {
         case Symbol("and") :: xs => Matcher.and(xs.map(compile))

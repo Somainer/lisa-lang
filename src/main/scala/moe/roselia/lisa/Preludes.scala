@@ -4,10 +4,11 @@ import moe.roselia.lisa.Environments.{CombineEnv, EmptyEnv, Environment, Mutable
 import moe.roselia.lisa.Evaluator.{EvalFailure, EvalFailureMessage, EvalResult, EvalSuccess}
 import moe.roselia.lisa.Import.PackageImporter
 import moe.roselia.lisa.LispExp._
-import moe.roselia.lisa.Reflect.{ConstructorCaller, PackageAccessor, ToolboxDotAccessor}
+import moe.roselia.lisa.Reflect.{ConstructorCaller, DotAccessor, PackageAccessor, ToolboxDotAccessor}
 import moe.roselia.lisa.Reflect.ScalaBridge.{fromJVMNative, fromScalaNative, toScalaNative}
 
 import scala.util.Try
+import scala.language.reflectiveCalls
 
 object Preludes extends LispExp.Implicits {
   type EngineType = javax.script.ScriptEngine with javax.script.Invocable
@@ -418,7 +419,26 @@ object Preludes extends LispExp.Implicits {
     "thunk" -> PrimitiveFunction.withArityChecked(1) {
       case (e: Procedure) :: Nil => LisaThunk(e)
     },
-    "..." -> Symbol("...").withDocString("List expansion operator")
+    "..." -> Symbol("...").withDocString("List expansion operator"),
+    "jit-available?" -> PrimitiveFunction.withArityChecked(0) {
+      case Nil => SBool(JIT.JITCompiler.isAvailable)
+    }.withDocString("Check if JIT compilation is available."),
+    "jit-stats" -> PrimitiveFunction.withArityChecked(0) {
+      case Nil =>
+        val stats = JIT.HotPathDetector.stats
+        LisaMapRecord(stats.map { case (k, v) =>
+          k -> (v match {
+            case n: Int => SInteger(BigInt(n))
+            case n: Long => SInteger(BigInt(n))
+            case s => SString(s.toString)
+          })
+        })
+    }.withDocString("Get JIT compilation statistics."),
+    "jit-reset!" -> PrimitiveFunction.withArityChecked(0) {
+      case Nil =>
+        JIT.HotPathDetector.reset()
+        NilObj
+    }.withDocString("Reset all JIT compilation state.")
   ))
 
   private lazy val (scalaPlugin, scalaEnv) = makeEnvironment(globalScalaEngine, "scala")
@@ -516,7 +536,7 @@ object Preludes extends LispExp.Implicits {
         case mha: MayHaveArity if mha.arity.isDefined => mha.arity.get
         case SString(s) => s.length
         case WrappedScalaObject(ls: Seq[Any]) => ls.length
-        case WrappedScalaObject(other) => ToolboxDotAccessor.accessDot("length")(other).asInstanceOf[Int]
+        case WrappedScalaObject(other) => DotAccessor.accessDotOfPlainObject("length")(other).asInstanceOf[Int]
         case ll: LisaListLike[_] => ll.length
         case other => Failure("Runtime Error", s"Can not get length for $other.")
       }

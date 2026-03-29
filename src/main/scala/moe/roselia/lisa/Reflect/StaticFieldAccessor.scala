@@ -42,7 +42,7 @@ object StaticFieldAccessor {
     }
   }
 
-  @`inline` def isTypeFitForJava(param: Class[_], argument: Any): Boolean = {
+  @inline def isTypeFitForJava(param: Class[_], argument: Any): Boolean = {
     null == argument || {
       param.isArray && argument.isInstanceOf[Array[_]] && {
         argument.asInstanceOf[Array[_]].forall(jvmBoxedClass(param.getComponentType).isInstance)
@@ -50,8 +50,8 @@ object StaticFieldAccessor {
     } || param.isInstance(argument) ||
       (argument.isInstanceOf[Procedure] && FunctionalInterfaceAdapter.isFunctional(param))
   }
-  @`inline` def isTypeFitForJava(params: Seq[Class[_]], arguments: Seq[Any]): Boolean =
-    params.view.map(jvmBoxedClass).zip(arguments).forall { Function.tupled(isTypeFitForJava) }
+  @inline def isTypeFitForJava(params: Seq[Class[_]], arguments: Seq[Any]): Boolean =
+    params.view.map(jvmBoxedClass).zip(arguments).forall { case (p, a) => isTypeFitForJava(p, a) }
 
   def matchRealArguments(params: Seq[Class[_]], arguments: Seq[Any]): Option[Seq[Any]] = {
     def loop(params: List[Class[_]], arguments: List[Any], buffer: List[Any]): Option[Seq[Any]] = params match {

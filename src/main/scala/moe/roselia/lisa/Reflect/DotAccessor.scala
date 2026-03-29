@@ -1,226 +1,186 @@
 package moe.roselia.lisa.Reflect
-import language.experimental.macros
+
 import scala.reflect.ClassTag
 import moe.roselia.lisa.Environments.SpecialEnv
 import moe.roselia.lisa.LispExp
-import ScalaBridge._
+import ScalaBridge.*
 import moe.roselia.lisa.Annotation.RawLisa
 import moe.roselia.lisa.LispExp.{Expression, LisaList, Procedure, WrappedScalaObject}
 import moe.roselia.lisa.Util.Extractors.NeedInt
 
-import scala.reflect.runtime.universe
+import java.lang.reflect.{InvocationTargetException, Method, Modifier}
 
-object DotAccessor {
-  import reflect.runtime.universe._
+object DotAccessor:
 
-  def getTypeTag[T: TypeTag](t: T) = typeOf[T]
+  def hasRawLisaAnnotation(method: Method): Boolean =
+    method.isAnnotationPresent(classOf[RawLisa])
 
-  def getClassObject[A : ClassTag](obj: A) = {
-    val cls = obj.getClass
-    val mirror = runtimeMirror(cls.getClassLoader)
-    mirror.reflect(obj)
-  }
+  def hasRawLisaAnnotation(clazz: Class[?]): Boolean =
+    clazz.isAnnotationPresent(classOf[RawLisa])
 
-  def hasRawLisaAnnotation(symbol: Symbol): Boolean = {
-    symbol.annotations.view.map(_.tree.tpe).exists(_ <:< typeOf[RawLisa])
-  }
+  private def isAccessible(member: java.lang.reflect.Member): Boolean =
+    Modifier.isPublic(member.getModifiers)
 
-  def accessDotDynamic(acc: String)(dyn: Dynamic): Any = {
+  def toJvmName(name: String): String =
+    scala.reflect.NameTransformer.encode(name)
+
+  def lookUpForMethod(clazz: Class[?], accessName: String): Seq[Method] =
+    val jvmName = toJvmName(accessName)
+    val methods = collectMethods(clazz)
+    methods.filter(m => m.getName == jvmName || m.getName == accessName)
+
+  private def collectMethods(clazz: Class[?]): Seq[Method] =
+    if clazz == null then Nil
+    else
+      val own = clazz.getDeclaredMethods.toSeq
+      val parent = collectMethods(clazz.getSuperclass)
+      val interfaces = clazz.getInterfaces.flatMap(collectMethods).toSeq
+      own ++ parent ++ interfaces
+
+  def lookUpForField(clazz: Class[?], accessName: String): Option[java.lang.reflect.Field] =
+    val jvmName = toJvmName(accessName)
+    try
+      Some(clazz.getField(jvmName))
+    catch
+      case _: NoSuchFieldException =>
+        try Some(clazz.getField(accessName))
+        catch case _: NoSuchFieldException => None
+
+  def accessDotDynamic(acc: String)(dyn: Dynamic): Any =
     import scala.language.reflectiveCalls
-
     dyn.asInstanceOf[{
       def selectDynamic(key: Any): Any
     }].selectDynamic(acc)
-  }
 
   @throws[ScalaReflectionException]("If no such field or 0-arity method")
-  def accessDotOfPlainObject[A : ClassTag](acc: String)(obj: A) = {
-    val classObj = getClassObject(obj)
-    val decl = lookUpForTerm(classObj.symbol, acc)
-//    val decl = classObj.symbol.toType.decl(TermName(acc))
-    if(decl.isDefined) {
-      decl.get.alternatives
-        .filter(_.isMethod)
-        .map(_.asMethod)
-        .find(_.paramLists match {
-          case Nil => true
-          case Nil::Nil => true
-          case _ => false
-        })
-        .map(_.asMethod)
-        .map(classObj.reflectMethod)
-        .map(_.apply())
-        .getOrElse(classObj.reflectField(util.Try(decl.get.accessed.asTerm).getOrElse(decl.get)).get)
-    } else throw ScalaReflectionException(s"Field or 0-arity method $acc for $obj: ${classObj.symbol.fullName} not found")
-  }
+  def accessDotOfPlainObject(acc: String)(obj: Any): Any =
+    val clazz = obj.getClass
+    val methods = lookUpForMethod(clazz, acc)
+
+    // Try 0-arity methods first
+    val nilArityMethod = methods.find(_.getParameterCount == 0)
+    nilArityMethod match
+      case Some(method) =>
+        method.setAccessible(true)
+        handleReflectionException(method.invoke(obj))
+      case None =>
+        // Try field access
+        lookUpForField(clazz, acc) match
+          case Some(field) =>
+            field.setAccessible(true)
+            field.get(obj)
+          case None =>
+            throw ScalaReflectionException(
+              s"Field or 0-arity method $acc for $obj: ${clazz.getName} not found")
 
   @throws[ScalaReflectionException]("If no such field or 0-arity method")
-  def accessDot[A : ClassTag](acc: String)(obj: A) = {
-    obj match {
+  def accessDot[A: ClassTag](acc: String)(obj: A): Any =
+    obj match
       case dynamic: Dynamic =>
-        util.Try {
-          accessDotDynamic(acc)(dynamic)
-        }.getOrElse(accessDotOfPlainObject(acc)(obj))
+        util.Try(accessDotDynamic(acc)(dynamic))
+          .getOrElse(accessDotOfPlainObject(acc)(obj))
       case _ =>
-        handleReflectionException(accessDotOfPlainObject(acc)(obj))
-    }
-  }
+        accessDotOfPlainObject(acc)(obj)
 
-  def checkTypeFits(sym: List[Symbol])(args: Seq[Any]): Boolean = {
-    def boxedType(tpe: Type): Type = tpe match {
-      case a if a =:= typeOf[Int] => getTypeTag(Int.box(0))
-      case a if a =:= typeOf[Boolean] => getTypeTag(Boolean.box(false))
-      case a if a =:= typeOf[Double] => getTypeTag(Double.box(0))
-      case a if a =:= typeOf[Float] => getTypeTag(Float.box(0))
-      case a if a =:= typeOf[Char] => getTypeTag(Char.box(0))
-      case a if a =:= typeOf[Short] => getTypeTag(Short.box(0))
-      case a if a =:= typeOf[Byte] => getTypeTag(Byte.box(0))
-      case a if a =:= typeOf[Long] => getTypeTag(Long.box(0))
-      case a => a
+  def checkTypeFits(paramTypes: Seq[Class[?]])(args: Seq[Any]): Boolean =
+    paramTypes.length == args.length && paramTypes.zip(args).forall { (paramType, arg) =>
+      arg == null ||
+        StaticFieldAccessor.jvmBoxedClass(paramType).isInstance(arg) ||
+        (arg.isInstanceOf[Procedure] && FunctionalInterfaceAdapter.isFunctional(paramType))
     }
 
-    def checkType[T: TypeTag: ClassTag](t: T)(typ: Type) = {
-      val cls = t.getClass
-      val mirror = runtimeMirror(cls.getClassLoader)
-      val clsObj = mirror.reflect(t)
-//      println(s"$t T: ${mirror.runtimeClass(clsObj.symbol.toType)}")
-//      println(s"${clsObj.symbol.toType} <:< $typ: ${clsObj.symbol.toType <:< typ}")
-      if (FunctionalInterfaceAdapter.isFunctional(typ)) {
-        t.isInstanceOf[Procedure] || clsObj.symbol.toType <:< typ
-      } else {
-        clsObj.symbol.toType <:< typ
-      }
-    }
-    sym.lengthIs == args.length && sym.zip(args).forall {
-      case (x, y) => null == y || checkType(y)(x.typeSignature) || checkType(y)(x.typeSignature.map(boxedType))
-    }
-  }
-
-  def performSAMTransform(sym: List[Symbol])(args: Seq[Any]): Seq[Any] = {
-    if (sym.length != args.length) args // If their lengths are not equal then do nothing.
-    else {
+  def performSAMTransform(paramTypes: Seq[Class[?]])(args: Seq[Any]): Seq[Any] =
+    if paramTypes.length != args.length then args
+    else
       args.indices.map { i =>
         val arg = args(i)
-        val symbol = sym(i).typeSignature.typeSymbol
-        arg match {
-          case _ if symbol == symbolOf[Any] => arg
-          case procedure: Procedure if symbol.isAbstract =>
-            val mirror = runtimeMirror(arg.getClass.getClassLoader)
-            val clazz = mirror.runtimeClass(symbol.asClass)
-            if (FunctionalInterfaceAdapter.isFunctional(clazz)) {
-              FunctionalInterfaceAdapter.createFunctionInvoker(clazz, procedure)
-            } else arg
+        val paramType = paramTypes(i)
+        arg match
+          case _ if paramType == classOf[Any] || paramType == classOf[Object] => arg
+          case procedure: Procedure if Modifier.isAbstract(paramType.getModifiers) &&
+            FunctionalInterfaceAdapter.isFunctional(paramType) =>
+            FunctionalInterfaceAdapter.createFunctionInvoker(paramType, procedure)
           case _ => arg
-        }
       }
-    }
-  }
 
-  def lookUpForTerm(symbol: ClassSymbol, accessName: String) = {
-    val termName = TermName(toJvmName(accessName))
-    (symbol :: symbol.baseClasses).view
-      .map(_.asClass)
-      .map(_.toType)
-      .map(_.decl(termName))
-      .find(_.isTerm)
-      .map(_.asTerm)
-  }
+  def getDeclaredTermNames(clazz: Class[?]): Seq[String] =
+    val methods = collectMethods(clazz).map(_.getName).map(scala.reflect.NameTransformer.decode)
+    val fields = Option(clazz).map(_.getFields.map(_.getName).toSeq).getOrElse(Nil)
+    (methods ++ fields).distinct
 
-  def getDeclaredTerms(symbol: ClassSymbol): Seq[universe.Symbol] = {
-    (symbol :: symbol.baseClasses)
-      .map(_.asClass)
-      .map(_.toType)
-      .flatMap(_.decls)
-  }
+  def applyDotDynamic(acc: String)(dyn: Dynamic)(args: Any*): Any =
+    // Use Java reflection to call applyDynamic since Scala 3 doesn't allow _* in structural type calls
+    val clazz = dyn.getClass
+    val methods = clazz.getMethods.filter(m => m.getName == "applyDynamic" && m.getParameterCount == 2)
+    methods.headOption match
+      case Some(method) =>
+        method.setAccessible(true)
+        method.invoke(dyn, acc, args.toArray)
+      case None =>
+        throw ScalaReflectionException(s"applyDynamic not found on ${clazz.getName}")
 
-  def toJvmName(name: String) = {
-    reflect.NameTransformer.encode(name)
-  }
-
-  def applyDotDynamic(acc: String)(dyn: Dynamic)(args: Any*) = {
-    import scala.language.reflectiveCalls
-
-    dyn.asInstanceOf[{
-      def applyDynamic(key: Any)(args: Any*): Any
-    }].applyDynamic(acc)(args: _*)
-  }
-
-  def handleReflectionException[T](block: => T): T = {
+  def handleReflectionException[T](block: => T): T =
     try block
-    catch {
-      case ex: java.lang.reflect.InvocationTargetException =>
+    catch
+      case ex: InvocationTargetException =>
         throw ex.getTargetException
-    }
-  }
 
   @throws[ScalaReflectionException]("When no underlying method")
-  def applyDotOfPlainObject[A : ClassTag](acc: String)(obj: A)(args: Any*)(expressionArgs: Expression*) = {
-    val classObj = getClassObject(obj)
-//    val decl = classObj.symbol.toType.decl(TermName(acc))
-    val decl = lookUpForTerm(classObj.symbol, acc)
-    if(decl.isEmpty) throw ScalaReflectionException(s"No such method $acc in $obj: ${classObj.symbol.fullName} to apply")
-    val overloads = decl.get.alternatives
-      .filter(_.isMethod)
-      .map(_.asMethod)
-      .filter(overload => {
-        if(hasRawLisaAnnotation(overload)) overload.paramLists.flatten.length == expressionArgs.length
-        else overload.paramLists.flatten.length == args.length
-      }) match {
-        case xs@_::Nil => xs
-        case xs =>
-          val (rawNames, native) = xs.partition(hasRawLisaAnnotation)
-          rawNames.filter(sig => checkTypeFits(sig.paramLists.flatten)(expressionArgs)) ++
-            native.filter(sig => checkTypeFits(sig.paramLists.flatten)(args))
-      }
+  def applyDotOfPlainObject(acc: String)(obj: Any)(args: Any*)(expressionArgs: Expression*): Any =
+    val clazz = obj.getClass
+    val methods = lookUpForMethod(clazz, acc)
 
-//    println(decl.asTerm.alternatives.filter(_.isMethod).map(_.asMethod)
-//      .filter(_.paramLists.head.length == args.length).map(pam => {
-//        val pm = pam.paramLists.head.map(_.typeSignature).map(_.toString).mkString(", ")
-//        s"($pm) => ${pam.returnType.toString}"
-//      }))
-//    println(s"$acc has ${overloads.length} overloads and received ${args.length} args")
-//    println(classObj.symbol)
-//    println(overloads)
-    if (overloads.isEmpty) throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
-    overloads.head match {
-      case symbol if hasRawLisaAnnotation(symbol) =>
-        classObj.reflectMethod(symbol).apply(expressionArgs: _*)
-      case symbol =>
-        val samArgs = performSAMTransform(symbol.paramLists.flatten)(args)
-        classObj.reflectMethod(symbol).apply(samArgs: _*)
-    }
-  }
+    if methods.isEmpty then
+      throw ScalaReflectionException(s"No such method $acc in $obj: ${clazz.getName} to apply")
+
+    val overloads = methods.filter { method =>
+      if hasRawLisaAnnotation(method) then method.getParameterCount == expressionArgs.length
+      else method.getParameterCount == args.length
+    } match
+      case xs if xs.length <= 1 => xs
+      case xs =>
+        val (rawMethods, nativeMethods) = xs.partition(hasRawLisaAnnotation)
+        val matchingRaw = rawMethods.filter(m => checkTypeFits(m.getParameterTypes.toSeq)(expressionArgs))
+        val matchingNative = nativeMethods.filter(m => checkTypeFits(m.getParameterTypes.toSeq)(args))
+        matchingRaw ++ matchingNative
+
+    if overloads.isEmpty then
+      throw ScalaReflectionException(s"No overloaded method $acc in $obj to apply")
+
+    val method = overloads.head
+    method.setAccessible(true)
+    if hasRawLisaAnnotation(method) then
+      handleReflectionException(method.invoke(obj, expressionArgs.map(_.asInstanceOf[AnyRef])* ))
+    else
+      val samArgs = performSAMTransform(method.getParameterTypes.toSeq)(args)
+      handleReflectionException(method.invoke(obj, samArgs.map(_.asInstanceOf[AnyRef])*))
 
   @throws[ScalaReflectionException]("When no underlying method")
-  def applyDot[A : ClassTag](acc: String)(obj: A)(args: Any*)(expressionArgs: Expression*) = {
-    obj match {
-      case dynamic: Dynamic => util.Try {
-        applyDotDynamic(acc)(dynamic)(args: _*)
-      }.getOrElse(applyDotOfPlainObject(acc)(obj)(args: _*)(expressionArgs: _*))
+  def applyDot[A: ClassTag](acc: String)(obj: A)(args: Any*)(expressionArgs: Expression*): Any =
+    obj match
+      case dynamic: Dynamic =>
+        util.Try(applyDotDynamic(acc)(dynamic)(args*))
+          .getOrElse(applyDotOfPlainObject(acc)(obj)(args*)(expressionArgs*))
       case _ =>
-        handleReflectionException(applyDotOfPlainObject(acc)(obj)(args: _*)(expressionArgs: _*))
-    }
-  }
+        handleReflectionException(applyDotOfPlainObject(acc)(obj)(args*)(expressionArgs*))
 
-  lazy val accessEnv: SpecialEnv = SpecialEnv.cached(new SpecialEnv {
+  lazy val accessEnv: SpecialEnv = SpecialEnv.cached(new SpecialEnv:
     override def has(key: String): Boolean = key.startsWith(".")
 
     override def getValueOption(key: String): Option[LispExp.Expression] = Some(LispExp.PrimitiveFunction {
-      case x::Nil =>
-        key.substring(1) match {
-          case s"[${NeedInt(index)}]" => x match {
+      case x :: Nil =>
+        key.substring(1) match
+          case s"[${NeedInt(index)}]" => x match
             case LisaList(ll) => ll(index)
-            case WrappedScalaObject(array: Array[_]) => fromScalaNative(array(index))
-            case WrappedScalaObject(seq: Seq[_]) => fromScalaNative(seq(index))
+            case WrappedScalaObject(array: Array[?]) => fromScalaNative(array(index))
+            case WrappedScalaObject(seq: Seq[?]) => fromScalaNative(seq(index))
             case _ => fromScalaNative(toScalaNative(x).asInstanceOf[Seq[Any]](index))
-          }
           case field =>
             val res = accessDot(field)(toScalaNative(x))
             fromScalaNative(res)
-        }
-      case x::xs =>
+      case x :: xs =>
         val field = key.substring(1)
-        fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative): _*)(xs: _*))
+        fromScalaNative(applyDot(field)(toScalaNative(x))(xs.map(toScalaNative)*)(xs*))
     }.withDocString(s"$key: Access ${key substring 1} attribute or method of a jvm object."))
-  })
-}
+  )
+end DotAccessor
